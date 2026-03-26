@@ -1,0 +1,115 @@
+/* =========================
+   VARIABLES DE COLOR (Basadas en el Logo)
+========================= */
+:root {
+  --turnify-cyan: #48c1b5;
+  --turnify-green: #70e0a3;
+  --turnify-dark-blue: #1b3d5f;
+  --turnify-bg-gradient: linear-gradient(135deg, #1b3d5f 0%, #2b2b2b 100%);
+  --turnify-glass: rgba(255, 255, 255, 0.95);
+}
+
+/* =========================
+   RESET BÁSICO
+========================= */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* =========================
+   FONDO GENERAL (Ahora con el azul del logo)
+========================= */
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: var(--turnify-bg-gradient);
+  min-height: 100vh;
+  color: #333;
+}
+
+/* =========================
+   PAGE & CONTAINER
+========================= */
+.page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+}
+
+/* =========================
+   CARD BASE
+========================= */
+.card {
+  background: var(--turnify-glass);
+  width: 100%;
+  max-width: 720px;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.3);
+  border-top: 5px solid var(--turnify-cyan); /* Detalle de color superior */
+}
+
+/* =========================
+   HEADER
+========================= */
+.header h1 {
+  font-size: 32px;
+  color: var(--turnify-dark-blue); /* Texto principal como el logo */
+  font-weight: 800;
+}
+
+/* =========================
+   BOTÓN PRINCIPAL (Cian Vibrante)
+========================= */
+.form-grid button {
+  width: 100%;
+  padding: 14px;
+  background: var(--turnify-cyan);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  margin-top: 18px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(72, 193, 181, 0.4);
+}
+
+.form-grid button:hover {
+  background: var(--turnify-dark-blue); /* Cambia al azul oscuro al pasar el mouse */
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(27, 61, 95, 0.3);
+}
+
+/* =========================
+   PROVIDER TOGGLE (Acentuado con Verde)
+========================= */
+.provider-btn.active {
+  background: var(--turnify-green);
+  color: var(--turnify-dark-blue);
+  border-color: var(--turnify-green);
+}
+
+/* =========================
+   CAMPOS
+========================= */
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--turnify-cyan);
+  box-shadow: 0 0 0 3px rgba(72, 193, 181, 0.1);
+}

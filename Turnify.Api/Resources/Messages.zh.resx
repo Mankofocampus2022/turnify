@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Welcome" xml:space="preserve">
+    <value>欢迎来到 Turnify</value>
+  </data>
+  <data name="UserNotFound" xml:space="preserve">
+    <value>未找到用户</value>
+  </data>
+</root>

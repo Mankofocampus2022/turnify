@@ -1,0 +1,22 @@
+
+# ETAPA 1: Compilación
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copiar el archivo del proyecto y restaurar dependencias
+COPY ["Turnify.Api.csproj", "./"]
+RUN dotnet restore "Turnify.Api.csproj"
+
+# Copiar el resto del código y compilar
+COPY . .
+RUN dotnet publish "Turnify.Api.csproj" -c Release -o /app/publish
+
+# ETAPA 2: Runtime (Imagen final ligera)
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# Exponer el puerto que usa tu API (por defecto 8080 en .NET 8)
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Turnify.Api.dll"]
+

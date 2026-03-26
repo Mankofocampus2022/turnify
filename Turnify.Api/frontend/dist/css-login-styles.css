@@ -1,0 +1,130 @@
+/* =========================================
+   TURNIFY LOGIN - VERSIÓN PRO (LEGIBLE)
+   ========================================= */
+
+:root {
+    --t-dark: #1b3d5f;
+    --t-cyan: #48c1b5;
+    --t-green: #70e0a3;
+    --t-white: #ffffff;
+}
+
+.login-wrapper {
+    background: linear-gradient(135deg, var(--t-dark) 0%, #0a1929 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+.login-card {
+    background: var(--t-white); /* Tarjeta blanca para que resalte */
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.logo-text {
+    color: var(--t-dark);
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+
+.login-header p {
+    color: #666; /* Texto secundario gris */
+    margin-bottom: 30px;
+    font-size: 0.9rem;
+}
+
+/* --- CAMPOS DE ENTRADA --- */
+.input-group {
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+.input-group label {
+    display: block;
+    color: var(--t-dark);
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.input-group input, 
+.input-group select {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #eee;
+    border-radius: 10px;
+    background: #fafafa;
+    transition: 0.3s;
+}
+
+.input-group input:focus, 
+.input-group select:focus {
+    border-color: var(--t-cyan);
+    outline: none;
+    background: #fff;
+}
+
+/* --- EL BOTÓN DEL LOGO --- */
+.btn-login {
+    background: var(--t-cyan);
+    color: var(--t-dark);
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: 0.3s;
+    margin-top: 10px;
+    text-transform: uppercase;
+}
+
+.btn-login:hover {
+    background: var(--t-green);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(72, 193, 181, 0.4);
+}
+
+/* --- FOOTER --- */
+.login-footer {
+    margin-top: 25px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.login-footer a {
+    color: var(--t-cyan);
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.login-footer a:hover {
+    color: var(--t-dark);
+    text-decoration: underline;
+}
+
+.forgot-password-container {
+    text-align: right; /* Lo alineamos a la derecha */
+    margin-top: 5px;
+}
+
+.forgot-link {
+    font-size: 0.85rem;
+    color: #666;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+.forgot-link:hover {
+    color: #2c3e50; /* Cambia a un color más oscuro al pasar el mouse */
+    text-decoration: underline;
+}

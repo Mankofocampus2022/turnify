@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Welcome" xml:space="preserve">
+    <value>Turnifyへようこそ</value>
+  </data>
+  <data name="UserNotFound" xml:space="preserve">
+    <value>ユーザーが見つかりません</value>
+  </data>
+</root>

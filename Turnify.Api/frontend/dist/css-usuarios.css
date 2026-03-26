@@ -1,0 +1,160 @@
+:root {
+    --sidebar-width: 260px;
+    --bg-dark-radial: radial-gradient(circle at top right, #1b3d5f, #0a101e);
+    --heineken-border: rgba(255, 255, 255, 0.2);
+    --brand-emerald: #48c1b5;
+}
+
+/* Layout Principal con fondo profundo */
+.dashboard-layout {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    background: var(--bg-dark-radial);
+}
+
+/* --- TABLA EFECTO VIDRIO --- */
+.table-card {
+    background: linear-gradient(135deg, rgba(72, 193, 181, 0.1), rgba(7, 121, 51, 0.05));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    border: 1px solid var(--heineken-border);
+    border-top: 1px solid rgba(255, 255, 255, 0.4); 
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    margin-top: 20px;
+}
+
+/* Encabezado */
+thead th {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--brand-emerald);
+    padding: 18px 15px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--heineken-border);
+}
+
+/* Filas */
+tbody td {
+    padding: 20px 15px;
+    color: #e2e8f0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* --- BOTONES DE ACCIÓN (EL ROJO ESTÁ DE VUELTA) --- */
+.btn-action {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: white;
+}
+
+/* 🟢 BOTÓN ACTIVAR (Esmeralda Vidrioso) */
+.btn-activar {
+    background: linear-gradient(135deg, #48c1b5 0%, #077933 100%);
+    box-shadow: 0 4px 14px rgba(7, 121, 51, 0.4);
+}
+
+/* 🔴 BOTÓN BLOQUEAR (ROJO POTENTE COMO ANTES) */
+.btn-bloquear {
+    background: linear-gradient(135deg, #ff5e5e 0%, #ff2a2a 100%);
+    box-shadow: 0 4px 14px rgba(255, 94, 94, 0.4);
+}
+
+.btn-action:hover {
+    transform: translateY(-3px);
+    filter: brightness(1.1);
+}
+
+.btn-bloquear:hover {
+    box-shadow: 0 6px 20px rgba(255, 42, 42, 0.6);
+}
+
+/* --- BUSCADOR VIDRIOSO --- */
+.search-box input {
+    width: 100%;
+    padding: 14px 15px 14px 45px;
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(5px);
+    border: 1px solid var(--heineken-border);
+    color: white;
+    outline: none;
+}
+/* --- ENCABEZADO (Títulos sobre fondo oscuro) --- */
+.header-section h1 {
+    font-size: 28px;
+    font-weight: 800;
+    /* 🚩 CAMBIA ESTO: Usa blanco o el esmeralda para que se vea */
+    color: #ffffff; 
+    margin: 0;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.3); /* Sombra para que resalte más */
+}
+
+.header-section p {
+    /* El subtítulo en el verde esmeralda del logo */
+    color: var(--brand-emerald); 
+    margin: 5px 0;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+/* El fondo oscuro desenfocado */
+.modal-overlay {
+    display: none; /* Empieza oculto */
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(10, 16, 30, 0.8);
+    backdrop-filter: blur(8px); /* Desenfoque de fondo */
+    z-index: 10000;
+    justify-content: center;
+    align-items: center;
+}
+
+/* La tarjeta del modal tipo vidrio */
+.glass-modal {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(7, 121, 51, 0.1));
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 20px;
+    padding: 0;
+    width: 450px;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.modal-header {
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h2 { color: #48c1b5; margin: 0; font-size: 1.2rem; }
+
+.btn-close { 
+    background: none; border: none; color: white; font-size: 24px; cursor: pointer; 
+}
+
+/* Estilo del botón Naranja Lava dentro del modal */
+.btn-add-lava {
+    background: linear-gradient(135deg, #ff4500 0%, #ff8c00 100%);
+    color: white; border: none; padding: 10px 20px; border-radius: 10px;
+    font-weight: 700; cursor: pointer;
+}
+
+@keyframes popIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}

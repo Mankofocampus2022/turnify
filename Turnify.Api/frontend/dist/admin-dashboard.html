@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Turnify | Panel de Administración</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css-styles.css"> 
+    <link rel="stylesheet" href="css-dashboard.css">
+</head>
+<body>
+
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <span class="logo-icon">🕒</span>
+            <h2>Turnify</h2>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="admin-dashboard.html" class="nav-item active" id="nav-resumen">
+                <i class="fas fa-chart-line"></i> Resumen
+            </a>
+            <a href="usuarios.html" class="nav-item" id="nav-usuarios">
+                <i class="fas fa-users"></i> Usuarios
+            </a>
+            <a href="servicios.html" class="nav-item">
+                <i class="fas fa-cut"></i> Servicios
+            </a>
+            <a href="reportes.html" class="nav-item">
+                <i class="fas fa-file-invoice-dollar"></i> Reportes
+            </a>
+            <a href="configuracion.html" class="nav-item">
+                <i class="fas fa-cog"></i> Configuración
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button onclick="logout()" class="btn-logout" id="btnLogout">
+                <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+            </button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="top-bar">
+            <div class="welcome">
+                <h2 id="welcomeText">¡Hola, Darwin!</h2>
+                <p id="subTitle">Aquí tienes el estado actual de tu negocio.</p>
+            </div>
+            <div class="user-profile">
+                <span id="userRole" class="badge">SuperAdministrador</span>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <h3>Citas Hoy</h3>
+                <p id="totalCitas" class="number">0</p>
+                <span id="citasTrend" class="trend">Sincronizando...</span>
+            </div>
+            <div class="stat-card">
+                <h3>Nuevos Clientes</h3>
+                <p id="nuevosClientes" class="number">0</p>
+            </div>
+            <div class="stat-card primary">
+                <h3>Ingresos Mes</h3>
+                <p id="ingresosMes" class="number">$0</p>
+                <span class="currency">COP</span>
+            </div>
+        </section>
+
+        <section class="content-section">
+            <div class="section-header">
+                <h3 id="sectionTitle">Próximos Turnos</h3>
+                <div id="extraActions">
+                    <button class="btn-sm">Ver todos</button>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr id="tableHeader">
+                            <th>Cliente</th>
+                            <th>Servicio</th>
+                            <th>Hora</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="turnosTable">
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 20px;">
+                                <i class="fas fa-spinner fa-spin"></i> Cargando datos...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="js/dashboard.js"></script>
+</body>
+</html>

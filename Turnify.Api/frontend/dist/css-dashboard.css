@@ -1,0 +1,171 @@
+:root {
+    /* Paleta Extraída del Logo de Turnify */
+    --turnify-dark: #1b3d5f;      /* Azul oscuro del texto "TURNIFY" */
+    --turnify-primary: #48c1b5;   /* Cian brillante del círculo y tijeras */
+    --turnify-accent: #70e0a3;    /* Verde esmeralda para detalles/éxito */
+    --turnify-light: #e0f2f1;     /* Variación clara para fondos */
+    --text-muted: #7f8c8d;
+    --bg-body: #f8fafc;           /* Fondo grisáceo muy suave para contraste */
+    --white: #ffffff;
+    --sidebar-width: 260px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-body);
+    color: var(--turnify-dark);
+    display: flex;
+}
+
+/* --- Layout del Dashboard --- */
+.dashboard-layout {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+}
+
+/* --- Sidebar (Barra Lateral) --- */
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--turnify-dark); /* Color base del logo */
+    color: var(--white);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    height: 100vh;
+    padding: 1.5rem;
+    box-shadow: 4px 0 15px rgba(27, 61, 95, 0.1);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 1rem;
+}
+
+.logo-icon {
+    color: var(--turnify-primary); /* El icono brilla con el cian */
+    font-size: 1.8rem;
+}
+
+.sidebar h2 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: var(--white);
+}
+
+.sidebar-nav a {
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    padding: 12px 15px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+}
+
+/* Estado Activo con el Cian del logo */
+.sidebar-nav a:hover, .sidebar-nav a.active {
+    background-color: rgba(72, 193, 181, 0.15);
+    color: var(--turnify-primary);
+    transform: translateX(5px);
+}
+
+/* --- Botón de Salida --- */
+.btn-logout {
+    width: 100%;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--turnify-primary);
+    color: var(--turnify-primary);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.btn-logout:hover {
+    background: var(--turnify-primary);
+    color: var(--turnify-dark);
+}
+
+/* --- Contenido Principal --- */
+.main-content {
+    margin-left: var(--sidebar-width);
+    flex: 1;
+    padding: 2.5rem;
+}
+
+.welcome h2 {
+    color: var(--turnify-dark);
+    font-weight: 800;
+}
+
+.badge {
+    background: var(--turnify-primary);
+    color: var(--turnify-dark);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+/* --- Tarjetas de Estadísticas --- */
+.stat-card {
+    background: var(--white);
+    padding: 1.8rem;
+    border-radius: 20px;
+    border: 1px solid rgba(0,0,0,0.03);
+    box-shadow: 0 10px 30px rgba(27, 61, 95, 0.05);
+}
+
+/* Tarjeta Principal con Degradado del Logo */
+.stat-card.primary {
+    background: linear-gradient(135deg, var(--turnify-dark) 0%, #2c527a 100%);
+    color: white;
+}
+
+.stat-card .number {
+    color: var(--turnify-dark);
+    font-size: 2.4rem;
+}
+
+.stat-card.primary .number {
+    color: var(--turnify-primary); /* Resalte en cian sobre fondo oscuro */
+}
+
+/* --- Tablas y Estados --- */
+.content-section {
+    background: var(--white);
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(27, 61, 95, 0.04);
+}
+
+.status-pending {
+    background: #fff8e1;
+    color: #ffa000;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* Un estado de éxito usando el verde del logo */
+.status-completed {
+    background: var(--turnify-light);
+    color: var(--turnify-accent);
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+}

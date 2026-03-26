@@ -1,0 +1,16 @@
+# Archivos prohibidos por peso
+*.zip
+*.deb
+*.rar
+Turnify.Api.zip
+dbeaver.deb
+
+# Carpetas de basura de compilación
+bin/
+obj/
+node_modules/
+
+# Archivos de base de datos pesados
+sql_data/
+*.mdf
+*.ldf

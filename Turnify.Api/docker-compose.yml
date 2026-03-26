@@ -1,0 +1,35 @@
+services:
+  turnify-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: turnify-db
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=Turnify.Master.2026!*
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./sql_data:/var/opt/mssql/data  # <--- BLINDAJE: Persistencia física en tu disco
+    networks:
+      - turnify-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Turnify.Master.2026!*' -C -Q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  turnify-api:
+    build: .
+    container_name: turnify-api
+    ports:
+      - "5000:8080"
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=turnify-db,1433;Database=TurnifyDb;User Id=sa;Password=Turnify.Master.2026!*;TrustServerCertificate=True;Encrypt=True;
+    depends_on:
+      turnify-db:
+        condition: service_healthy
+    networks:
+      - turnify-network
+
+networks:
+  turnify-network:
+    driver: bridge

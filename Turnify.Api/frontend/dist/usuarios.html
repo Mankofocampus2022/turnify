@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Turnify - Gestión de Usuarios</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css-dashboard.css">
+    <link rel="stylesheet" href="css-usuarios.css">
+</head>
+<body>
+
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <span class="logo-icon">🕒</span>
+            <h2>Turnify</h2>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="admin-dashboard.html" class="nav-item" id="nav-resumen">
+                <i class="fas fa-chart-line"></i> Resumen
+            </a>
+            <a href="usuarios.html" class="nav-item active" id="nav-usuarios">
+                <i class="fas fa-users"></i> Usuarios
+            </a>
+            <a href="servicios.html" class="nav-item">
+                <i class="fas fa-cut"></i> Servicios
+            </a>
+            <a href="reportes.html" class="nav-item">
+                <i class="fas fa-file-invoice-dollar"></i> Reportes
+            </a>
+            <a href="configuracion.html" class="nav-item">
+                <i class="fas fa-cog"></i> Configuración
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button onclick="logout()" class="btn-logout" id="btnLogout">
+                <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+            </button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="header-section">
+            <h1>Control de Usuarios</h1>
+            <p>Administración de cuentas y suscripciones (SuperAdmin)</p>
+        </div>
+
+        <hr style="opacity: 0.1; margin: 20px 0;">
+
+        <div class="search-container" style="margin-bottom: 25px; max-width: 400px; margin-left: 0;">
+            <div style="position: relative;">
+                <input type="text" id="inputBusqueda" placeholder="🔍 Buscar barbero por nombre o email..." 
+                       style="width: 100%; padding: 12px 15px 12px 40px; border-radius: 12px; border: 1px solid #e2e8f0; background: white; color: #1b3d5f; font-weight: 500; outline: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            </div>
+        </div>
+
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Rol</th> 
+                        <th>Vencimiento</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaUsuarios">
+                    </tbody>
+            </table>
+        </div>
+    </main>
+</div>
+
+    <script src="js/usuarios.js"></script>
+</body>
+</html>

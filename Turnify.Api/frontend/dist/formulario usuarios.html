@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turnify | Reserva tu cita</title>
+  <link rel="stylesheet" href="css-styles.css">
+</head>
+
+<body>
+
+<div class="page">
+  <div class="container">
+    <div class="card">
+
+      <!-- HEADER -->
+      <div class="header">
+        <h1>Turnify</h1>
+        <p>Reserva tu cita fácil y rápido</p>
+      </div>
+
+      <!-- FORMULARIO -->
+      <form>
+
+        <div class="form-grid">
+
+          <!-- TIPO DE PROVEEDOR -->
+          <div class="field full">
+            <label>¿Tipo de cita?</label>
+            <select id="providerType">
+              <option value="">Selecciona</option>
+              <option value="business">Negocio físico</option>
+              <option value="independent">Independiente / A domicilio</option>
+            </select>
+          </div>
+
+          <!-- BUSCADOR DE NEGOCIO / PROFESIONAL -->
+          <div class="field full">
+            <label>Buscar negocio o profesional</label>
+            <input
+              type="text"
+              id="providerSearch"
+              placeholder="Ej: Barbería El Corte / Ana Nails / Carlos Barber"
+            >
+            <!-- Resultados dinámicos (JS) -->
+            <div id="providerResults" class="hidden"></div>
+          </div>
+
+          <!-- TIPO DE SERVICIO -->
+          <div class="field">
+            <label>Tipo de servicio</label>
+            <select>
+              <option value="">Selecciona</option>
+              <option>Barbería</option>
+              <option>Manicura / Uñas</option>
+            </select>
+          </div>
+
+          <!-- MODALIDAD -->
+          <div class="field">
+            <label>Modalidad</label>
+            <select>
+              <option value="">Selecciona</option>
+              <option>Presencial</option>
+              <option>A domicilio</option>
+            </select>
+          </div>
+
+          <!-- UBICACIÓN -->
+          <div class="field full">
+            <label>Ubicación del servicio</label>
+            <input
+              type="text"
+              placeholder="Dirección o zona (Ej: Chapinero, Bogotá)"
+            >
+          </div>
+
+          <!-- SERVICIO -->
+          <div class="field">
+            <label>Servicio</label>
+            <select>
+              <option value="">Selecciona</option>
+              <option>Corte</option>
+              <option>Barba</option>
+              <option>Corte + Barba</option>
+              <option>Uñas tradicionales</option>
+              <option>Uñas semipermanentes</option>
+            </select>
+          </div>
+
+          <!-- FECHA -->
+          <div class="field">
+            <label>Fecha</label>
+            <input type="date">
+          </div>
+
+          <!-- BOTÓN DISPONIBILIDAD -->
+          <div class="field full">
+            <button type="button">
+              Consultar disponibilidad
+            </button>
+          </div>
+
+          <!-- HORA (SE LLENA DESPUÉS) -->
+          <div class="field">
+            <label>Hora disponible</label>
+            <select>
+              <option value="">Selecciona primero disponibilidad</option>
+            </select>
+          </div>
+
+          <!-- DATOS DEL CLIENTE -->
+          <div class="field full">
+            <h3>Datos del cliente</h3>
+          </div>
+
+          <div class="field">
+            <label>Nombre</label>
+            <input type="text" placeholder="Tu nombre">
+          </div>
+
+          <div class="field">
+            <label>Teléfono</label>
+            <input type="tel" placeholder="3001234567">
+          </div>
+
+          <div class="field full">
+            <label>Email (opcional)</label>
+            <input type="email" placeholder="correo@ejemplo.com">
+          </div>
+
+          <!-- CREAR CUENTA -->
+          <div class="field full">
+            <label>
+              <input type="checkbox">
+              Quiero crear una cuenta para futuras reservas
+            </label>
+          </div>
+
+          <!-- BOTÓN FINAL -->
+          <div class="field full">
+            <button type="button">
+              Reservar cita
+            </button>
+          </div>
+
+        </div>
+      </form>
+
+      <!-- FOOTER -->
+      <div class="footer">
+        <small>© 2026 Turnify</small>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
