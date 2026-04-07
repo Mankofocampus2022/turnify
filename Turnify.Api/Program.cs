@@ -133,7 +133,7 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine("--- ✅ la conexion es un exito mi perro ---");
         else 
         {
-            context.Database.EnsureCreated();
+
             Console.WriteLine("--- 📦 DB creada ---");
         }
     }

@@ -1,9 +1,19 @@
 const API_URL = 'http://localhost:5000/api/Servicios';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- 🚩 ADICIÓN SENIOR: EL PUENTE DE DATOS (NO QUITA NADA, SOLO SINCRONIZA) ---
+    if (!localStorage.getItem('turnify_token') && localStorage.getItem('token')) {
+        localStorage.setItem('turnify_token', localStorage.getItem('token'));
+    }
+    if (!localStorage.getItem('proveedor_id') && localStorage.getItem('proveedorId')) {
+        localStorage.setItem('proveedor_id', localStorage.getItem('proveedorId'));
+    }
+    // ----------------------------------------------------------------------------
+
     const proveedorId = localStorage.getItem('proveedor_id');
     
     if (!proveedorId || proveedorId === "null") {
+        console.error("🚫 Sesión inválida en Servicios. Redirigiendo...");
         alert("Sesión inválida. Por favor, inicia sesión de nuevo.");
         window.location.href = 'login.html';
         return;
@@ -11,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     cargarServicios();
     
-    // Verificamos que el formulario exista antes de ponerle el evento
     const form = document.getElementById('formServicio');
     if(form) {
         form.addEventListener('submit', guardarServicio);
@@ -24,7 +33,10 @@ async function cargarServicios() {
     const proveedorId = localStorage.getItem('proveedor_id');
     const rol = localStorage.getItem('usuario_rol');
 
-    const url = (rol && rol.toUpperCase().includes("ADMIN")) 
+    // Normalizamos el rol a Mayúsculas para la comparación
+    const rolNormalizado = (rol || "").toUpperCase();
+
+    const url = (rolNormalizado.includes("ADMIN") || rolNormalizado.includes("6A7FA68F") || rolNormalizado.includes("6DE2A606")) 
                 ? API_URL 
                 : `${API_URL}/proveedor/${proveedorId}`;
 
@@ -50,11 +62,9 @@ function renderizarTabla(servicios) {
     tabla.innerHTML = '';
 
     servicios.forEach(s => {
-        // Asignamos categoría por defecto si viene nula
         const categoria = s.categoria || 'Barbería';
         const catClass = categoria === 'Manicura' ? 'cat-manicura' : 'cat-barberia';
         
-        // 🚦 Los 3 estados que pediste
         let estadoTexto = 'INACTIVO';
         let estadoClase = 'badge-danger';
 
@@ -103,18 +113,15 @@ async function editarServicio(id) {
         const s = await res.json();
 
         if (res.ok) {
-            // Llenamos los campos usando los IDs del nuevo HTML
             document.getElementById('nombreServicio').value = s.nombre;
             document.getElementById('precioServicio').value = s.precio;
             document.getElementById('duracionServicio').value = s.duracionMinutos;
             document.getElementById('comisionServicio').value = s.comisionPorcentaje;
             document.getElementById('estadoServicio').value = s.activo;
             
-            // 🚩 Guardamos el ID en un atributo del form para saber que estamos editando
             document.getElementById('formServicio').setAttribute('data-id', s.id);
             
             abrirModal();
-            // Cambiamos el texto del título si existe el elemento
             const titulo = document.querySelector('.modal-header h2');
             if(titulo) titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Servicio';
         }
@@ -136,31 +143,25 @@ async function eliminarServicio(id) {
     } catch (err) { console.error("Error al eliminar:", err); }
 }
 
-// 5. GUARDAR (CREAR O EDITAR) - VERSIÓN CORREGIDA
+// 5. GUARDAR (CREAR O EDITAR)
 async function guardarServicio(e) {
     e.preventDefault();
     const token = localStorage.getItem('turnify_token');
-    
-    // 🚩 EL PROBLEMA ESTÁ AQUÍ: Verifica que este ID exista en tu tabla SQL 'proveedores'
     const proveedorId = localStorage.getItem('proveedor_id');
     
-    // Obtenemos el ID si estamos editando
     const form = document.getElementById('formServicio');
     const idExistente = form.getAttribute('data-id');
 
-    // Construcción del objeto exactamente como lo espera C#
     const body = {
         nombre: document.getElementById('nombreServicio').value.trim(),
         categoria: "Barbería", 
         precio: parseFloat(document.getElementById('precioServicio').value) || 0,
         duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
-        proveedorId: proveedorId, // <--- Este GUID debe ser REAL en la DB
+        proveedorId: proveedorId, 
         comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
         activo: parseInt(document.getElementById('estadoServicio').value) || 0,
         descripcion: "" 
     };
-
-    console.log("Datos enviados a la API:", body);
 
     const metodo = idExistente ? 'PUT' : 'POST';
     const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;
@@ -181,25 +182,12 @@ async function guardarServicio(e) {
             cargarServicios();
         } else {
             const errorData = await res.json();
-            // Esto te dirá exactamente qué campo está fallando
             console.error("Error de la API:", errorData);
             alert("Error al guardar: " + (errorData.title || "Verifica los datos"));
         }
     } catch (error) { 
         console.error("Error de red:", error); 
     }
-}
-
-// Función para cerrar sesión
-function logout() {
-    // Borramos los datos de sesión
-    localStorage.removeItem('turnify_token');
-    localStorage.removeItem('proveedor_id');
-    localStorage.removeItem('usuario_rol');
-    
-    // Redirigimos al login
-    alert("Cerrando sesión...");
-    window.location.href = 'login.html';
 }
 
 // UTILIDADES
@@ -215,20 +203,13 @@ function cerrarModal() {
         document.getElementById('formServicio').reset();
         document.getElementById('formServicio').removeAttribute('data-id');
         
-        // Restaurar título original
         const titulo = document.querySelector('.modal-header h2');
         if(titulo) titulo.innerHTML = '<i class="fas fa-plus-circle"></i> Configurar Servicio';
     }
 }
 
-// Función para cerrar sesión
 function logout() {
-    // Borramos los datos de sesión
-    localStorage.removeItem('turnify_token');
-    localStorage.removeItem('proveedor_id');
-    localStorage.removeItem('usuario_rol');
-    
-    // Redirigimos al login
+    localStorage.clear(); // Limpieza total senior
     alert("Cerrando sesión...");
     window.location.href = 'login.html';
 }

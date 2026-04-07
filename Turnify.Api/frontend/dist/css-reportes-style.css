@@ -1,0 +1,207 @@
+/* =========================================
+   1. VARIABLES TURNIFY (NEÓN & CONTRASTE)
+   ========================================= */
+:root {
+    --sidebar-width: 260px;
+    --navy-deep: #0a101e;          /* Fondo más oscuro para que resalten las letras */
+    --brand-emerald: #48c1b5;      
+    --heineken-green: #077933;     
+    --lava-orange: #ff4500;        
+    --sea-foam: #7ed9c3;           
+    --text-white: #ffffff;         /* Blanco puro para máxima visibilidad */
+    --glass-bg: rgba(255, 255, 255, 0.08); 
+    --glass-border: rgba(255, 255, 255, 0.15);
+}
+
+/* =========================================
+   2. LAYOUT
+   ========================================= */
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+    background-color: var(--navy-deep); /* Fondo base sólido */
+}
+
+.dashboard-layout {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    /* Gradiente sutil para dar profundidad */
+    background: radial-gradient(circle at top right, #1b3d5f 0%, #0a101e 70%);
+}
+
+/* SIDEBAR DARK GLASS */
+.sidebar {
+    width: var(--sidebar-width);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(25px);
+    border-right: 1px solid var(--glass-border);
+    position: fixed;
+    height: 100vh;
+    z-index: 100;
+}
+
+.sidebar-header {
+    padding: 30px 20px;
+    color: var(--text-white);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.nav-item {
+    padding: 16px 25px;
+    color: #cbd5e1; /* Gris claro para no activos */
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: 0.3s;
+}
+
+.nav-item:hover, .nav-item.active {
+    background: var(--glass-bg);
+    color: var(--text-white);
+    border-left: 4px solid var(--brand-emerald);
+}
+
+/* CONTENIDO PRINCIPAL */
+.main-content {
+    margin-left: var(--sidebar-width);
+    flex-grow: 1;
+    padding: 40px;
+}
+
+/* =========================================
+   3. TARJETAS DE REPORTES (KPIs)
+   ========================================= */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 25px;
+    margin-bottom: 40px;
+}
+
+.stat-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(15px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 25px;
+    position: relative;
+    overflow: hidden; /* Esto evita que el brillo se salga */
+    min-height: 120px; /* Le da una altura mínima para que no sea solo una línea */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.stat-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 4px;
+    background: var(--brand-emerald);
+    box-shadow: 0 0 15px var(--brand-emerald); /* Brillo neón */
+}
+
+.stat-card.income::before {
+    background: var(--lava-orange);
+    box-shadow: 0 0 15px var(--lava-orange);
+}
+
+.stat-title {
+    display: block;
+    color: var(--sea-foam);
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    font-size: 36px;
+    font-weight: 900;
+    color: var(--text-white); /* Letras blancas potentes */
+    text-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+
+/* =========================================
+   4. TABLA DE REPORTES (MODO OSCURO PRO)
+   ========================================= */
+.table-card {
+    background: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+}
+
+.turnify-table { width: 100%; border-collapse: collapse; }
+
+.turnify-table thead th {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--brand-emerald);
+    text-align: left;
+    padding: 18px 20px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.turnify-table tbody td {
+    padding: 18px 20px;
+    color: var(--text-white); /* Celdas blancas */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.turnify-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* Títulos de sección */
+.header-section h2 {
+    color: var(--text-white);
+    font-size: 28px;
+    font-weight: 800;
+}
+/* =========================================
+   PARCHE: VISIBILIDAD DE TEXTOS (VERSIÓN FINAL)
+   ========================================= */
+
+/* 1. Sesión y Administrador */
+.user-info, 
+.user-info span, 
+.user-info strong,
+#admin-name {
+    color: #ffffff !important;
+}
+
+/* 2. Cabecera de la Tabla (El texto que se ve negro en tu foto) */
+.table-wrapper table thead th,
+.turnify-table thead th {
+    color: var(--brand-emerald) !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* 3. Cualquier texto suelto en el contenido principal */
+.main-content, 
+.main-content div, 
+.main-content p, 
+.main-content span {
+    color: var(--text-white);
+}
+
+/* 4. Título de la sección */
+.header-section h2 {
+    color: #ffffff !important;
+}
+
+/* 5. Asegurar que las celdas de la tabla sean blancas */
+#lista-reportes td {
+    color: #ffffff !important;
+}
+#admin-name {
+    color: #ffffff !important;
+    display: inline-block;
+}

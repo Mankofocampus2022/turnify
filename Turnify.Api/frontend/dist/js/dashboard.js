@@ -1,37 +1,52 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('turnify_token');
-    const nombre = localStorage.getItem('usuario_nombre');
+    // 1. Sincronización de nombres con login.js
+    const token = localStorage.getItem('token'); // Quitamos el "turnify_" para que coincida
+    const nombre = localStorage.getItem('adminName'); // En login guardamos 'adminName'
     const rol = localStorage.getItem('usuario_rol');
 
-    // 1. Validación de sesión
+    console.log("🛡️ Verificando sesión...");
+    console.log("Token detectado:", token ? "SI" : "NO");
+    console.log("Rol detectado:", rol);
+
+    // 2. Validación de sesión (El Portero)
     if (!token) {
+        console.error("🚫 No hay token. Redirigiendo al login...");
         window.location.href = 'login.html';
         return;
     }
 
-    // 2. Personalizar bienvenida
+    // 3. Personalizar bienvenida
     const welcomeText = document.getElementById('welcomeText');
     const userRoleBadge = document.getElementById('userRole');
 
-    if (welcomeText) welcomeText.innerText = `Bienvenido, ${nombre || 'Usuario'}`;
+    if (welcomeText) {
+        welcomeText.innerText = `¡Hola, ${nombre || 'Darwin'}!`;
+    }
 
     if (userRoleBadge) {
         const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";
-        if (rol === SUPER_ADMIN_GUID || rol === "SuperAdministrador") {
+        const ADMIN_GUID = "6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43";
+        
+        // Normalizamos el rol a mayúsculas para comparar seguro
+        const currentRol = (rol || "").toUpperCase();
+
+        if (currentRol === SUPER_ADMIN_GUID || currentRol === "SUPERADMINISTRADOR") {
             userRoleBadge.innerText = "🚀 SuperAdmin";
             userRoleBadge.style.background = "#e94560"; 
-        } else {
+        } else if (currentRol === ADMIN_GUID || currentRol === "ADMINISTRADOR") {
             userRoleBadge.innerText = "🛡️ Administrador";
             userRoleBadge.style.background = "#0f3460"; 
         }
     }
 
-    // 3. Botón de salida
+    // 4. Eventos y Carga de datos
     const btnLogout = document.getElementById('btnLogout');
     if (btnLogout) btnLogout.addEventListener('click', logout);
 
-    // 4. Cargar la data real de SQL
-    cargarEstadisticas(); 
+    // Solo cargamos estadísticas si hay un ID de usuario
+    if (localStorage.getItem('usuario_id')) {
+        cargarEstadisticas(); 
+    }
 });
 
 function logout() {
@@ -42,11 +57,11 @@ function logout() {
 }
 
 async function cargarEstadisticas() {
-    const token = localStorage.getItem('turnify_token');
+    const token = localStorage.getItem('token');
     const userId = localStorage.getItem('usuario_id');
 
-    if (!userId) {
-        console.error("❌ No se encontró el ID del usuario en el storage.");
+    if (!userId || !token) {
+        console.error("❌ Faltan credenciales para la API.");
         return;
     }
 
@@ -64,37 +79,35 @@ async function cargarEstadisticas() {
             
             // Inyectar datos en los cuadros superiores
             if(document.getElementById('totalCitas')) 
-                document.getElementById('totalCitas').innerText = stats.totalCitas;
+                document.getElementById('totalCitas').innerText = stats.totalCitas || 0;
             
             if(document.getElementById('nuevosClientes')) 
-                document.getElementById('nuevosClientes').innerText = stats.nuevosClientes;
+                document.getElementById('nuevosClientes').innerText = stats.nuevosClientes || 0;
 
-            // Actualizar tendencia (opcional)
             if(document.getElementById('citasTrend'))
-                document.getElementById('citasTrend').innerText = "Actualizado ahora";
+                document.getElementById('citasTrend').innerText = "Sincronizado";
 
-            // Formatear moneda colombiana
+            // Formatear moneda COP
             if(document.getElementById('ingresosMes')) {
                 const formatoMoneda = new Intl.NumberFormat('es-CO', {
                     style: 'currency', currency: 'COP', minimumFractionDigits: 0
-                }).format(stats.gananciaEstimada);
+                }).format(stats.gananciaEstimada || 0);
                 document.getElementById('ingresosMes').innerText = formatoMoneda;
             }
                 
-            // Llenar la tabla de Próximos Turnos
             llenarTablaTurnos(stats.proximasCitas);
-
-            console.log("📊 Datos reales sincronizados para el ID:", userId);
+            console.log("📊 Dashboard actualizado para:", userId);
         } else {
             console.error("❌ Error de API:", response.status);
+            if (response.status === 401) logout(); // Si el token expiró, fuera.
         }
     } catch (error) {
-        console.error("🚀 Error de conexión con la API:", error);
+        console.error("🚀 Error de conexión:", error);
     }
 }
 
 function llenarTablaTurnos(citas) {
-    const tablaBody = document.getElementById('turnosTable'); // Usamos el ID del HTML
+    const tablaBody = document.getElementById('turnosTable');
     if (!tablaBody) return;
 
     if (!citas || citas.length === 0) {
@@ -107,7 +120,7 @@ function llenarTablaTurnos(citas) {
             <td>${cita.cliente}</td>
             <td>${cita.servicio}</td>
             <td>${cita.hora}</td>
-            <td><span class="status-${cita.estado.toLowerCase()}">${cita.estado}</span></td>
+            <td><span class="status-${(cita.estado || 'pendiente').toLowerCase()}">${cita.estado}</span></td>
         </tr>
     `).join('');
 }

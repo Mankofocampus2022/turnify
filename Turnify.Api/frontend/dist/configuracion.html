@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Turnify | Configuración</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css-dashboard.css">
+    <link rel="stylesheet" href="css-usuarios.css"> 
+    <link rel="stylesheet" href="css-configuracion.css">
+</head>
+<body>
+
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <span class="logo-icon">🕒</span>
+            <h2>Turnify</h2>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="admin-dashboard.html" class="nav-item">
+                <i class="fas fa-chart-line"></i> Resumen
+            </a>
+            <a href="usuarios.html" class="nav-item">
+                <i class="fas fa-users"></i> Usuarios
+            </a>
+            <a href="servicios.html" class="nav-item">
+                <i class="fas fa-cut"></i> Servicios
+            </a>
+            <a href="configuracion.html" class="nav-item active">
+                <i class="fas fa-cog"></i> Configuración
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <button onclick="logout()" class="btn-logout">
+                <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+            </button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="header-section">
+            <h1>Configuración General</h1>
+            <p>Gestiona la identidad y reglas de tu negocio.</p>
+        </div>
+
+        <div class="config-container">
+            <div class="config-menu">
+                <div class="config-menu-item active">
+                    <i class="fas fa-store"></i> Perfil del Negocio
+                </div>
+                <div class="config-menu-item">
+                    <i class="fas fa-clock"></i> Horarios
+                </div>
+                <div class="config-menu-item">
+                    <i class="fas fa-credit-card"></i> Pagos
+                </div>
+                <div class="config-menu-item">
+                    <i class="fas fa-bell"></i> Notificaciones
+                </div>
+            </div>
+
+            <div class="table-card" style="padding: 40px;">
+                
+                <div id="content-perfil" class="config-content">
+                    <h3>Información del Perfil</h3>
+                    <form id="formConfigPerfil">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Nombre del Negocio</label>
+                                <input type="text" id="negocioNombre" placeholder="Ej: Barbería El Gancho">
+                            </div>
+                            <div class="form-group">
+                                <label>Email de Contacto</label>
+                                <input type="email" id="negocioEmail" placeholder="contacto@negocio.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Teléfono / WhatsApp</label>
+                                <input type="text" id="negocioTelefono" placeholder="+57 322...">
+                            </div>
+                            <div class="form-group">
+                                <label>Moneda Principal</label>
+                                <select id="negocioMoneda">
+                                    <option value="COP">Peso Colombiano (COP)</option>
+                                    <option value="USD">Dólar (USD)</option>
+                                    <option value="EUR">Euro (EUR)</option>
+                                    <option value="MXN">Peso Mexicano (MXN)</option>
+                                    <option value="ARS">Peso Argentino (ARS)</option>
+                                    <option value="CLP">Peso Chileno (CLP)</option>
+                                    <option value="PEN">Nuevo Sol Peruano (PEN)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label>Dirección Física</label>
+                            <input type="text" id="negocioDireccion" placeholder="Calle 123 #45-67, Bogotá">
+                        </div>
+                        <button type="submit" class="btn-save"><i class="fas fa-save"></i> Guardar Perfil</button>
+                    </form>
+                </div>
+
+                <div id="content-horarios" class="config-content" style="display: none;">
+                    <h3>Horarios de Atención</h3>
+                    <p style="color: #64748b; margin-bottom: 20px;">Define los días y horas en que tu negocio está abierto.</p>
+                    <div id="lista-horarios">
+                        <div class="form-group">
+                            <i class="fas fa-spinner fa-spin"></i> Cargando configuración de horarios...
+                        </div>
+                    </div>
+                    <button class="btn-save"><i class="fas fa-calendar-check"></i> Guardar Horarios</button>
+                </div>
+
+                <div id="content-pagos" class="config-content" style="display: none;">
+                    <h3>Métodos de Pago y Facturación</h3>
+                    <p style="color: #64748b; margin-bottom: 20px;">Configura tus llaves de API para recibir pagos en línea.</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Pasarela de Pago</label>
+                            <select id="pagosPasarela">
+                                <option value="MercadoPago">Mercado Pago (Recomendado)</option>
+                                <option value="Stripe">Stripe</option>
+                                <option value="PayPal">PayPal</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Moneda de Cobro</label>
+                            <select id="pagosMoneda">
+                                <option value="COP">Peso Colombiano (COP)</option>
+                                <option value="USD">Dólar (USD)</option>
+                                <option value="EUR">Euro (EUR)</option>
+                                <option value="GBP">Libra Esterlina (GBP)</option>
+                                <option value="JPY">Yen Japonés (JPY)</option>
+                                <option value="AUD">Dólar Australiano (AUD)</option>
+                                <option value="CAD">Dólar Canadiense (CAD)</option>
+                                <option value="CHF">Franco Suizo (CHF)</option> 
+                                <option value="CNY">Yuan Chino (CNY)</option>
+                                <option value="HKD">Dólar de Hong Kong (HKD)</option>
+                                <option value="INR">Rupia India (INR)</option>
+                                <option value="KRW">Won Surcoreano (KRW)</option>
+                                <option value="NZD">Dólar Neozelandés (NZD)</option>
+                                <option value="RUB">Rublo Ruso (RUB)</option>
+                                <option value="SGD">Dólar de Singapur (SGD)</option>
+                                <option value="ZAR">Rand Sudafricano (ZAR)</option>
+                                <option value="BRL">Real Brasileño (BRL)</option>
+                                <option value="ARS">Peso Argentino (ARS)</option>
+                                <option value="CLP">Peso Chileno (CLP)</option>
+                                <option value="PEN">Nuevo Sol Peruano (PEN)</option>
+                                <option value="MXN">Peso Mexicano (MXN)</option>
+                                <option value="UYU">Peso Uruguayo (UYU)</option>
+                                <option value="VES">Bolívar Venezolano (VES)</option>
+                                <option value="BOB">Boliviano (BOB)</option>    
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Public Key / Client ID</label>
+                        <input type="password" id="pagosPublicKey" placeholder="TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                    </div>
+                    <button class="btn-save"><i class="fas fa-key"></i> Conectar Pasarela</button>
+                </div>
+
+                <div id="content-notificaciones" class="config-content" style="display: none;">
+                    <h3>Notificaciones Automáticas</h3>
+                    <p style="color: #64748b; margin-bottom: 20px;">Activa o desactiva los mensajes automáticos para tus clientes.</p>
+                    <div class="form-group">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border-radius: 12px; background: #f8fafc; margin-bottom: 10px;">
+                            <div>
+                                <strong>🔔 Recordatorios de Turno</strong>
+                                <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Enviar correo 24 horas antes de la cita.</p>
+                            </div>
+                            <input type="checkbox" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border-radius: 12px; background: #f8fafc;">
+                            <div>
+                                <strong>💬 Mensajes por WhatsApp</strong>
+                                <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Notificar al cliente cuando se agende un turno.</p>
+                            </div>
+                            <input type="checkbox" style="width: 20px; height: 20px; cursor: pointer;">
+                        </div>
+                    </div>
+                    <button class="btn-save"><i class="fas fa-bell"></i> Guardar Notificaciones</button>
+                </div>
+            </div> </div> </main> </div> <script src="js/configuracion.js"></script>
+</body>
+</html>

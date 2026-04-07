@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Turnify | Reportes y Estadísticas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css-reportes-style.css">
+</head>
+<body>
+
+    <div class="dashboard-layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span class="logo-icon">🕒</span>
+                <h2>Turnify</h2>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="admin-dashboard.html" class="nav-item">
+                    <i class="fas fa-chart-line"></i> Resumen
+                </a>
+                <a href="usuarios.html" class="nav-item">
+                    <i class="fas fa-users"></i> Usuarios
+                </a>
+                <a href="servicios.html" class="nav-item">
+                    <i class="fas fa-cut"></i> Servicios
+                </a>
+                <a href="reportes.html" class="nav-item active">
+                    <i class="fas fa-file-invoice-dollar"></i> Reportes
+                </a>
+                <a href="configuracion.html" class="nav-item">
+                    <i class="fas fa-cog"></i> Configuración
+                </a>
+
+                <a href="#" class="nav-item" id="btn-logout" style="margin-top: auto; color: var(--danger-red);">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="header-section">
+                <h2>Reportes de Actividad</h2>
+                <div class="user-info">
+                    <span>Sesión: <strong id="admin-name">Administrador</strong></span>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-title">Citas Totales</span>
+                    <p id="total-citas" class="stat-value">0</p>
+                </div>
+                
+                <div class="stat-card income"> 
+                    <span class="stat-title">Ingresos Totales</span>
+                    <p id="total-ingresos" class="stat-value">$0</p>
+                </div>
+
+                <div class="stat-card">
+                    <span class="stat-title">Nuevos Clientes</span>
+                    <p id="nuevos-clientes" class="stat-value">0</p>
+                </div>
+            </div>
+
+            <div class="table-card"> 
+                <table class="turnify-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Servicio / Cliente</th>
+                            <th>Monto</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-reportes">
+                        </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="reportes.js"></script>
+</body>
+</html>

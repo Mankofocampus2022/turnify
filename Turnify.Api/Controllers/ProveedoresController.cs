@@ -46,6 +46,55 @@ namespace Turnify.Api.Controllers
                 .ToListAsync();
         }
 
+                    [HttpPut("{id}")]
+        public async Task<IActionResult> UpdatePerfil(Guid id, [FromBody] ProveedorUpdateDto dto)
+        {
+            // Validamos que el ID de la URL coincida con el del objeto enviado
+            if (id != dto.Id)
+            {
+                return BadRequest(new { message = "Error de consistencia en el ID." });
+            }
+
+            // Buscamos el registro real
+            var proveedor = await _context.proveedores.FindAsync(id);
+
+            if (proveedor == null)
+            {
+                return NotFound(new { message = "El proveedor no existe en la base de datos." });
+            }
+
+            // Mapeo manual (lo más seguro)
+            proveedor.NombreComercial = dto.NombreComercial;
+            proveedor.Direccion = dto.Direccion;
+            proveedor.Tipo = dto.Tipo;
+
+            try
+            {
+                _context.Entry(proveedor).State = EntityState.Modified;
+                await _context.SaveChangesAsync(); // <-- Aquí es donde ocurre la magia
+                return Ok(new { message = "¡Perfil actualizado con éxito, mi perro!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error interno", details = ex.Message });
+            }
+        }
+                    // Método auxiliar necesario para el Try/Catch
+                    private bool ProveedorExists(Guid id)
+                    {
+                        return _context.proveedores.Any(e => e.Id == id);
+                    }
+
+            // EL DTO DEBE USAR Guid PARA EL ID
+            public class ProveedorUpdateDto
+            {
+                public Guid Id { get; set; }
+                public string NombreComercial { get; set; } = string.Empty;
+                public string Direccion { get; set; } = string.Empty;
+                public string Tipo { get; set; } = string.Empty;
+                // Agrega aquí los campos que necesites actualizar
+            }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<object>> GetProveedor(Guid id)
         {
