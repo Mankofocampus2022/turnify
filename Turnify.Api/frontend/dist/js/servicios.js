@@ -153,15 +153,18 @@ async function guardarServicio(e) {
     const idExistente = form.getAttribute('data-id');
 
     const body = {
-        nombre: document.getElementById('nombreServicio').value.trim(),
-        categoria: "Barbería", 
-        precio: parseFloat(document.getElementById('precioServicio').value) || 0,
-        duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
-        proveedorId: proveedorId, 
-        comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
-        activo: parseInt(document.getElementById('estadoServicio').value) || 0,
-        descripcion: "" 
-    };
+    nombre: document.getElementById('nombreServicio').value.trim(),
+    
+    // // 🚩 CAMBIO CLAVE: Ahora lee el valor del select para permitir Manicura u otros
+    categoria: document.getElementById('categoriaServicio').value, 
+    
+    precio: parseFloat(document.getElementById('precioServicio').value) || 0,
+    duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
+    proveedorId: proveedorId, 
+    comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
+    activo: parseInt(document.getElementById('estadoServicio').value) || 0,
+    descripcion: "" 
+};
 
     const metodo = idExistente ? 'PUT' : 'POST';
     const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;

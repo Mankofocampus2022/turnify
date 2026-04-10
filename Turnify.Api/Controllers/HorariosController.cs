@@ -18,49 +18,61 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
-       [HttpPost("configurar-semana")]
-            public async Task<IActionResult> ConfigurarSemana(List<HorarioAtencionDto> horariosDto)
+        [HttpPost("configurar-semana")]
+        public async Task<IActionResult> ConfigurarSemana([FromBody] List<HorarioAtencionDto> horariosDto)
+        {
+            var usuarioId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (usuarioId == null) return Unauthorized();
+
+            var proveedor = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == Guid.Parse(usuarioId));
+            if (proveedor == null) return BadRequest("Proveedor no encontrado.");
+
+            var horariosViejos = _context.horarios_atencion.Where(h => h.ProveedorId == proveedor.Id);
+            _context.horarios_atencion.RemoveRange(horariosViejos);
+
+            foreach (var dto in horariosDto)
             {
-                var usuarioIdFinal = Guid.Parse("869d1ce6-1161-4ab1-b89c-a067ce0d6ad2"); // Truco Admin
-
-                var proveedor = await _context.proveedores
-                    .FirstOrDefaultAsync(p => p.UsuarioId == usuarioIdFinal);
-
-                if (proveedor == null) return BadRequest("Proveedor no encontrado.");
-
-                // Limpieza de seguridad
-                var horariosViejos = _context.horarios_atencion.Where(h => h.ProveedorId == proveedor.Id);
-                _context.horarios_atencion.RemoveRange(horariosViejos);
-
-                foreach (var dto in horariosDto)
+                _context.horarios_atencion.Add(new HorariosAtencion
                 {
-                    _context.horarios_atencion.Add(new HorariosAtencion
-                    {
-                        Id = Guid.NewGuid(),
-                        ProveedorId = proveedor.Id,
-                        DiaSemana = dto.DiaSemana,
-                        HoraApertura = TimeSpan.Parse(dto.HoraApertura),
-                        HoraCierre = TimeSpan.Parse(dto.HoraCierre)
-                    });
-                }
-
-                await _context.SaveChangesAsync();
-                return Ok(new { mensaje = "Horario de 9am a 8pm configurado correctamente." });
+                    Id = Guid.NewGuid(),
+                    ProveedorId = proveedor.Id,
+                    DiaSemana = dto.DiaSemana,
+                    HoraApertura = TimeSpan.Parse(dto.HoraApertura),
+                    HoraCierre = TimeSpan.Parse(dto.HoraCierre)
+                });
             }
 
-        [HttpGet("mi-semana")]
-        public async Task<ActionResult<IEnumerable<HorariosAtencion>>> GetMiSemana()
-        {
-            // Reutilizamos el truco para ver los horarios del proveedor actual
-            var usuarioIdFinal = Guid.Parse("869d1ce6-1161-4ab1-b89c-a067ce0d6ad2");
-            var proveedor = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuarioIdFinal);
+            await _context.SaveChangesAsync();
+            return Ok(new { mensaje = "✅ Horario semanal actualizado con éxito." });
+        }
 
-            if (proveedor == null) return NotFound();
+     [HttpGet("mi-semana")]
+            public async Task<IActionResult> GetMiSemana()
+            {
+                // 1. Obtenemos el ID del Token
+                var usuarioIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (usuarioIdClaim == null) return Unauthorized();
 
-            return await _context.horarios_atencion
-                .Where(h => h.ProveedorId == proveedor.Id)
-                .OrderBy(h => h.DiaSemana)
-                .ToListAsync();
+                // 2. Buscamos el proveedor
+                var proveedor = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == Guid.Parse(usuarioIdClaim));
+
+                if (proveedor == null) return NotFound(new { mensaje = "Proveedor no encontrado" });
+
+                // 3. 🚩 LA MAGIA: Proyectamos a un objeto anónimo con las horas como String
+                var horarios = await _context.horarios_atencion
+                    .Where(h => h.ProveedorId == proveedor.Id)
+                    .OrderBy(h => h.DiaSemana)
+                    .Select(h => new {
+                        h.Id,
+                        h.ProveedorId,
+                        h.DiaSemana,
+                        // Convertimos TimeSpan a formato "08:00"
+                        HoraApertura = h.HoraApertura.ToString(@"hh\:mm"),
+                        HoraCierre = h.HoraCierre.ToString(@"hh\:mm")
+                    })
+                    .ToListAsync();
+
+                return Ok(horarios);
         }
     }
 }

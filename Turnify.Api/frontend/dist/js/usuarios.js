@@ -53,7 +53,8 @@ async function cargarUsuarios() {
 // 3. PINTAR LA TABLA (CON LÓGICA DE ROLES)
 function renderizarTabla(usuarios) {
     const tabla = document.getElementById('tablaUsuarios');
-    const userRoleActual = localStorage.getItem('usuario_rol'); 
+    // 1. Normalizamos el rol actual a Mayúsculas
+    const userRoleActual = (localStorage.getItem('usuario_rol') || "").toUpperCase(); 
     tabla.innerHTML = ''; 
 
     usuarios.forEach(u => {
@@ -69,7 +70,7 @@ function renderizarTabla(usuarios) {
 
         let botonesExtra = '';
 
-        // Botón para Barberos
+        // Botón para Barberos (ya lo tenías en minúsculas, está bien)
         if (rol.toLowerCase() === 'barbero') {
             botonesExtra += `
                 <button class="btn-action" style="background-color: #ffc107; color: #000;" onclick="gestionarTarjeta('${u.id}')">
@@ -77,11 +78,11 @@ function renderizarTabla(usuarios) {
                 </button>`;
         }
 
-        // Botón para SuperAdmin
-        if (userRoleActual === 'SuperAdmin') {
+        // 2. CORRECCIÓN AQUÍ: Comparamos contra "SUPERADMIN" o "SUPERADMINISTRADOR"
+        if (userRoleActual === 'SUPERADMIN' || userRoleActual === 'SUPERADMINISTRADOR') {
             botonesExtra += `
                 <button class="btn-action" style="background-color: #48c1b5; color: #1b3d5f;" onclick="renovarSuscripcion('${u.id}')">
-                    +30 Días
+                    <i class="fas fa-calendar-plus"></i> Renovar
                 </button>`;
         }
 
@@ -132,11 +133,22 @@ async function toggleUser(id, estadoActual) {
 }
 
 async function renovarSuscripcion(id) {
-    const token = localStorage.getItem('turnify_token');
-    if (!confirm("¿Quieres extender la suscripción por 30 días?")) return;
+    // Usamos un prompt simple para pedir los meses. 
+    const meses = prompt("¿Cuántos meses desea agregar a la suscripción?", "1");
+    
+    if (meses === null) return; // El usuario canceló
+    
+    const numMeses = parseInt(meses);
+    if (isNaN(numMeses) || numMeses <= 0) {
+        alert("⚠️ Por favor, ingrese un número de meses válido (ej: 1, 3, 12).");
+        return;
+    }
 
+    const token = localStorage.getItem('turnify_token');
+    
     try {
-        const response = await fetch(`${API_URL}/renovar/${id}`, {
+        // Pasamos el parámetro 'meses' en la URL
+        const response = await fetch(`${API_URL}/renovar/${id}?meses=${numMeses}`, {
             method: 'PUT',
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -145,14 +157,17 @@ async function renovarSuscripcion(id) {
         });
 
         if (response.ok) {
-            alert("¡Suscripción renovada! 🥂");
-            cargarUsuarios();
+            const data = await response.json();
+            const fecha = new Date(data.nuevaFecha).toLocaleDateString();
+            alert(`✅ ¡Suscripción renovada con éxito hasta el ${fecha}! 🥂`);
+            cargarUsuarios(); // Recargamos la tabla para ver la nueva fecha
+        } else {
+            alert("❌ Hubo un error al intentar renovar.");
         }
-    } catch (error) { alert("Error al renovar."); }
-}
-
-function gestionarTarjeta(id) {
-    alert("Función para gestionar tarjeta del barbero ID: " + id);
+    } catch (error) { 
+        console.error(error);
+        alert("🚀 Error de conexión con el servidor."); 
+    }
 }
 
 // 5. ✅ CIERRE DE SESIÓN GLOBAL

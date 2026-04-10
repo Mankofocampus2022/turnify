@@ -181,26 +181,37 @@ public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginD
             catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
         }
 
-        [HttpPut("renovar/{id:guid}")]
-        [Authorize]
-        public async Task<IActionResult> RenovarSuscripcion(Guid id)
-        {
-            try 
+        // renovar suscripción (agrega 30 días a la fecha actual o a la fecha de fin existente, lo que sea mayor)
+
+       [HttpPut("renovar/{id:guid}")]
+            [Authorize]
+            public async Task<IActionResult> RenovarSuscripcion(Guid id, [FromQuery] int meses = 1)
             {
-                var usuario = await _context.usuarios.FindAsync(id);
-                if (usuario == null) return NotFound();
+                try 
+                {
+                    var usuario = await _context.usuarios.FindAsync(id);
+                    if (usuario == null) return NotFound();
 
-                DateTime fechaBase = (usuario.suscripcion_fin.HasValue && usuario.suscripcion_fin.Value > DateTime.UtcNow) 
-                                    ? usuario.suscripcion_fin.Value 
-                                    : DateTime.UtcNow;
+                    // Lógica Senior: Si la suscripción aún no vence, sumamos desde la fecha de vencimiento.
+                    // Si ya venció o es nueva, sumamos desde hoy (DateTime.UtcNow).
+                    DateTime fechaBase = (usuario.suscripcion_fin.HasValue && usuario.suscripcion_fin.Value > DateTime.UtcNow) 
+                                        ? usuario.suscripcion_fin.Value 
+                                        : DateTime.UtcNow;
 
-                usuario.suscripcion_fin = fechaBase.AddDays(30);
-                await _context.SaveChangesAsync();
-                return Ok(new { message = "Renovado", nuevaFecha = usuario.suscripcion_fin });
+                    // Ahora sumamos meses exactos (AddMonths es más preciso que AddDays(30))
+                    usuario.suscripcion_fin = fechaBase.AddMonths(meses);
+                    
+                    await _context.SaveChangesAsync();
+                    
+                    return Ok(new { 
+                        message = $"Suscripción extendida por {meses} mes(es)", 
+                        nuevaFecha = usuario.suscripcion_fin 
+                    });
+                }
+                catch (Exception ex) { 
+                    return StatusCode(500, new { message = ex.Message }); 
+                }
             }
-            catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
-        }
-
         [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, [FromBody] Usuarios u) { if (id != u.id) return BadRequest(); return await _usuarioService.ActualizarAsync(u) ? Ok() : BadRequest(); }
         [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id) { return await _usuarioService.EliminarLogicoAsync(id) ? Ok() : NotFound(); }
         [HttpGet("{id:guid}")] public async Task<IActionResult> GetById(Guid id) { var u = await _usuarioService.GetUsuarioByIdAsync(id); return u == null ? NotFound() : Ok(u); }

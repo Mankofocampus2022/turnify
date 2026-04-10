@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Data;
 using Turnify.Api.Models;
+using Turnify.Api.Models.DTOs; // 🚩 Importante: Usaremos los DTOs que están en tu carpeta DTOs
 using Microsoft.Extensions.Localization;
 
 namespace Turnify.Api.Controllers
@@ -13,7 +14,6 @@ namespace Turnify.Api.Controllers
         private readonly TurnifyDbContext _context;
         private readonly IStringLocalizer<Messages> _localizer;
 
-        // UN SOLO CONSTRUCTOR PARA TODO (Inyección de dependencias)
         public ProveedoresController(TurnifyDbContext context, IStringLocalizer<Messages> localizer)
         {
             _context = context;
@@ -23,7 +23,6 @@ namespace Turnify.Api.Controllers
         [HttpGet("test-idioma")]
         public IActionResult TestIdioma()
         {
-            // Busca la llave "Welcome" en tus archivos .resx (Resources/Messages.xx.resx)
             var mensaje = _localizer["Welcome"]; 
             return Ok(new { respuesta = mensaje.Value });
         }
@@ -41,61 +40,48 @@ namespace Turnify.Api.Controllers
                     p.Tipo,
                     p.TrabajaDomicilio,
                     p.Activo,
-                    Dueno = p.Usuario != null ? p.Usuario.nombre : _localizer["UserNotFound"].Value
+                    Dueno = p.Usuario != null ? p.Usuario.nombre : "Usuario no encontrado"
                 })
                 .ToListAsync();
         }
 
-                    [HttpPut("{id}")]
+        [HttpPut("{id:guid}")] // 🚩 Agregamos :guid para validar la ruta de una vez
         public async Task<IActionResult> UpdatePerfil(Guid id, [FromBody] ProveedorUpdateDto dto)
         {
-            // Validamos que el ID de la URL coincida con el del objeto enviado
+            // 1. Validación de consistencia
             if (id != dto.Id)
             {
-                return BadRequest(new { message = "Error de consistencia en el ID." });
+                return BadRequest(new { message = "El ID de la URL no coincide con el del cuerpo." });
             }
 
-            // Buscamos el registro real
+            // 2. Buscar el registro
             var proveedor = await _context.proveedores.FindAsync(id);
 
             if (proveedor == null)
             {
-                return NotFound(new { message = "El proveedor no existe en la base de datos." });
+                return NotFound(new { message = "Proveedor no encontrado." });
             }
 
-            // Mapeo manual (lo más seguro)
+            // 3. Mapeo Manual (Actualizamos solo lo permitido)
             proveedor.NombreComercial = dto.NombreComercial;
             proveedor.Direccion = dto.Direccion;
             proveedor.Tipo = dto.Tipo;
 
             try
             {
-                _context.Entry(proveedor).State = EntityState.Modified;
-                await _context.SaveChangesAsync(); // <-- Aquí es donde ocurre la magia
+                await _context.SaveChangesAsync();
                 return Ok(new { message = "¡Perfil actualizado con éxito, mi perro!" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error interno", details = ex.Message });
+                return StatusCode(500, new { 
+                    message = "Error al guardar", 
+                    details = ex.InnerException?.Message ?? ex.Message 
+                });
             }
         }
-                    // Método auxiliar necesario para el Try/Catch
-                    private bool ProveedorExists(Guid id)
-                    {
-                        return _context.proveedores.Any(e => e.Id == id);
-                    }
 
-            // EL DTO DEBE USAR Guid PARA EL ID
-            public class ProveedorUpdateDto
-            {
-                public Guid Id { get; set; }
-                public string NombreComercial { get; set; } = string.Empty;
-                public string Direccion { get; set; } = string.Empty;
-                public string Tipo { get; set; } = string.Empty;
-                // Agrega aquí los campos que necesites actualizar
-            }
-
-        [HttpGet("{id}")]
+        [HttpGet("{id:guid}")]
         public async Task<ActionResult<object>> GetProveedor(Guid id)
         {
             var proveedor = await _context.proveedores
@@ -113,15 +99,15 @@ namespace Turnify.Api.Controllers
                 })
                 .FirstOrDefaultAsync(p => p.Id == id);
 
-            if (proveedor == null) return NotFound(new { message = _localizer["UserNotFound"].Value });
+            if (proveedor == null) return NotFound(new { message = "Proveedor no encontrado" });
             return proveedor;
         }
 
         [HttpPost]
-        public async Task<ActionResult<Proveedores>> PostProveedor(ProveedorCreateDto dto)
+        public async Task<ActionResult<Proveedores>> PostProveedor([FromBody] ProveedorCreateDto dto)
         {
             var usuarioExiste = await _context.usuarios.AnyAsync(u => u.id == dto.usuarioId);
-            if (!usuarioExiste) return BadRequest(_localizer["UserNotFound"].Value);
+            if (!usuarioExiste) return BadRequest("El usuario dueño no existe.");
 
             var nuevoProveedor = new Proveedores
             {
@@ -136,22 +122,12 @@ namespace Turnify.Api.Controllers
                 Eliminado = false
             };
 
-            try
-            {
-                _context.proveedores.Add(nuevoProveedor);
-                await _context.SaveChangesAsync();
-                return CreatedAtAction(nameof(GetProveedor), new { id = nuevoProveedor.Id }, nuevoProveedor);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { 
-                    message = "Error", 
-                    details = ex.InnerException?.Message ?? ex.Message 
-                });
-            }
+            _context.proveedores.Add(nuevoProveedor);
+            await _context.SaveChangesAsync();
+            return CreatedAtAction(nameof(GetProveedor), new { id = nuevoProveedor.Id }, nuevoProveedor);
         }
 
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:guid}")]
         public async Task<IActionResult> DeleteProveedor(Guid id)
         {
             var proveedor = await _context.proveedores.FindAsync(id);
@@ -159,17 +135,7 @@ namespace Turnify.Api.Controllers
 
             proveedor.Eliminado = true;
             await _context.SaveChangesAsync();
-            return Ok(new { mensaje = "Soft Delete OK" });
+            return Ok(new { mensaje = "Soft Delete realizado con éxito" });
         }
-    }
-
-    public class ProveedorCreateDto
-    {
-        public string nombre_comercial { get; set; } = string.Empty;
-        public string direccion { get; set; } = string.Empty;
-        public string tipo { get; set; } = string.Empty;
-        public Guid usuarioId { get; set; }
-        public bool trabaja_domicilio { get; set; } 
-        public bool activo { get; set; } = true;
     }
 }

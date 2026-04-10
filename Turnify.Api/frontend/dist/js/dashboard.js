@@ -1,14 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Sincronización de nombres con login.js
-    const token = localStorage.getItem('token'); // Quitamos el "turnify_" para que coincida
-    const nombre = localStorage.getItem('adminName'); // En login guardamos 'adminName'
+    // 1. Sincronización de nombres (Usamos nombres consistentes)
+    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+    const nombre = localStorage.getItem('adminName');
     const rol = localStorage.getItem('usuario_rol');
+    const proveedorId = localStorage.getItem('proveedorId'); // 🚩 NECESARIO PARA CITAS
 
     console.log("🛡️ Verificando sesión...");
     console.log("Token detectado:", token ? "SI" : "NO");
-    console.log("Rol detectado:", rol);
+    console.log("Proveedor ID detectado:", proveedorId ? "SI" : "NO");
 
-    // 2. Validación de sesión (El Portero)
+    // 2. Validación de sesión
     if (!token) {
         console.error("🚫 No hay token. Redirigiendo al login...");
         window.location.href = 'login.html';
@@ -24,16 +25,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (userRoleBadge) {
-        const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";
-        const ADMIN_GUID = "6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43";
+        const SUPER_ADMIN_NAME = "SUPERADMIN"; // 🚩 Ajustado al nombre real en DB
+        const ADMIN_NAME = "ADMINISTRADOR";
         
-        // Normalizamos el rol a mayúsculas para comparar seguro
         const currentRol = (rol || "").toUpperCase();
 
-        if (currentRol === SUPER_ADMIN_GUID || currentRol === "SUPERADMINISTRADOR") {
+        if (currentRol.includes("SUPERADMIN")) {
             userRoleBadge.innerText = "🚀 SuperAdmin";
             userRoleBadge.style.background = "#e94560"; 
-        } else if (currentRol === ADMIN_GUID || currentRol === "ADMINISTRADOR") {
+        } else {
             userRoleBadge.innerText = "🛡️ Administrador";
             userRoleBadge.style.background = "#0f3460"; 
         }
@@ -43,9 +43,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnLogout = document.getElementById('btnLogout');
     if (btnLogout) btnLogout.addEventListener('click', logout);
 
-    // Solo cargamos estadísticas si hay un ID de usuario
-    if (localStorage.getItem('usuario_id')) {
+    // 🚩 CAMBIO: Solo cargamos si tenemos el ID del Negocio (Proveedor)
+    if (proveedorId) {
         cargarEstadisticas(); 
+    } else {
+        console.warn("⚠️ No se cargaron stats porque falta el proveedorId.");
     }
 });
 
@@ -57,16 +59,18 @@ function logout() {
 }
 
 async function cargarEstadisticas() {
-    const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('usuario_id');
+    // 🚩 Usamos consistencia de tokens
+    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+    const proveedorId = localStorage.getItem('proveedorId');
 
-    if (!userId || !token) {
-        console.error("❌ Faltan credenciales para la API.");
+    if (!proveedorId || !token) {
+        console.error("❌ Faltan credenciales del negocio (ProveedorID).");
         return;
     }
 
     try {
-        const response = await fetch(`http://localhost:5000/api/Dashboard/resumen/${userId}`, {
+        // 🚩 CORRECCIÓN CRÍTICA: La URL debe pedir el resumen del PROVEEDOR, no del Usuario
+        const response = await fetch(`http://localhost:5000/api/Dashboard/resumen/${proveedorId}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -77,7 +81,6 @@ async function cargarEstadisticas() {
         if (response.ok) {
             const stats = await response.json();
             
-            // Inyectar datos en los cuadros superiores
             if(document.getElementById('totalCitas')) 
                 document.getElementById('totalCitas').innerText = stats.totalCitas || 0;
             
@@ -87,7 +90,6 @@ async function cargarEstadisticas() {
             if(document.getElementById('citasTrend'))
                 document.getElementById('citasTrend').innerText = "Sincronizado";
 
-            // Formatear moneda COP
             if(document.getElementById('ingresosMes')) {
                 const formatoMoneda = new Intl.NumberFormat('es-CO', {
                     style: 'currency', currency: 'COP', minimumFractionDigits: 0
@@ -96,10 +98,10 @@ async function cargarEstadisticas() {
             }
                 
             llenarTablaTurnos(stats.proximasCitas);
-            console.log("📊 Dashboard actualizado para:", userId);
+            console.log("📊 Dashboard actualizado para el negocio:", proveedorId);
         } else {
             console.error("❌ Error de API:", response.status);
-            if (response.status === 401) logout(); // Si el token expiró, fuera.
+            if (response.status === 401) logout();
         }
     } catch (error) {
         console.error("🚀 Error de conexión:", error);
@@ -117,10 +119,10 @@ function llenarTablaTurnos(citas) {
 
     tablaBody.innerHTML = citas.map(cita => `
         <tr>
-            <td>${cita.cliente}</td>
-            <td>${cita.servicio}</td>
-            <td>${cita.hora}</td>
-            <td><span class="status-${(cita.estado || 'pendiente').toLowerCase()}">${cita.estado}</span></td>
+            <td>${cita.cliente || 'Desconocido'}</td>
+            <td>${cita.servicio || 'General'}</td>
+            <td>${cita.hora || '--:--'}</td>
+            <td><span class="status-${(cita.estado || 'pendiente').toLowerCase()}">${cita.estado || 'Pendiente'}</span></td>
         </tr>
     `).join('');
 }

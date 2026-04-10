@@ -81,6 +81,27 @@
                        style="width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: white; outline: none;">
             </div>
 
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label style="color: #48c1b5; display: block; margin-bottom: 5px; font-weight: 600;">Categoría</label>
+                <select id="categoriaServicio" 
+                        style="width: 100%; 
+                            padding: 12px; 
+                            border-radius: 10px; 
+                            border: 1px solid rgba(72, 193, 181, 0.3); 
+                            background: #122940; 
+                            color: #48c1b5; 
+                            font-weight: 600;
+                            outline: none; 
+                            cursor: pointer;
+                            appearance: none; 
+                            -webkit-appearance: none;">
+                    <option value="Barbería" style="background: #1b3d5f; color: white;">💈 Barbería</option>
+                    <option value="Manicura" style="background: #1b3d5f; color: white;">💅 Manicura / Nails</option>
+                    <option value="Estética" style="background: #1b3d5f; color: white;">✨ Estética / Facial</option>
+                    <option value="Otro" style="background: #1b3d5f; color: white;">➕ Otro</option>
+                </select>
+            </div>
+
             <div style="display: flex; gap: 15px; margin-bottom: 15px;">
                 <div style="flex: 1;">
                     <label style="color: #48c1b5; display: block; margin-bottom: 5px; font-weight: 600;">Precio ($)</label>
@@ -103,15 +124,23 @@
                 <div style="flex: 1;">
                     <label style="color: #48c1b5; display: block; margin-bottom: 5px; font-weight: 600;">Estado</label>
                     <select id="estadoServicio" 
-                            style="width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: #1b3d5f; color: white;">
-                        <option value="1">🟢 Activo</option>
-                        <option value="2">🟡 En Proceso</option>
-                        <option value="0">🔴 Inactivo</option>
+                            style="width: 100%; 
+                                padding: 12px; 
+                                border-radius: 10px; 
+                                border: 1px solid rgba(72, 193, 181, 0.3); 
+                                background: #122940; 
+                                color: #48c1b5; 
+                                font-weight: 600;
+                                outline: none; 
+                                cursor: pointer;
+                                appearance: none; 
+                                -webkit-appearance: none;">
+                        <option value="1" style="background: #1b3d5f; color: white;">🟢 Activo</option>
+                        <option value="2" style="background: #1b3d5f; color: white;">🟡 En Proceso</option>
+                        <option value="0" style="background: #1b3d5f; color: white;">🔴 Inactivo</option>
                     </select>
                 </div>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+            </div> <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
                 <button type="button" onclick="cerrarModal()" 
                         style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 10px 25px; border-radius: 10px; cursor: pointer; font-weight: 600;">
                     Cancelar
