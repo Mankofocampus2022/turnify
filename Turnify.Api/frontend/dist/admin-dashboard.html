@@ -45,57 +45,43 @@
     <main class="main-content">
         <header class="top-bar">
             <div class="welcome">
-                <h2 id="welcomeText">¡Hola, Darwin!</h2>
+                <h2 id="welcomeText">Cargando...</h2>
                 <p id="subTitle">Aquí tienes el estado actual de tu negocio.</p>
             </div>
             <div class="user-profile">
-                <span id="userRole" class="badge">SuperAdministrador</span>
+                <span id="userRole" class="badge">Usuario</span>
             </div>
         </header>
 
         <section class="stats-grid">
             <div class="stat-card">
                 <h3>Citas Hoy</h3>
-                <p id="totalCitas" class="number">0</p>
-                <span id="citasTrend" class="trend">Sincronizando...</span>
+                <p id="countCitas" class="number">0</p>
+                <span id="citasTrend" class="trend">Hoy</span>
             </div>
             <div class="stat-card">
                 <h3>Nuevos Clientes</h3>
                 <p id="nuevosClientes" class="number">0</p>
             </div>
             <div class="stat-card primary">
-                <h3>Ingresos Mes</h3>
-                <p id="ingresosMes" class="number">$0</p>
+                <h3>Ingresos Hoy</h3>
+                <p id="countGanancias" class="number">$0</p>
                 <span class="currency">COP</span>
             </div>
         </section>
 
         <section class="content-section">
             <div class="section-header">
-                <h3 id="sectionTitle">Próximos Turnos</h3>
+                <h3 id="sectionTitle">Agenda de Hoy</h3>
                 <div id="extraActions">
-                    <button class="btn-sm">Ver todos</button>
+                    <button class="btn-sm" onclick="window.location.reload()">Refrescar</button>
                 </div>
             </div>
 
-            <div class="table-card">
-                <table class="data-table">
-                    <thead>
-                        <tr id="tableHeader">
-                            <th>Cliente</th>
-                            <th>Servicio</th>
-                            <th>Hora</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="turnosTable">
-                        <tr>
-                            <td colspan="4" style="text-align: center; padding: 20px;">
-                                <i class="fas fa-spinner fa-spin"></i> Cargando datos...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div id="listaCitasHoy" class="appointments-container">
+                <div style="text-align: center; padding: 20px; color: white;">
+                    <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
+                </div>
             </div>
         </section>
     </main>

@@ -1,30 +1,40 @@
 const API_URL = 'http://localhost:5000/api/Servicios';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 🚩 ADICIÓN SENIOR: EL PUENTE DE DATOS (NO QUITA NADA, SOLO SINCRONIZA) ---
-    if (!localStorage.getItem('turnify_token') && localStorage.getItem('token')) {
-        localStorage.setItem('turnify_token', localStorage.getItem('token'));
-    }
-    if (!localStorage.getItem('proveedor_id') && localStorage.getItem('proveedorId')) {
-        localStorage.setItem('proveedor_id', localStorage.getItem('proveedorId'));
-    }
-    // ----------------------------------------------------------------------------
-
-    const proveedorId = localStorage.getItem('proveedor_id');
+    // 1. Sincronización de Identidad (Para que no importe cómo se llame la llave)
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    const rol = localStorage.getItem('usuario_rol') || "";
+    const proveedorId = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
     
-    if (!proveedorId || proveedorId === "null") {
-        console.error("🚫 Sesión inválida en Servicios. Redirigiendo...");
-        alert("Sesión inválida. Por favor, inicia sesión de nuevo.");
+    // Si no hay rastro de token, de patitas a la calle
+    if (!token) {
         window.location.href = 'login.html';
         return;
     }
 
+    // Guardamos los nombres normalizados para que el resto del script no sufra
+    localStorage.setItem('turnify_token', token);
+    if (proveedorId) localStorage.setItem('proveedor_id', proveedorId);
+
+    // 2. VALIDACIÓN FLEXIBLE (Aquí estaba el fallo)
+    const rolNormalizado = rol.toUpperCase();
+    const esAdmin = rolNormalizado.includes("ADMIN") || 
+                    rolNormalizado.includes("6A7FA68F") || 
+                    rolNormalizado.includes("6DE2A606");
+
+    // Solo pedimos proveedor_id si NO eres Admin
+    if (!esAdmin && (!proveedorId || proveedorId === "null")) {
+        console.error("🚫 Barbero sin ID de local. Redirigiendo...");
+        alert("Tu perfil de barbero no está configurado. Por favor, inicia sesión.");
+        window.location.href = 'login.html';
+        return;
+    }
+
+    console.log("✅ Acceso concedido como:", esAdmin ? "Admin" : "Barbero");
     cargarServicios();
     
     const form = document.getElementById('formServicio');
-    if(form) {
-        form.addEventListener('submit', guardarServicio);
-    }
+    if(form) form.addEventListener('submit', guardarServicio);
 });
 
 // 1. CARGAR SERVICIOS

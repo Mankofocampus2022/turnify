@@ -27,84 +27,83 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
+        // --- MÉTODOS DE LECTURA ---
+
         [HttpGet]
         [Authorize]
         public async Task<IActionResult> GetAll()
         {
             var usuarios = await _context.usuarios
+                .AsNoTracking()
                 .Include(u => u.Rol)
                 .Select(u => new {
-                    id = u.id,
-                    nombre = u.nombre,
-                    email = u.email,
+                    u.id,
+                    u.nombre,
+                    u.email,
                     rol = u.Rol != null ? u.Rol.nombre : "Sin Rol", 
-                    esta_bloqueado = u.esta_bloqueado,
-                    suscripcion_fin = u.suscripcion_fin,
-                    rol_id = u.rol_id
+                    esta_bloqueado = u.esta_bloqueado, 
+                    u.suscripcion_fin,
+                    u.rol_id
                 })
                 .ToListAsync();
 
             return Ok(usuarios);
         }
 
-        // 1. LOGIN (Ya incluye el ProveedorId para evitar errores 500 en servicios)
-        // 1. LOGIN (Corregido: Ruta de DTO y Mayúscula en Id)
-[HttpPost("login")]
-public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginDto dto)
-{
-    try 
-    {
-        var result = await _usuarioService.LoginAsync(dto);
-        
-        if (!result.Success) 
-        {
-            if (result.Message.Contains("suspendida"))
-                return StatusCode(403, new { message = result.Message });
-
-            if (result.Message.Contains("vencido") || result.Message.Contains("suscripción"))
-                return StatusCode(402, new { message = result.Message });
-
-            return Unauthorized(new { message = result.Message });
+        [HttpGet("{id:guid}")] 
+        public async Task<IActionResult> GetById(Guid id) 
+        { 
+            var u = await _usuarioService.GetUsuarioByIdAsync(id); 
+            return u == null ? NotFound(new { message = "Usuario no encontrado" }) : Ok(u); 
         }
 
-        if (result.Data is Usuarios usuarioLogueado)
-        {
-            var usuarioConRol = await _context.usuarios
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.id == usuarioLogueado.id);
+        // --- AUTENTICACIÓN Y REGISTRO ---
 
-            if (usuarioConRol == null) 
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginDto dto)
+        {
+            try 
             {
-                return Unauthorized(new { message = "Error al recuperar el perfil del usuario." });
-            }
+                var result = await _usuarioService.LoginAsync(dto);
+                if (!result.Success) return Unauthorized(new { message = result.Message });
 
-            // 🚩 BUSCAMOS EL PROVEEDOR
-            var proveedor = await _context.proveedores
-                .FirstOrDefaultAsync(p => p.UsuarioId == usuarioConRol.id);
-
-            var token = GenerarTokenJWT(usuarioConRol);
-
-            return Ok(new { 
-                token = token, 
-                user = new { 
-                    id = usuarioConRol.id, 
-                    nombre = usuarioConRol.nombre, 
-                    email = usuarioConRol.email, 
-                    rol = usuarioConRol.Rol?.nombre ?? "Usuario",
-                    // 🚩 CORRECCIÓN: Usamos Id con Mayúscula para que coincida con el Modelo
-                    proveedorId = proveedor?.Id 
-                } 
-            });
+                if (result.Data is Usuarios u) 
+                {
+                    var proveedor = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == u.id);
+                    var token = GenerarTokenJWT(u);
+                    return Ok(new { 
+                        token, 
+                        user = new { 
+                            id = u.id, 
+                            u.nombre, 
+                            u.email, 
+                            rol = u.Rol?.nombre, 
+                            proveedorId = proveedor?.Id 
+                        } 
+                    });
+                }
+                return StatusCode(500, "Error de formato de datos.");
+            } 
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
-        
-        return StatusCode(500, new { message = "Error de formato en los datos del usuario." });
-    }
-    catch (Exception ex) 
-    { 
-        return StatusCode(500, new { message = ex.Message }); 
-    }
-}
-        // 2. FORGOT PASSWORD
+
+        [HttpPost("registrar")]
+        public async Task<IActionResult> Registrar([FromBody] UsuarioRegistroDTO dto)
+        {
+            if (dto == null) return BadRequest(new { message = "Los datos de registro son obligatorios." });
+
+            try 
+            {
+                var result = await _usuarioService.RegistrarAsync(dto);
+                return result.Success 
+                    ? Ok(new { message = result.Message, usuarioId = result.UsuarioId }) 
+                    : BadRequest(new { message = result.Message });
+            }
+            catch (Exception ex) { return StatusCode(500, new { message = "Error interno: " + ex.Message }); }
+        }
+
+        // --- GESTIÓN DE CONTRASEÑAS ---
+
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
@@ -115,10 +114,9 @@ public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginD
             usuario.ResetTokenExpires = DateTime.UtcNow.AddHours(1); 
 
             await _context.SaveChangesAsync();
-            return Ok(new { message = "Token generado", token = usuario.ResetToken });
+            return Ok(new { message = "Token generado con éxito.", token = usuario.ResetToken });
         }
 
-        // 3. RESET PASSWORD
         [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
         {
@@ -132,31 +130,38 @@ public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginD
             usuario.ResetTokenExpires = null;
 
             await _context.SaveChangesAsync();
-            return Ok(new { message = "Contraseña actualizada." });
+            return Ok(new { message = "Contraseña actualizada correctamente." });
         }
 
-        // 4. REGISTRAR
-        [HttpPost("registrar")]
-        public async Task<IActionResult> Registrar([FromBody] UsuarioRegistroDTO dto)
+        // --- GESTIÓN DE SUSCRIPCIÓN Y ESTADO ---
+
+        // 🚩 VERSIÓN UNIFICADA (Sin duplicados y con manejo de nulos)
+        [HttpPut("renovar/{id:guid}")]
+        [Authorize]
+        public async Task<IActionResult> RenovarSuscripcion(Guid id, [FromQuery] int meses = 1)
         {
             try 
             {
-                var nuevoUsuario = new Usuarios { 
-                    nombre = dto.Nombre, 
-                    email = dto.Email, 
-                    password_hash = dto.Password, 
-                    rol_id = dto.RolId 
-                };
+                var usuario = await _context.usuarios.FindAsync(id);
+                if (usuario == null) return NotFound(new { message = "Usuario no encontrado." });
 
-                var result = await _usuarioService.RegistrarAsync(nuevoUsuario);
+                // Lógica Senior: Si la suscripción aún no vence, sumamos desde el vencimiento.
+                // Si ya venció (o es nula), sumamos desde hoy (DateTime.UtcNow).
+                DateTime fechaFinActual = usuario.suscripcion_fin ?? DateTime.UtcNow;
+                DateTime fechaBase = (fechaFinActual > DateTime.UtcNow) ? fechaFinActual : DateTime.UtcNow;
+
+                usuario.suscripcion_fin = fechaBase.AddMonths(meses);
                 
-                return result.Success 
-                    ? Ok(new { message = "Usuario creado", usuarioId = result.UsuarioId }) 
-                    : BadRequest(new { message = result.Message });
+                await _context.SaveChangesAsync();
+                
+                return Ok(new { 
+                    message = $"Suscripción extendida por {meses} mes(es)", 
+                    nuevaFecha = usuario.suscripcion_fin 
+                });
             }
             catch (Exception ex) 
             { 
-                return StatusCode(500, new { message = "Error: " + ex.Message }); 
+                return StatusCode(500, new { message = "Error al renovar: " + ex.Message }); 
             }
         }
 
@@ -165,8 +170,10 @@ public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginD
         public async Task<IActionResult> CambiarEstado(Guid id, [FromQuery] bool bloquear)
         {
             var exito = await _usuarioService.CambiarEstadoBloqueoAsync(id, bloquear);
-            return exito ? Ok(new { message = "Estado actualizado" }) : NotFound();
+            return exito ? Ok(new { message = "Estado actualizado correctamente" }) : NotFound();
         }
+
+        // --- ESTADÍSTICAS ---
 
         [HttpGet("dashboard-stats")]
         [Authorize] 
@@ -181,40 +188,22 @@ public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginD
             catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
         }
 
-        // renovar suscripción (agrega 30 días a la fecha actual o a la fecha de fin existente, lo que sea mayor)
+        // --- CRUD BÁSICO ---
 
-       [HttpPut("renovar/{id:guid}")]
-            [Authorize]
-            public async Task<IActionResult> RenovarSuscripcion(Guid id, [FromQuery] int meses = 1)
-            {
-                try 
-                {
-                    var usuario = await _context.usuarios.FindAsync(id);
-                    if (usuario == null) return NotFound();
+        [HttpPut("{id:guid}")] 
+        public async Task<IActionResult> Update(Guid id, [FromBody] Usuarios u) 
+        { 
+            if (id != u.id) return BadRequest(new { message = "El ID no coincide." }); 
+            return await _usuarioService.ActualizarAsync(u) ? Ok(new { message = "Actualizado" }) : BadRequest(); 
+        }
 
-                    // Lógica Senior: Si la suscripción aún no vence, sumamos desde la fecha de vencimiento.
-                    // Si ya venció o es nueva, sumamos desde hoy (DateTime.UtcNow).
-                    DateTime fechaBase = (usuario.suscripcion_fin.HasValue && usuario.suscripcion_fin.Value > DateTime.UtcNow) 
-                                        ? usuario.suscripcion_fin.Value 
-                                        : DateTime.UtcNow;
+        [HttpDelete("{id:guid}")] 
+        public async Task<IActionResult> Delete(Guid id) 
+        { 
+            return await _usuarioService.EliminarLogicoAsync(id) ? Ok(new { message = "Eliminado" }) : NotFound(); 
+        }
 
-                    // Ahora sumamos meses exactos (AddMonths es más preciso que AddDays(30))
-                    usuario.suscripcion_fin = fechaBase.AddMonths(meses);
-                    
-                    await _context.SaveChangesAsync();
-                    
-                    return Ok(new { 
-                        message = $"Suscripción extendida por {meses} mes(es)", 
-                        nuevaFecha = usuario.suscripcion_fin 
-                    });
-                }
-                catch (Exception ex) { 
-                    return StatusCode(500, new { message = ex.Message }); 
-                }
-            }
-        [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, [FromBody] Usuarios u) { if (id != u.id) return BadRequest(); return await _usuarioService.ActualizarAsync(u) ? Ok() : BadRequest(); }
-        [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id) { return await _usuarioService.EliminarLogicoAsync(id) ? Ok() : NotFound(); }
-        [HttpGet("{id:guid}")] public async Task<IActionResult> GetById(Guid id) { var u = await _usuarioService.GetUsuarioByIdAsync(id); return u == null ? NotFound() : Ok(u); }
+        // --- SEGURIDAD ---
 
         private string GenerarTokenJWT(Usuarios usuario)
         {
@@ -227,13 +216,16 @@ public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginD
                 new Claim(ClaimTypes.Role, usuario.Rol?.nombre ?? "Usuario") 
             };
 
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
             var tokenDescriptor = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"] ?? "Turnify.Api",
                 audience: _config["Jwt:Audience"] ?? "Turnify.App",
                 claims: claims,
                 expires: DateTime.UtcNow.AddMinutes(1440),
-                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+                signingCredentials: creds
             );
+
             return new JwtSecurityTokenHandler().WriteToken(tokenDescriptor);
         }
     }

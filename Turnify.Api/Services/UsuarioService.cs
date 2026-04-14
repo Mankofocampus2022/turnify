@@ -3,7 +3,6 @@ using Turnify.Api.Models.DTOs;
 using Turnify.Api.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Data;
-using BCrypt.Net;
 
 namespace Turnify.Api.Services
 {
@@ -16,105 +15,79 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
-        // 1. REGISTRO
-        public async Task<(bool Success, string Message, Guid? UsuarioId)> RegistrarAsync(Usuarios usuario)
+        public async Task<(bool Success, string Message, Guid? UsuarioId)> RegistrarAsync(UsuarioRegistroDTO dto)
         {
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                if (usuario.rol_id == Guid.Empty)
-                    return (false, "Error: El rol_id no llegó correctamente.", null);
+                var existeEmail = await _context.usuarios.AnyAsync(u => u.email == dto.Email);
+                if (existeEmail) return (false, "El correo ya existe.", null);
 
-                var existeEmail = await _context.usuarios.AnyAsync(u => u.email == usuario.email);
-                if (existeEmail)
-                    return (false, "El correo electrónico ya está registrado.", null);
-
-                usuario.password_hash = BCrypt.Net.BCrypt.HashPassword(usuario.password_hash);
-
-                if (usuario.id == Guid.Empty) usuario.id = Guid.NewGuid();
-                usuario.fecha_creacion = DateTime.UtcNow;
-                usuario.activo = true;
-                usuario.suscripcion_fin = DateTime.UtcNow.AddDays(30); 
-                usuario.esta_bloqueado = false;
-
+                var usuario = new Usuarios {
+                    id = Guid.NewGuid(),
+                    nombre = dto.Nombre,
+                    email = dto.Email,
+                    password_hash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                    rol_id = dto.RolId,
+                    fecha_creacion = DateTime.UtcNow,
+                    activo = true,
+                    suscripcion_fin = DateTime.UtcNow.AddDays(30),
+                    esta_bloqueado = false
+                };
                 _context.usuarios.Add(usuario);
+
+                var idCliente = Guid.Parse("56992f75-6420-4d55-a5f9-9223248c50d7");
+                var idProveedor = Guid.Parse("8854c07c-6e5e-4876-a29a-c7ad5dcfbab7");
+
+                if (dto.RolId == idCliente) {
+                    // 🚩 CLIENTES usa minúsculas (id, usuario_id, etc.)
+                    _context.clientes.Add(new Clientes {
+                        id = Guid.NewGuid(),
+                        usuario_id = usuario.id,
+                        nombre = dto.Nombre,
+                        telefono = dto.Telefono,
+                        activo = true,
+                        fecha_creacion = DateTime.UtcNow
+                    });
+                }
+                else if (dto.RolId == idProveedor) {
+                    // 🚩 PROVEEDORES usa Mayúsculas (Id, UsuarioId, etc.)
+                    _context.proveedores.Add(new Proveedores {
+                        Id = Guid.NewGuid(),
+                        UsuarioId = usuario.id,
+                        NombreComercial = dto.NombreComercial ?? "Negocio",
+                        Tipo = dto.TipoNegocio ?? "Barbería",
+                        Activo = true,
+                        FechaCreacion = DateTime.UtcNow,
+                        Direccion = "Pendiente"
+                    });
+                }
+
                 await _context.SaveChangesAsync();
-
-                return (true, "Usuario registrado con éxito", usuario.id);
+                await transaction.CommitAsync();
+                return (true, "Registro exitoso", usuario.id);
             }
-            catch (Exception ex)
-            {
-                return (false, $"Error: {ex.Message}", null);
+            catch (Exception ex) {
+                await transaction.RollbackAsync();
+                return (false, "Error: " + ex.Message, null);
             }
         }
 
-        // 2. LOGIN (Blindado contra NULLs)
-        public async Task<(bool Success, string Message, object? Data)> LoginAsync(LoginDto loginDto)
-        {
-            var usuario = await _context.usuarios
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.email == loginDto.Email);
-
-            if (usuario == null) return (false, "Usuario no encontrado", null);
-
-            bool passwordValida = BCrypt.Net.BCrypt.Verify(loginDto.Password, usuario.password_hash);
-            if (!passwordValida) return (false, "Contraseña incorrecta", null);
-
-            if (usuario.esta_bloqueado == true) 
-                return (false, "Tu cuenta ha sido suspendida. Contacta al administrador.", null);
-
-            if (usuario.suscripcion_fin.HasValue && usuario.suscripcion_fin.Value < DateTime.UtcNow)
-                return (false, "Tu suscripción ha vencido. Es necesario renovar tu plan.", null);
-
-            usuario.ultima_conexion = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
-            return (true, "Login exitoso", usuario);
+        public async Task<(bool Success, string Message, object? Data)> LoginAsync(LoginDto dto) {
+            var u = await _context.usuarios.Include(x => x.Rol).FirstOrDefaultAsync(x => x.email == dto.Email);
+            if (u == null || !BCrypt.Net.BCrypt.Verify(dto.Password, u.password_hash)) return (false, "Credenciales incorrectas", null);
+            return (true, "OK", u);
         }
 
-        // 3. OBTENER TODOS (SuperAdmin)
-        public async Task<IEnumerable<Usuarios>> GetAllUsuariosAsync() 
-        {
-            return await _context.usuarios
-                .Include(u => u.Rol)
-                .ToListAsync();
-        }
-
-        // 4. BLOQUEO / ACTIVACIÓN
-        public async Task<bool> CambiarEstadoBloqueoAsync(Guid id, bool bloquear)
-        {
-            var usuario = await _context.usuarios.FindAsync(id);
-            if (usuario == null) return false;
-            
-            usuario.esta_bloqueado = bloquear;
-            return await _context.SaveChangesAsync() > 0;
-        }
-
-        // 5. MÉTODOS CRUD EXTRAS
-        public async Task<Usuarios?> GetUsuarioByIdAsync(Guid id)
-        {
-            return await _context.usuarios
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.id == id);
-        }
-
-        public async Task<bool> ActualizarAsync(Usuarios usuario)
-        {
-            _context.Entry(usuario).State = EntityState.Modified;
-            return await _context.SaveChangesAsync() > 0;
-        }
-
-        public async Task<bool> EliminarLogicoAsync(Guid id)
-        {
-            var usuario = await _context.usuarios.FindAsync(id);
-            if (usuario == null) return false;
-            
-            usuario.activo = false;
-            return await _context.SaveChangesAsync() > 0;
-        }
-
-        public async Task<int> GetTotalUsuariosActivosAsync()
-        {
+        public async Task<int> GetTotalUsuariosActivosAsync() {
+            // 🚩 FIX CS0266: u.activo es bool?, comparamos con true
             return await _context.usuarios.CountAsync(u => u.activo == true);
-        }       
+        }
+
+        public async Task<Usuarios?> GetUsuarioByIdAsync(Guid id) => await _context.usuarios.Include(u => u.Rol).FirstOrDefaultAsync(u => u.id == id);
+        public async Task<bool> ActualizarAsync(Usuarios u) { _context.Entry(u).State = EntityState.Modified; return await _context.SaveChangesAsync() > 0; }
+        public async Task<bool> EliminarLogicoAsync(Guid id) { var u = await _context.usuarios.FindAsync(id); if (u == null) return false; u.activo = false; return await _context.SaveChangesAsync() > 0; }
+        public async Task<bool> CambiarEstadoBloqueoAsync(Guid id, bool b) { var u = await _context.usuarios.FindAsync(id); if (u == null) return false; u.esta_bloqueado = b; return await _context.SaveChangesAsync() > 0; }
+        public async Task<IEnumerable<Usuarios>> GetAllUsuariosAsync() => await _context.usuarios.Include(u => u.Rol).ToListAsync();
     }
 }
