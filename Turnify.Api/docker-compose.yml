@@ -1,14 +1,18 @@
+version: '3.8'
+
 services:
   turnify-db:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: turnify-db
+    restart: always
     environment:
       - ACCEPT_EULA=Y
       - MSSQL_SA_PASSWORD=Turnify.Master.2026!*
     ports:
       - "1433:1433"
     volumes:
-      - ./sql_data:/var/opt/mssql/data  # <--- BLINDAJE: Persistencia física en tu disco
+      # 🛡️ BLINDAJE DE DATOS: Persistencia total
+      - ./sql_data:/var/opt/mssql/data
     networks:
       - turnify-network
     healthcheck:
@@ -16,19 +20,34 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   turnify-api:
     build: .
     container_name: turnify-api
+    restart: always
     ports:
       - "5000:8080"
+    volumes:
+      # 🛡️ AJUSTE SENIOR: Mapeamos a la ruta exacta que busca tu Program.cs (/app/frontend/dist)
+      - ./frontend/dist:/app/frontend/dist
     environment:
       - ConnectionStrings__DefaultConnection=Server=turnify-db,1433;Database=TurnifyDb;User Id=sa;Password=Turnify.Master.2026!*;TrustServerCertificate=True;Encrypt=True;
+      - ASPNETCORE_ENVIRONMENT=Production
     depends_on:
       turnify-db:
         condition: service_healthy
     networks:
       - turnify-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   turnify-network:

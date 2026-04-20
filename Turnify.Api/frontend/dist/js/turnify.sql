@@ -1,109 +1,228 @@
-/* PROYECTO: Turnify API
-   AUTOR: Darwin Ocampo (Lupe)
-   DESCRIPCIÓN: Script de creación de base de datos organizado por jerarquía.
-*/
+const API_URL = 'http://localhost:5000/api/Servicios';
 
--- 1. SEGURIDAD Y ACCESO
-CREATE TABLE [dbo].[roles] (
-    [id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [nombre] nvarchar(60) NOT NULL
-);
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Sincronización de Identidad (Para que no importe cómo se llame la llave)
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    const rol = localStorage.getItem('usuario_rol') || "";
+    const proveedorId = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
+    
+    // Si no hay rastro de token, de patitas a la calle
+    if (!token) {
+        window.location.href = 'login.html';
+        return;
+    }
 
-CREATE TABLE [dbo].[usuarios] (
-    [id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [rol_id] uniqueidentifier NOT NULL, 
-    [nombre] nvarchar(200) NOT NULL, 
-    [email] nvarchar(300) NOT NULL, 
-    [password_hash] nvarchar(510) NOT NULL, 
-    [activo] bit NOT NULL, 
-    [esta_bloqueado] bit NOT NULL,
-    [fecha_creacion] datetime2 NOT NULL, 
-    [ResetToken] nvarchar(MAX) NULL, 
-    [ResetTokenExpires] datetime2 NULL, 
-    [suscripcion_fin] datetime NULL, 
-    [ultima_conexion] datetime NULL
-);
+    // Guardamos los nombres normalizados para que el resto del script no sufra
+    localStorage.setItem('turnify_token', token);
+    if (proveedorId) localStorage.setItem('proveedor_id', proveedorId);
 
--- 2. ACTORES DEL SISTEMA (PROVEEDORES Y CLIENTES)
-CREATE TABLE [dbo].[proveedores] (
-    [id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [usuario_id] uniqueidentifier NOT NULL, 
-    [nombre_comercial] nvarchar(MAX) NOT NULL, 
-    [tipo] nvarchar(MAX) NOT NULL, 
-    [descripcion] nvarchar(MAX) NULL, 
-    [direccion] nvarchar(MAX) NOT NULL, 
-    [ciudad] nvarchar(MAX) NULL, 
-    [trabaja_domicilio] bit NOT NULL, 
-    [activo] bit NOT NULL, 
-    [eliminado] bit NOT NULL, 
-    [fecha_creacion] datetime2 NOT NULL, 
-    [fecha_actualizacion] datetime2 NULL
-);
+    // 2. VALIDACIÓN FLEXIBLE (Aquí estaba el fallo)
+    const rolNormalizado = rol.toUpperCase();
+    const esAdmin = rolNormalizado.includes("ADMIN") || 
+                    rolNormalizado.includes("6A7FA68F") || 
+                    rolNormalizado.includes("6DE2A606");
 
-CREATE TABLE [dbo].[clientes] (
-    [id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [usuario_id] uniqueidentifier NOT NULL, 
-    [nombre] nvarchar(240) NOT NULL, 
-    [telefono] nvarchar(40) NOT NULL, 
-    [email] nvarchar(300) NULL, 
-    [activo] bit NOT NULL, 
-    [fecha_creacion] datetime2 NOT NULL
-);
+    // Solo pedimos proveedor_id si NO eres Admin
+    if (!esAdmin && (!proveedorId || proveedorId === "null")) {
+        console.error("🚫 Barbero sin ID de local. Redirigiendo...");
+        alert("Tu perfil de barbero no está configurado. Por favor, inicia sesión.");
+        window.location.href = 'login.html';
+        return;
+    }
 
--- 3. OPERACIÓN (SERVICIOS Y HORARIOS)
-CREATE TABLE [dbo].[servicios] (
-    [Id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [ProveedorId] uniqueidentifier NOT NULL,
-    [Nombre] nvarchar(200) NOT NULL, 
-    [Categoria] nvarchar(100) NOT NULL,
-    [Descripcion] nvarchar(510) NULL, 
-    [Precio] decimal(18,2) NOT NULL, 
-    [ComisionPorcentaje] decimal(5,2) NOT NULL,
-    [DuracionMinutos] int NOT NULL, 
-    [Activo] int NULL, 
-    [FechaCreacion] datetime2 NOT NULL, 
-    [ImagenUrl] nvarchar(MAX) NULL
-);
+    console.log("✅ Acceso concedido como:", esAdmin ? "Admin" : "Barbero");
+    cargarServicios();
+    
+    const form = document.getElementById('formServicio');
+    if(form) form.addEventListener('submit', guardarServicio);
+});
 
-CREATE TABLE [dbo].[horarios_atencion] (
-    [id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [proveedor_id] uniqueidentifier NOT NULL, 
-    [dia_semana] int NOT NULL, -- 0: Domingo, 1: Lunes...
-    [hora_apertura] time NOT NULL, 
-    [hora_cierre] time NOT NULL
-);
+// 1. CARGAR SERVICIOS
+async function cargarServicios() {
+    const token = localStorage.getItem('turnify_token');
+    const proveedorId = localStorage.getItem('proveedor_id');
+    const rol = localStorage.getItem('usuario_rol');
 
--- 4. CITAS Y RESERVAS
-CREATE TABLE [dbo].[citas] (
-    [id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [cliente_id] uniqueidentifier NOT NULL, 
-    [proveedor_id] uniqueidentifier NOT NULL, 
-    [servicio_id] uniqueidentifier NOT NULL, 
-    [fecha] datetime2 NOT NULL, 
-    [hora] time NOT NULL, 
-    [modalidad] nvarchar(40) NOT NULL, 
-    [direccion] nvarchar(400) NULL, 
-    [estado] nvarchar(40) NOT NULL, 
-    [precio_pactado] decimal(18,2) NOT NULL, 
-    [duracion_pactada_min] int NOT NULL,
-    [observaciones] nvarchar(510) NULL, 
-    [fecha_creacion] datetime2 NOT NULL
-);
+    // Normalizamos el rol a Mayúsculas para la comparación
+    const rolNormalizado = (rol || "").toUpperCase();
 
--- 5. SUSCRIPCIONES Y PLANES
-CREATE TABLE [dbo].[planes_suscripcion] (
-    [Id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [Nombre] nvarchar(100) NOT NULL, 
-    [PrecioMensual] decimal(18,2) NOT NULL, 
-    [LimiteCitasMes] int NULL, 
-    [Activo] bit NOT NULL
-);
+    const url = (rolNormalizado.includes("ADMIN") || rolNormalizado.includes("6A7FA68F") || rolNormalizado.includes("6DE2A606")) 
+                ? API_URL 
+                : `${API_URL}/proveedor/${proveedorId}`;
 
-CREATE TABLE [dbo].[suscripciones] (
-    [Id] uniqueidentifier NOT NULL PRIMARY KEY, 
-    [ProveedorId] uniqueidentifier NOT NULL, 
-    [PlanId] uniqueidentifier NOT NULL, 
-    [FechaInicio] datetime2 NOT NULL, 
-    [FechaVencimiento] datetime2 NOT NULL, 
-    [Estado] nvarchar(MAX) NOT NULL
-);
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        const datos = await response.json();
+        if (response.ok && Array.isArray(datos)) {
+            renderizarTabla(datos);
+        }
+    } catch (error) {
+        console.error("Error de conexión:", error);
+    }
+}
+
+// 2. RENDERIZAR TABLA
+function renderizarTabla(servicios) {
+    const tabla = document.getElementById('tablaServicios');
+    if(!tabla) return;
+    
+    tabla.innerHTML = '';
+
+    servicios.forEach(s => {
+        const categoria = s.categoria || 'Barbería';
+        const catClass = categoria === 'Manicura' ? 'cat-manicura' : 'cat-barberia';
+        
+        let estadoTexto = 'INACTIVO';
+        let estadoClase = 'badge-danger';
+
+        if (s.activo == 1) {
+            estadoTexto = 'ACTIVO';
+            estadoClase = 'badge-success';
+        } else if (s.activo == 2) {
+            estadoTexto = 'EN PROCESO';
+            estadoClase = 'badge-warning';
+        }
+
+        const estadoBadge = `<span class="badge ${estadoClase}">${estadoTexto}</span>`;
+
+        tabla.innerHTML += `
+            <tr>
+                <td>
+                    <div style="font-weight: bold; font-size: 1.1em; color: white;">${s.nombre}</div>
+                    <div style="color: #48c1b5; font-size: 0.85em;">ID: ${s.id.substring(0,8)}...</div>
+                </td>
+                <td><span class="role-pill ${catClass}">${categoria}</span></td>
+                <td style="font-weight: 600; color: white;">$${s.precio.toLocaleString()}</td>
+                <td style="color: #e2e8f0;"><i class="far fa-clock"></i> ${s.duracionMinutos} min</td>
+                <td style="text-align: center;">${estadoBadge}</td>
+                <td style="text-align: center;">
+                    <div style="display: flex; justify-content: center; gap: 8px;">
+                        <button class="btn-edit" onclick="editarServicio('${s.id}')">
+                            <i class="fas fa-pen"></i> Editar
+                        </button>
+                        <button class="btn-action btn-bloquear" style="padding: 8px 12px;" onclick="eliminarServicio('${s.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+// 3. EDITAR SERVICIO
+async function editarServicio(id) {
+    const token = localStorage.getItem('turnify_token');
+    try {
+        const res = await fetch(`${API_URL}/${id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const s = await res.json();
+
+        if (res.ok) {
+            document.getElementById('nombreServicio').value = s.nombre;
+            document.getElementById('precioServicio').value = s.precio;
+            document.getElementById('duracionServicio').value = s.duracionMinutos;
+            document.getElementById('comisionServicio').value = s.comisionPorcentaje;
+            document.getElementById('estadoServicio').value = s.activo;
+            
+            document.getElementById('formServicio').setAttribute('data-id', s.id);
+            
+            abrirModal();
+            const titulo = document.querySelector('.modal-header h2');
+            if(titulo) titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Servicio';
+        }
+    } catch (err) { 
+        console.error("Error al cargar para editar:", err); 
+    }
+}
+
+// 4. ELIMINAR SERVICIO
+async function eliminarServicio(id) {
+    if (!confirm("¿Seguro que quieres borrar este servicio?")) return;
+    const token = localStorage.getItem('turnify_token');
+    try {
+        const res = await fetch(`${API_URL}/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) cargarServicios();
+    } catch (err) { console.error("Error al eliminar:", err); }
+}
+
+// 5. GUARDAR (CREAR O EDITAR)
+async function guardarServicio(e) {
+    e.preventDefault();
+    const token = localStorage.getItem('turnify_token');
+    const proveedorId = localStorage.getItem('proveedor_id');
+    
+    const form = document.getElementById('formServicio');
+    const idExistente = form.getAttribute('data-id');
+
+    const body = {
+    nombre: document.getElementById('nombreServicio').value.trim(),
+    
+    // // 🚩 CAMBIO CLAVE: Ahora lee el valor del select para permitir Manicura u otros
+    categoria: document.getElementById('categoriaServicio').value, 
+    
+    precio: parseFloat(document.getElementById('precioServicio').value) || 0,
+    duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
+    proveedorId: proveedorId, 
+    comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
+    activo: parseInt(document.getElementById('estadoServicio').value) || 0,
+    descripcion: "" 
+};
+
+    const metodo = idExistente ? 'PUT' : 'POST';
+    const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;
+
+    try {
+        const res = await fetch(url, {
+            method: metodo,
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (res.ok) {
+            alert(idExistente ? "¡Servicio actualizado!" : "¡Servicio creado!");
+            cerrarModal();
+            cargarServicios();
+        } else {
+            const errorData = await res.json();
+            console.error("Error de la API:", errorData);
+            alert("Error al guardar: " + (errorData.title || "Verifica los datos"));
+        }
+    } catch (error) { 
+        console.error("Error de red:", error); 
+    }
+}
+
+// UTILIDADES
+function abrirModal() { 
+    const modal = document.getElementById('modalServicio');
+    if(modal) modal.style.display = 'flex'; 
+}
+
+function cerrarModal() { 
+    const modal = document.getElementById('modalServicio');
+    if(modal) {
+        modal.style.display = 'none';
+        document.getElementById('formServicio').reset();
+        document.getElementById('formServicio').removeAttribute('data-id');
+        
+        const titulo = document.querySelector('.modal-header h2');
+        if(titulo) titulo.innerHTML = '<i class="fas fa-plus-circle"></i> Configurar Servicio';
+    }
+}
+
+function logout() {
+    localStorage.clear(); // Limpieza total senior
+    alert("Cerrando sesión...");
+    window.location.href = 'login.html';
+}

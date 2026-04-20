@@ -8,6 +8,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.Diagnostics;
 
 // --- ALIAS DE SWAGGER ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
@@ -21,13 +23,10 @@ using SwaggerLocation = Microsoft.OpenApi.Models.ParameterLocation;
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. CONFIGURACIÓN DE SERVICIOS
-// --- 🚀 CONFIGURACIÓN DE CONTROLADORES CON FLEXIBILIDAD JSON ---
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        // Esto permite que 'rol_id', 'Rol_id' o 'RolId' mapeen correctamente
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-        // Mantiene la política de nombres en CamelCase pero respetando los atributos del modelo
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     });
 
@@ -56,7 +55,7 @@ builder.Services.AddCors(options => {
 builder.Services.AddSwaggerGen(c => {
     c.SwaggerDoc("v1", new SwaggerDocInfo { Title = "Turnify API", Version = "v1" });
     c.CustomSchemaIds(type => type.ToString());
-
+ 
     var securityScheme = new SwaggerSecurityScheme {
         Name = "JWT Authentication",
         Description = "Ingresa: Bearer {tu_token}",
@@ -94,8 +93,18 @@ builder.Services.AddAuthentication(x => {
     };
 });
 
+// --- 🛡️ CONFIGURACIÓN DE BASE DE DATOS CON RESILIENCIA ---
 builder.Services.AddDbContext<TurnifyDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlServerOptionsAction: sqlOptions =>
+        {
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 10,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorNumbersToAdd: null);
+        }
+    ));
 
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IClienteService, ClienteService>();
@@ -103,42 +112,55 @@ builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// --- 🏗️ CONSTRUCCIÓN DE LA APP ---
 var app = builder.Build();
 
-// 3. MIDDLEWARES (EL ORDEN IMPORTA)
-app.UseRequestLocalization(localizationOptions); 
-app.UseMiddleware<ExceptionMiddleware>();
+// 3. MIDDLEWARES (ORDEN SENIOR OBLIGATORIO)
 
+// --- 🛡️ ADICIÓN: ACTIVAR SWAGGER ---
 app.UseSwagger();
 app.UseSwaggerUI(c => {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Turnify API v1");
-    c.RoutePrefix = "swagger";
+    c.RoutePrefix = "swagger"; // Para entrar en localhost:5000/swagger
 });
 
-app.UseCors("AllowTurnify"); 
-app.UseAuthentication(); 
+app.UseRequestLocalization(localizationOptions); 
+app.UseMiddleware<ExceptionMiddleware>();
+
+// --- 🛡️ ADICIÓN: ACTIVAR CORS ---
+app.UseCors("AllowTurnify");
+
+// --- 🛡️ BLOQUE DE ARCHIVOS ESTÁTICOS BLINDADO (Inteligente) ---
+var frontendPath = Path.Combine(builder.Environment.ContentRootPath, "frontend", "dist");
+
+Console.WriteLine($"--- 🔍 RUTA BUSCADA: {frontendPath} ---");
+
+if (Directory.Exists(frontendPath))
+{
+    Console.WriteLine("--- ✅ CARPETA ENCONTRADA. ACTIVANDO FRONTEND ---");
+    app.UseDefaultFiles(new DefaultFilesOptions { 
+        FileProvider = new PhysicalFileProvider(frontendPath) 
+    });
+    app.UseStaticFiles(new StaticFileOptions { 
+        FileProvider = new PhysicalFileProvider(frontendPath) 
+    });
+}
+else
+{
+    string backupPath = Path.GetFullPath("frontend/dist");
+    Console.WriteLine($"--- ❌ NO ENCONTRADA. INTENTANDO BACKUP: {backupPath} ---");
+    
+    if (Directory.Exists(backupPath)) {
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = new PhysicalFileProvider(backupPath) });
+    }
+}
+
+// --- 🛡️ ADICIÓN: SEGURIDAD Y RUTEO (ESTO ES LO QUE TE FALTABA) ---
+app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
-app.MapGet("/", () => "Turnify API corriendo OK con Seguridad JWT y Multidioma 🌎");
-
-// 4. VERIFICACIÓN DE BASE DE DATOS
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    try
-    {
-        var context = services.GetRequiredService<TurnifyDbContext>();
-        if (context.Database.CanConnect()) 
-            Console.WriteLine("--- ✅ la conexion es un exito mi perro ---");
-        else 
-        {
-
-            Console.WriteLine("--- 📦 DB creada ---");
-        }
-    }
-    catch (Exception ex) { Console.WriteLine($"--- ❌ Error DB: {ex.Message} ---"); }
-}
+// 🏁 ESTA LÍNEA ES LA QUE MATA EL 404
+app.MapControllers(); 
 
 app.Run();
 

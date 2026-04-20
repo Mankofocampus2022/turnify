@@ -1,28 +1,25 @@
 const API_URL = 'http://localhost:5000/api/Servicios';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Sincronización de Identidad (Para que no importe cómo se llame la llave)
+    // 1. Sincronización de Identidad
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
     const rol = localStorage.getItem('usuario_rol') || "";
     const proveedorId = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
     
-    // Si no hay rastro de token, de patitas a la calle
     if (!token) {
         window.location.href = 'login.html';
         return;
     }
 
-    // Guardamos los nombres normalizados para que el resto del script no sufra
     localStorage.setItem('turnify_token', token);
     if (proveedorId) localStorage.setItem('proveedor_id', proveedorId);
 
-    // 2. VALIDACIÓN FLEXIBLE (Aquí estaba el fallo)
+    // 2. VALIDACIÓN FLEXIBLE
     const rolNormalizado = rol.toUpperCase();
     const esAdmin = rolNormalizado.includes("ADMIN") || 
                     rolNormalizado.includes("6A7FA68F") || 
                     rolNormalizado.includes("6DE2A606");
 
-    // Solo pedimos proveedor_id si NO eres Admin
     if (!esAdmin && (!proveedorId || proveedorId === "null")) {
         console.error("🚫 Barbero sin ID de local. Redirigiendo...");
         alert("Tu perfil de barbero no está configurado. Por favor, inicia sesión.");
@@ -43,7 +40,6 @@ async function cargarServicios() {
     const proveedorId = localStorage.getItem('proveedor_id');
     const rol = localStorage.getItem('usuario_rol');
 
-    // Normalizamos el rol a Mayúsculas para la comparación
     const rolNormalizado = (rol || "").toUpperCase();
 
     const url = (rolNormalizado.includes("ADMIN") || rolNormalizado.includes("6A7FA68F") || rolNormalizado.includes("6DE2A606")) 
@@ -56,6 +52,8 @@ async function cargarServicios() {
         });
 
         const datos = await response.json();
+        console.log("📡 Datos crudos del API:", datos); // Para debug visual en consola
+
         if (response.ok && Array.isArray(datos)) {
             renderizarTabla(datos);
         }
@@ -72,38 +70,47 @@ function renderizarTabla(servicios) {
     tabla.innerHTML = '';
 
     servicios.forEach(s => {
-        const categoria = s.categoria || 'Barbería';
+        // 🛡️ NORMALIZACIÓN DE PROPIEDADES (PascalCase o camelCase)
+        const id = s.id || s.Id || '';
+        const nombre = s.nombre || s.Nombre || 'Sin nombre';
+        const precio = s.precio || s.Precio || 0;
+        const duracionMinutos = s.duracionMinutos || s.DuracionMinutos || 0;
+        const categoria = s.categoria || s.Categoria || 'Barbería';
+        const activo = (s.activo !== undefined) ? s.activo : s.Activo;
+        
         const catClass = categoria === 'Manicura' ? 'cat-manicura' : 'cat-barberia';
         
         let estadoTexto = 'INACTIVO';
         let estadoClase = 'badge-danger';
 
-        if (s.activo == 1) {
+        // Manejo flexible de estados (bool o int)
+        if (activo == 1 || activo === true) {
             estadoTexto = 'ACTIVO';
             estadoClase = 'badge-success';
-        } else if (s.activo == 2) {
+        } else if (activo == 2) {
             estadoTexto = 'EN PROCESO';
             estadoClase = 'badge-warning';
         }
 
         const estadoBadge = `<span class="badge ${estadoClase}">${estadoTexto}</span>`;
+        const idCorto = id ? id.toString().substring(0,8) : '...';
 
         tabla.innerHTML += `
             <tr>
                 <td>
-                    <div style="font-weight: bold; font-size: 1.1em; color: white;">${s.nombre}</div>
-                    <div style="color: #48c1b5; font-size: 0.85em;">ID: ${s.id.substring(0,8)}...</div>
+                    <div style="font-weight: bold; font-size: 1.1em; color: white;">${nombre}</div>
+                    <div style="color: #48c1b5; font-size: 0.85em;">ID: ${idCorto}...</div>
                 </td>
                 <td><span class="role-pill ${catClass}">${categoria}</span></td>
-                <td style="font-weight: 600; color: white;">$${s.precio.toLocaleString()}</td>
-                <td style="color: #e2e8f0;"><i class="far fa-clock"></i> ${s.duracionMinutos} min</td>
+                <td style="font-weight: 600; color: white;">$${precio.toLocaleString()}</td>
+                <td style="color: #e2e8f0;"><i class="far fa-clock"></i> ${duracionMinutos} min</td>
                 <td style="text-align: center;">${estadoBadge}</td>
                 <td style="text-align: center;">
                     <div style="display: flex; justify-content: center; gap: 8px;">
-                        <button class="btn-edit" onclick="editarServicio('${s.id}')">
+                        <button class="btn-edit" onclick="editarServicio('${id}')">
                             <i class="fas fa-pen"></i> Editar
                         </button>
-                        <button class="btn-action btn-bloquear" style="padding: 8px 12px;" onclick="eliminarServicio('${s.id}')">
+                        <button class="btn-action btn-bloquear" style="padding: 8px 12px;" onclick="eliminarServicio('${id}')">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -123,13 +130,15 @@ async function editarServicio(id) {
         const s = await res.json();
 
         if (res.ok) {
-            document.getElementById('nombreServicio').value = s.nombre;
-            document.getElementById('precioServicio').value = s.precio;
-            document.getElementById('duracionServicio').value = s.duracionMinutos;
-            document.getElementById('comisionServicio').value = s.comisionPorcentaje;
-            document.getElementById('estadoServicio').value = s.activo;
+            // Mapeo flexible para el formulario
+            document.getElementById('nombreServicio').value = s.nombre || s.Nombre || '';
+            document.getElementById('precioServicio').value = s.precio || s.Precio || 0;
+            document.getElementById('duracionServicio').value = s.duracionMinutos || s.DuracionMinutos || 0;
+            document.getElementById('comisionServicio').value = s.comisionPorcentaje || s.ComisionPorcentaje || 0;
+            document.getElementById('estadoServicio').value = (s.activo !== undefined) ? s.activo : (s.Activo ? 1 : 0);
             
-            document.getElementById('formServicio').setAttribute('data-id', s.id);
+            const realId = s.id || s.Id;
+            document.getElementById('formServicio').setAttribute('data-id', realId);
             
             abrirModal();
             const titulo = document.querySelector('.modal-header h2');
@@ -163,18 +172,15 @@ async function guardarServicio(e) {
     const idExistente = form.getAttribute('data-id');
 
     const body = {
-    nombre: document.getElementById('nombreServicio').value.trim(),
-    
-    // // 🚩 CAMBIO CLAVE: Ahora lee el valor del select para permitir Manicura u otros
-    categoria: document.getElementById('categoriaServicio').value, 
-    
-    precio: parseFloat(document.getElementById('precioServicio').value) || 0,
-    duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
-    proveedorId: proveedorId, 
-    comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
-    activo: parseInt(document.getElementById('estadoServicio').value) || 0,
-    descripcion: "" 
-};
+        nombre: document.getElementById('nombreServicio').value.trim(),
+        categoria: document.getElementById('categoriaServicio').value, 
+        precio: parseFloat(document.getElementById('precioServicio').value) || 0,
+        duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
+        proveedorId: proveedorId, 
+        comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
+        activo: parseInt(document.getElementById('estadoServicio').value) || 0,
+        descripcion: "" 
+    };
 
     const metodo = idExistente ? 'PUT' : 'POST';
     const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;
@@ -222,7 +228,7 @@ function cerrarModal() {
 }
 
 function logout() {
-    localStorage.clear(); // Limpieza total senior
+    localStorage.clear();
     alert("Cerrando sesión...");
     window.location.href = 'login.html';
 }

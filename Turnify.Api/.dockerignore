@@ -1,0 +1,10 @@
+# Ignorar la carpeta de datos de SQL (Evita el error de permisos)
+sql_data/
+
+# Ignorar carpetas pesadas de desarrollo
+bin/
+obj/
+node_modules/
+.git/
+.vscode/
+*.user
