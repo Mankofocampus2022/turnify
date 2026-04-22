@@ -4,9 +4,27 @@
     <meta charset="UTF-8">
     <title>Turnify | Panel de Administración</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="css-styles.css"> 
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"> 
     <link rel="stylesheet" href="css-dashboard.css">
+    <style>
+        .filter-tabs { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-filter {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(72, 193, 181, 0.3);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+        .btn-filter.active {
+            background: #48c1b5;
+            color: #1b3d5f;
+            font-weight: bold;
+        }
+        .btn-filter:hover { background: rgba(72, 193, 181, 0.2); }
+    </style>
 </head>
 <body>
 
@@ -24,13 +42,13 @@
             <a href="usuarios.html" class="nav-item" id="nav-usuarios">
                 <i class="fas fa-users"></i> Usuarios
             </a>
-            <a href="servicios.html" class="nav-item">
+            <a href="servicios.html" class="nav-item" id="nav-servicios">
                 <i class="fas fa-cut"></i> Servicios
             </a>
-            <a href="reportes.html" class="nav-item">
+            <a href="reportes.html" class="nav-item" id="nav-reportes">
                 <i class="fas fa-file-invoice-dollar"></i> Reportes
             </a>
-            <a href="configuracion.html" class="nav-item">
+            <a href="configuracion.html" class="nav-item" id="nav-config">
                 <i class="fas fa-cog"></i> Configuración
             </a>
         </nav>
@@ -55,38 +73,57 @@
 
         <section class="stats-grid">
             <div class="stat-card">
-                <h3>Citas Hoy</h3>
-                <p id="countCitas" class="number">0</p>
-                <span id="citasTrend" class="trend">Hoy</span>
+                <h3>Citas Agendadas</h3>
+                <p id="totalCitas" class="number">0</p>
+                <span id="citasTrend" class="trend">En el periodo</span>
             </div>
             <div class="stat-card">
                 <h3>Nuevos Clientes</h3>
                 <p id="nuevosClientes" class="number">0</p>
             </div>
             <div class="stat-card primary">
-                <h3>Ingresos Hoy</h3>
-                <p id="countGanancias" class="number">$0</p>
+                <h3>Ingresos Proyectados</h3>
+                <p id="ingresosMes" class="number">$0</p>
                 <span class="currency">COP</span>
             </div>
         </section>
 
         <section class="content-section">
-            <div class="section-header">
-                <h3 id="sectionTitle">Agenda de Hoy</h3>
-                <div id="extraActions">
-                    <button class="btn-sm" onclick="window.location.reload()">Refrescar</button>
+            <div class="section-header" style="flex-direction: column; align-items: flex-start; gap: 15px;">
+                <h3 id="sectionTitle">Agenda de Citas</h3>
+                <div class="filter-tabs">
+                    <button class="btn-filter active" onclick="cambiarPeriodo('hoy', this)">Hoy</button>
+                    <button class="btn-filter" onclick="cambiarPeriodo('mañana', this)">Mañana</button>
+                    <button class="btn-filter" onclick="cambiarPeriodo('semana', this)">Esta Semana</button>
+                    <button class="btn-filter" onclick="cambiarPeriodo('mes', this)">Este Mes</button>
                 </div>
             </div>
 
             <div id="listaCitasHoy" class="appointments-container">
-                <div style="text-align: center; padding: 20px; color: white;">
-                    <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
-                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>HORA</th>
+                            <th>FECHA</th>
+                            <th>CLIENTE</th>
+                            <th>SERVICIO</th>
+                            <th>ESTADO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="turnosTable">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 20px; color: white;">
+                                <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </section>
     </main>
 </div>
 
+<script src="js/auth-global.js"></script> 
 <script src="js/dashboard.js"></script>
 </body>
 </html>

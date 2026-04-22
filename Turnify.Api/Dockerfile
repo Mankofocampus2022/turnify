@@ -23,10 +23,10 @@ WORKDIR /app
 # 1. Copiamos los binarios publicados del API
 COPY --from=build /app/out .
 
-# 2. 🛡️ EL BLINDAJE: Copiamos explícitamente la carpeta del frontend.
-# Sin esta línea, el servidor de .NET no encuentra el login.html y tira 404.
-# Copiamos desde la etapa 'build' hacia la carpeta 'frontend' del contenedor final.
-COPY --from=build /app/frontend ./frontend
+# 2. 🛡️ EL BLINDAJE: Copiamos el CONTENIDO de dist directamente a frontend.
+# Modificamos la ruta de origen para que login.html no quede "escondido" en frontend/dist/
+# Ahora quedará directamente en /app/frontend/
+COPY --from=build /app/frontend/dist ./frontend
 
 # Exponemos el puerto en el que corre el contenedor (8080 por defecto en .NET 8)
 EXPOSE 8080

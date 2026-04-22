@@ -1,62 +1,65 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Turnify | Registro</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="css-registro.css?v=2.0">
+    <meta charset="UTF-8">
+    <title>Turnify | Crear Cuenta</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css-registro.css?v=2.1">
 </head>
-
 <body>
-
 <div class="register-wrapper">
-  
-  <div class="register-card">
+    <div class="register-card">
+        <div class="register-header">
+            <h2>Únete a Turnify</h2>
+            <div class="role-selector">
+                <button type="button" id="btnSoyCliente" class="active" onclick="cambiarRol('CLIENTE')">Soy Cliente</button>
+                <button type="button" id="btnSoyBarbero" onclick="cambiarRol('BARBERO')">Soy Barbero</button>
+            </div>
+        </div>
 
-    <div class="register-header">
-      <h2>Crear cuenta</h2>
-      <p>Regístrate para reservar citas fácilmente</p>
+        <form id="formRegistroCliente" class="form-grid">
+            <div class="input-group full-width">
+                <label>Nombre completo</label>
+                <input type="text" id="regNombre" placeholder="Ej: Darwin Ocampo" required>
+            </div>
+
+            <div class="input-group full-width">
+                <label>Correo electrónico</label>
+                <input type="email" id="regEmail" placeholder="correo@ejemplo.com" required>
+            </div>
+
+            <div class="input-group full-width">
+                <label>Teléfono</label>
+                <input type="tel" id="regTelefono" placeholder="3001234567" required>
+            </div>
+
+            <div id="groupNegocio" class="input-group full-width" style="display: none;">
+                <label>Nombre de tu Barbería / Negocio</label>
+                <input type="text" id="regNegocio" placeholder="Ej: Barbería El Don">
+            </div>
+
+            <div class="input-group">
+                <label>Contraseña</label>
+                <input type="password" id="regPassword" placeholder="••••••••" required>
+            </div>
+
+            <div class="input-group">
+                <label>Confirmar</label>
+                <input type="password" id="regConfirmPassword" placeholder="••••••••" required>
+            </div>
+
+            <div class="input-group full-width">
+                <button type="submit" id="btnSubmit" class="btn-register">
+                    <span id="btnText">Registrarme como Cliente</span>
+                </button>
+            </div>
+        </form>
+
+        <div class="register-footer">
+            <p>¿Ya tienes cuenta? <a href="login.html">Inicia sesión</a></p>
+        </div>
     </div>
-
-    <form class="form-grid" action="cliente-reserva.html" method="get">
-
-      <div class="input-group full-width">
-        <label>Nombre completo</label>
-        <input type="text" placeholder="Tu nombre" required>
-      </div>
-
-      <div class="input-group full-width">
-        <label>Correo electrónico</label>
-        <input type="email" placeholder="correo@ejemplo.com" required>
-      </div>
-
-      <div class="input-group full-width">
-        <label>Teléfono</label>
-        <input type="tel" placeholder="3001234567" required>
-      </div>
-
-      <div class="input-group full-width">
-        <label>Contraseña</label>
-        <input type="password" placeholder="••••••••" required>
-      </div>
-
-      <div class="input-group full-width">
-        <label>Confirmar contraseña</label>
-        <input type="password" placeholder="••••••••" required>
-      </div>
-
-      <div class="input-group full-width">
-        <button type="submit" class="btn-register">Crear cuenta</button>
-      </div>
-
-    </form>
-
-    <div class="register-footer">
-      <p>¿Ya tienes cuenta? <a href="login.html">Inicia sesión</a></p>
-    </div>
-
-  </div>
 </div>
-
+<script src="js/registro-clientes.js"></script>
 </body>
 </html>

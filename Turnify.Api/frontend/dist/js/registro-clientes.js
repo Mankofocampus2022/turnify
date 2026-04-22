@@ -1,87 +1,98 @@
-// 1. VARIABLES GLOBALES Y CONFIGURACIÓN
-let rolActual = 'CLIENTE';
+/* ============================================================
+   TURNIFY - MOTOR DE REGISTRO INTELIGENTE (Versión Senior)
+   ============================================================ */
 
-// GUIDs reales de tu base de datos (Sincronizados con SQL Server)
-const GUID_CLIENTE = "56992f75-6420-4d55-a5f9-9223248c50d7";
-const GUID_PROVEEDOR = "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7";
+// 1. CONFIGURACIÓN DE ROLES (GUIDs de tu base de datos SQL Server)
+const ROLES = {
+    CLIENTE: "56992f75-6420-4d55-a5f9-9223248c50d7",
+    BARBERO: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7" // Rol de Proveedor/Admin
+};
+
+let currentRole = 'CLIENTE';
 
 /**
- * Cambia visualmente el formulario según el rol seleccionado
+ * Función para alternar entre Cliente y Barbero en la UI
  */
 function cambiarRol(rol) {
-    rolActual = rol;
+    currentRole = rol;
+    
     const groupNegocio = document.getElementById('groupNegocio');
+    const inputNegocio = document.getElementById('regNegocio');
     const btnText = document.getElementById('btnText');
     const btnCliente = document.getElementById('btnSoyCliente');
     const btnBarbero = document.getElementById('btnSoyBarbero');
 
     if (rol === 'BARBERO') {
         groupNegocio.style.display = 'block';
-        document.getElementById('regNegocio').required = true;
+        inputNegocio.required = true;
         btnText.innerText = "Registrarme como Barbero";
         btnBarbero.classList.add('active');
         btnCliente.classList.remove('active');
     } else {
         groupNegocio.style.display = 'none';
-        document.getElementById('regNegocio').required = false;
+        inputNegocio.required = false;
         btnText.innerText = "Registrarme como Cliente";
         btnCliente.classList.add('active');
         btnBarbero.classList.remove('active');
     }
 }
 
-// 2. EVENTO DE ENVÍO DEL FORMULARIO
+/**
+ * Manejador principal del Registro
+ */
 document.getElementById('formRegistroCliente').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = document.getElementById('btnSubmit');
-    
-    // Bloqueo de seguridad para evitar múltiples clics
-    btn.disabled = true;
-    btn.innerText = "Procesando...";
 
-    // Captura de valores con la "n" corregida en getElementById
-    const pass = document.getElementById('regPassword').value;
+    const btnSubmit = document.getElementById('btnSubmit');
+    const password = document.getElementById('regPassword').value;
     const confirm = document.getElementById('regConfirmPassword').value;
 
-    // Validación de contraseñas
-    if (pass !== confirm) {
-        alert("Las contraseñas no coinciden, mi perro. Revísalas bien.");
-        btn.disabled = false;
-        btn.innerText = rolActual === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Barbero";
+    // 🛡️ VALIDACIÓN SENIOR: Match de Password
+    if (password !== confirm) {
+        alert("⚠️ Las contraseñas no coinciden. Por favor, verifica.");
         return;
     }
 
-    // Construcción del objeto que va para la API
-    const body = {
-        nombre: document.getElementById('regNombre').value,
-        email: document.getElementById('regEmail').value,
-        password: pass,
-        telefono: document.getElementById('regTelefono').value,
-        rolId: rolActual === 'CLIENTE' ? GUID_CLIENTE : GUID_PROVEEDOR,
-        nombreComercial: rolActual === 'BARBERO' ? document.getElementById('regNegocio').value : null
+    // 🛡️ BLOQUEO UX: Evitar doble post
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = "Procesando...";
+
+    // 📦 MAPEO AL DTO DE C# (Respetando PropertyNames)
+    const registroData = {
+        nombre: document.getElementById('regNombre').value.trim(),
+        email: document.getElementById('regEmail').value.trim(),
+        password: password,
+        rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.BARBERO,
+        telefono: document.getElementById('regTelefono').value.trim(),
+        nombreComercial: currentRole === 'BARBERO' ? document.getElementById('regNegocio').value.trim() : null
     };
 
     try {
-        // Petición al controlador de Usuarios
         const response = await fetch('http://localhost:5000/api/Usuarios/registrar', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(registroData)
         });
 
+        const result = await response.json();
+
         if (response.ok) {
-            alert("¡Registro exitoso! Ya puedes entrar al sistema.");
-            window.location.href = 'login.html';
+            alert("🚀 ¡Bienvenido a Turnify! Tu cuenta ha sido creada exitosamente.");
+            window.location.href = 'login.html'; // Redirección al login
         } else {
-            const error = await response.json();
-            alert("Error: " + (error.message || "No se pudo crear la cuenta. Intenta con otro correo."));
-            btn.disabled = false;
-            btn.innerText = rolActual === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Barbero";
+            // Manejo de errores controlados (Usuario ya existe, etc.)
+            alert("❌ Error: " + (result.message || "No se pudo completar el registro."));
+            btnSubmit.disabled = false;
+            btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Barbero";
         }
-    } catch (err) {
-        console.error("Fuego en la API:", err);
-        alert("Parece que la API está caída o el puerto 5000 ocupado.");
-        btn.disabled = false;
-        btn.innerText = "Reintentar Registro";
+
+    } catch (error) {
+        console.error("🚨 Error de conexión:", error);
+        alert("🔌 Error de red: No se pudo conectar con el servidor. Verifica que la API esté corriendo.");
+        btnSubmit.disabled = false;
+        btnSubmit.innerText = "Reintentar Registro";
     }
 });

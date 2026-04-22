@@ -1,238 +1,268 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. Puente de Seguridad (Versión Blindada)
-    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
-    let proveedorId = localStorage.getItem('proveedorId') || localStorage.getItem('proveedor_id');
+/* =========================================
+   TURNIFY - LÓGICA MAESTRA (DASHBOARD + CONFIG)
+   ========================================= */
 
-    // 🚩 VALIDACIÓN SENIOR: Evitamos que las cadenas "null" o "undefined" pasen como IDs
+document.addEventListener('DOMContentLoaded', () => {
+    // --- 1. PUENTE DE SEGURIDAD (Versión Blindada) ---
+    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+    const userStr = localStorage.getItem('user');
+    let proveedorId = localStorage.getItem('proveedorId') || localStorage.getItem('proveedor_id');
+    
+    // Si no está el ID directo, lo extraemos del objeto usuario
+    if (!proveedorId && userStr) {
+        try {
+            const userObj = JSON.parse(userStr);
+            proveedorId = userObj.proveedorId || userObj.id; 
+        } catch (e) { console.error("❌ Error al parsear objeto usuario"); }
+    }
+
+    // Validación contra valores nulos o corruptos
     if (proveedorId === "null" || proveedorId === "undefined" || !proveedorId) {
         proveedorId = null;
     }
 
-    // Si no hay token o el ID no parece un GUID (mínimo 30 caracteres), mandamos al login
-    if (!token || !proveedorId || proveedorId.length < 30) {
-        console.error("🚫 Sesión inválida o ID corrupto. Limpiando...");
-        localStorage.clear(); // Limpiamos todo para entrar limpio la próxima vez
-        window.location.href = 'login.html';
+    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
+    const esSuperAdmin = rol.includes("ADMIN");
+
+    if (!token || (!proveedorId && !esSuperAdmin)) {
+        console.error("🚫 Sesión inválida. Redirigiendo...");
+        if(!token) {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
         return;
     }
 
-    // 🚩 LOG DE DEPURACIÓN: Si ves este ID en la consola, es que vamos por buen camino
-    console.log("✅ Sesión activa para el proveedor:", proveedorId);
+    console.log("✅ Sesión activa para:", proveedorId);
 
-    // 2. GESTIÓN DE TABS (Interactividad del Menú)
+    // --- 2. SALUDO PERSONALIZADO (Recuadro del Logo) ---
+    let nombreFinal = "Darwin"; 
+    if (userStr) {
+        try {
+            const userObj = JSON.parse(userStr);
+            nombreFinal = userObj.nombre || userObj.Nombre || nombreFinal;
+        } catch (e) { console.error("Error al cargar nombre"); }
+    }
+
+    const welcomeText = document.getElementById('welcomeText');
+    if (welcomeText) {
+        // Estilo turquesa Heineken para tu nombre
+        welcomeText.innerHTML = `¡Qué más, <span style="color: #48c1b5;">${nombreFinal}</span>!`;
+    }
+
+    // --- 3. GESTIÓN DE TABS (Si estás en Configuración) ---
     const menuItems = document.querySelectorAll('.config-menu-item');
     const sections = document.querySelectorAll('.config-content');
 
-    menuItems.forEach((item, index) => {
-        item.addEventListener('click', () => {
-            // Estética
-            menuItems.forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-
-            // Lógica: Ocultar todas y mostrar la seleccionada
-            sections.forEach(s => s.style.display = 'none');
-            
-            // Usamos una lógica más limpia para mostrar secciones
-            const sectionIds = ['content-perfil', 'content-horarios', 'content-pagos', 'content-notificaciones'];
-            const targetId = sectionIds[index];
-            
-            if(targetId) {
-                document.getElementById(targetId).style.display = 'block';
-                // 🚩 MEJORA: Ahora cargarHorarios es asíncrona para traer datos reales
-                if(targetId === 'content-horarios') cargarHorarios();
-            }
+    if (menuItems.length > 0) {
+        menuItems.forEach((item, index) => {
+            item.addEventListener('click', () => {
+                menuItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                sections.forEach(s => s.style.display = 'none');
+                
+                const sectionIds = ['content-perfil', 'content-horarios', 'content-pagos', 'content-notificaciones'];
+                const targetId = sectionIds[index];
+                
+                if(targetId) {
+                    const targetElement = document.getElementById(targetId);
+                    if(targetElement) {
+                        targetElement.style.display = 'block';
+                        if(targetId === 'content-horarios') cargarHorarios();
+                    }
+                }
+            });
         });
-    });
+    }
 
-    // 3. Cargar datos iniciales
-    cargarDatosConfig(proveedorId, token);
+    // --- 4. CARGA INICIAL DE DATOS ---
+    // Si existe el ID de proveedor, cargamos su perfil
+    if(proveedorId) {
+        cargarDatosConfig(proveedorId, token);
+    }
 
-    // 4. Evento para guardar Perfil
+    // Si existen botones de filtro, disparamos la agenda de 'Hoy'
+    const btnHoy = document.querySelector(".btn-filter");
+    if(btnHoy) cambiarPeriodo('hoy', btnHoy);
+
+    // Si existe el formulario de perfil, activamos el evento de guardado
     const formPerfil = document.getElementById('formConfigPerfil');
     if(formPerfil) {
         formPerfil.addEventListener('submit', (e) => guardarConfig(e, proveedorId, token));
     }
 });
 
-// --- FUNCIONES DE CARGA Y GUARDADO ---
+/* =========================================
+   SECCIÓN: AGENDA Y RENDERIZADO
+   ========================================= */
+
+async function cambiarPeriodo(periodo, boton) {
+    if (!boton) return;
+    document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+    boton.classList.add('active');
+
+    const titulos = { 'hoy': 'Agenda de Hoy', 'mañana': 'Agenda de Mañana', 'semana': 'Agenda de la Semana', 'mes': 'Agenda del Mes' };
+    const sectionTitle = document.getElementById('sectionTitle');
+    if (sectionTitle) sectionTitle.innerText = titulos[periodo];
+
+    let inicio = new Date();
+    let fin = new Date();
+    if (periodo === 'mañana') { inicio.setDate(inicio.getDate() + 1); fin.setDate(fin.getDate() + 1); }
+    else if (periodo === 'semana') { fin.setDate(fin.getDate() + 7); }
+    else if (periodo === 'mes') { fin.setMonth(fin.getMonth() + 1); }
+
+    const startStr = inicio.toISOString().split('T')[0];
+    const endStr = fin.toISOString().split('T')[0];
+    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+
+    try {
+        const response = await fetch(`http://localhost:5000/api/Citas/rango?inicio=${startStr}&fin=${endStr}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const citas = await response.json();
+            renderizarTablaDashboard(citas);
+        }
+    } catch (error) { console.error("🔥 Error agenda:", error); }
+}
+
+function renderizarTablaDashboard(citas) {
+    const tabla = document.getElementById('turnosTable');
+    if (!tabla || !citas) return;
+
+    if (citas.length === 0) {
+        tabla.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">No hay citas agendadas.</td></tr>';
+        return;
+    }
+
+    // 🚩 ORDEN SOLICITADO: HORA | FECHA | CLIENTE | SERVICIO | ESTADO
+    tabla.innerHTML = citas.map(c => {
+        const estado = (c.estado || "pendiente").toLowerCase();
+        const badgeClass = getEstadoClass(estado);
+        const fechaObj = new Date(c.fecha + 'T00:00:00');
+        const fechaFormateada = fechaObj.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+
+        return `
+            <tr>
+                <td style="color: #48c1b5; font-weight: bold;"><i class="far fa-clock"></i> ${c.hora}</td>
+                <td style="opacity: 0.8;">${fechaFormateada}</td>
+                <td><strong>${c.clienteNombre || 'Sin nombre'}</strong></td>
+                <td>${c.servicioNombre || 'Servicio'}</td>
+                <td><span class="status-pill ${badgeClass}">${estado}</span></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/* =========================================
+   SECCIÓN: PERFIL Y HORARIOS
+   ========================================= */
 
 async function cargarDatosConfig(proveedorId, token) {
     try {
         const response = await fetch(`http://localhost:5000/api/Proveedores/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-
         if (response.ok) {
             const data = await response.json();
-            console.log("🏢 Datos del negocio cargados:", data);
-            
-            // Mapeo con fallback por si los nombres vienen en minúscula desde el JSON
-            document.getElementById('negocioNombre').value = data.nombreComercial || data.nombre || '';
-            document.getElementById('negocioEmail').value = data.email || '';
-            document.getElementById('negocioTelefono').value = data.telefono || '';
-            document.getElementById('negocioDireccion').value = data.direccion || '';
-            
-            // 🚩 AGREGADO: Cargamos el Tipo de negocio (Barbería/Manicura) si el select existe
-            if(document.getElementById('negocioTipo')) {
-                document.getElementById('negocioTipo').value = data.tipo || 'Barbería';
-            }
+            if(document.getElementById('negocioNombre')) document.getElementById('negocioNombre').value = data.nombreComercial || data.nombre || '';
+            if(document.getElementById('negocioEmail')) document.getElementById('negocioEmail').value = data.email || '';
+            if(document.getElementById('negocioTelefono')) document.getElementById('negocioTelefono').value = data.telefono || '';
+            if(document.getElementById('negocioDireccion')) document.getElementById('negocioDireccion').value = data.direccion || '';
+            if(document.getElementById('negocioTipo')) document.getElementById('negocioTipo').value = data.tipo || 'Barbería';
         }
-    } catch (error) {
-        console.error("🔥 Error al cargar configuración:", error);
-    }
+    } catch (error) { console.error(error); }
 }
 
 async function guardarConfig(e, proveedorId, token) {
     e.preventDefault();
-    
     const btn = e.target.querySelector('button');
     const originalHTML = btn.innerHTML;
-    
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
 
-    // 5. El BODY exacto para el DTO de C#
     const body = {
-        Id: proveedorId, // "I" Mayúscula para el Guid
+        Id: proveedorId,
         NombreComercial: document.getElementById('negocioNombre').value.trim(),
         Direccion: document.getElementById('negocioDireccion').value.trim(),
-        // 🚩 CORRECCIÓN: Leemos el valor del select para que no sea solo "Barbería" fijo
         Tipo: document.getElementById('negocioTipo') ? document.getElementById('negocioTipo').value : "Barbería" 
     };
 
     try {
-        const url = `http://localhost:5000/api/Proveedores/${proveedorId}`;
-
-        const response = await fetch(url, {
+        const response = await fetch(`http://localhost:5000/api/Proveedores/${proveedorId}`, {
             method: 'PUT', 
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(body)
         });
-
-        if (response.ok) {
-            alert("✅ ¡Perfil actualizado con éxito, mi perro!");
-            // Sincronizamos el nombre para el Dashboard
-            localStorage.setItem('adminName', body.NombreComercial);
-        } else {
-            const err = await response.json();
-            alert("❌ Error: " + (err.message || "No se pudo actualizar"));
-        }
-    } catch (error) {
-        console.error("🔥 Error de red:", error);
-        alert("🚀 Servidor no disponible o error de red.");
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-    }
+        if (response.ok) alert("✅ ¡Perfil actualizado, mi perro!");
+    } catch (error) { alert("🚀 Error de conexión."); }
+    finally { btn.disabled = false; btn.innerHTML = originalHTML; }
 }
 
 async function cargarHorarios() {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
     const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
     const contenedor = document.getElementById('lista-horarios');
+    if(!contenedor) return;
     
     try {
-        // 🚩 MEJORA CRÍTICA: Primero le preguntamos a la API qué horarios ya tiene guardados
         const response = await fetch('http://localhost:5000/api/Horarios/mi-semana', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-
         let horariosGuardados = [];
-        if (response.ok) {
-            horariosGuardados = await response.json();
-        }
+        if (response.ok) horariosGuardados = await response.json();
 
-        // Renderizamos la interfaz de los 7 días con los datos reales
         contenedor.innerHTML = dias.map((dia, i) => {
-            // Buscamos si existe un registro para este día (0-6)
             const h = horariosGuardados.find(x => x.diaSemana === i);
-            
-            // Si existe, usamos sus horas. Si no, ponemos las de defecto.
             const open = h ? h.horaApertura.slice(0, 5) : "08:00";
             const close = h ? h.horaCierre.slice(0, 5) : "20:00";
             const isClosed = h && h.horaApertura === "00:00:00" && h.horaCierre === "00:00:00";
-
             return `
                 <div class="horario-row" style="display: flex; gap: 15px; margin-bottom: 15px; align-items: center; background: #122940; padding: 12px; border-radius: 10px; border: 1px solid rgba(72,193,181,0.2);">
                     <div style="width: 100px; color: #48c1b5;"><strong>${dia}</strong></div>
-                    <input type="time" id="open-${i}" value="${open}" class="form-input" style="background: #1b3d5f; color: white; border: none; border-radius: 5px; padding: 5px;">
+                    <input type="time" id="open-${i}" value="${open}" style="background: #1b3d5f; color: white; border: none; padding: 5px;">
                     <span style="color: white;">a</span>
-                    <input type="time" id="close-${i}" value="${close}" class="form-input" style="background: #1b3d5f; color: white; border: none; border-radius: 5px; padding: 5px;">
-                    <label style="color: #e94560; cursor: pointer;">
-                        <input type="checkbox" id="closed-${i}" ${isClosed ? 'checked' : ''}> Cerrado
-                    </label>
-                </div>
-            `;
+                    <input type="time" id="close-${i}" value="${close}" style="background: #1b3d5f; color: white; border: none; padding: 5px;">
+                    <label style="color: #e94560; cursor: pointer;"><input type="checkbox" id="closed-${i}" ${isClosed ? 'checked' : ''}> Cerrado</label>
+                </div>`;
         }).join('');
-
-        // Agregamos el evento al botón de guardar horarios (que está en el HTML)
         const btnSaveH = document.querySelector('#content-horarios .btn-save');
         if(btnSaveH) btnSaveH.onclick = guardarTodosLosHorarios;
-
-    } catch (error) {
-        console.error("🔥 Error al cargar horarios de la API:", error);
-    }
+    } catch (error) { console.error(error); }
 }
 
 async function guardarTodosLosHorarios() {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
     const horarios = [];
-
     for (let i = 0; i < 7; i++) {
-        const estaCerrado = document.getElementById(`closed-${i}`).checked;
-        horarios.push({
-            DiaSemana: i,
-            HoraApertura: estaCerrado ? "00:00" : document.getElementById(`open-${i}`).value,
-            HoraCierre: estaCerrado ? "00:00" : document.getElementById(`close-${i}`).value
-        });
+        const check = document.getElementById(`closed-${i}`);
+        if(check) {
+            horarios.push({
+                DiaSemana: i,
+                HoraApertura: check.checked ? "00:00" : document.getElementById(`open-${i}`).value,
+                HoraCierre: check.checked ? "00:00" : document.getElementById(`close-${i}`).value
+            });
+        }
     }
-
     try {
         const response = await fetch('http://localhost:5000/api/Horarios/configurar-semana', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(horarios)
         });
-
-        if (response.ok) {
-            alert("✅ ¡Horarios sincronizados con éxito, jefe!");
-            cargarHorarios(); // Refrescamos para confirmar los cambios
-        } else {
-            alert("❌ Error al guardar horarios.");
-        }
+        if (response.ok) alert("✅ ¡Horarios sincronizados!");
     } catch (error) { console.error(error); }
 }
 
-// --- SECCIONES PENDIENTES DE INTEGRACIÓN ---
-
-/*
-// 💰 FUNCIÓN DE PAGOS (Para conectar con pasarela bancaria)
-async function cargarDatosPagos(proveedorId, token) {
-    console.log("💳 Iniciando conexión con el servicio de pagos...");
-    // Aquí iría el fetch a un controlador de Pagos que maneje las API Keys
-    // const res = await fetch(`http://localhost:5000/api/Configuracion/pagos/${proveedorId}`);
+function getEstadoClass(estado) {
+    if (estado.includes('completado') || estado.includes('confirmada')) return 'status-activo';
+    if (estado.includes('cancelada') || estado.includes('suspendido')) return 'status-bloqueado';
+    return 'status-pendiente'; 
 }
 
-async function guardarConfigPagos() {
-    // Aquí se enviaría la Public Key y la Pasarela seleccionada al servidor
-    // Es vital que el servidor encripte estas llaves antes de guardarlas.
-    console.log("🔒 Guardando credenciales bancarias de forma segura...");
+function logout() {
+    if (confirm("¿Se va a abrir, mi perro? Guarde todo antes de salir.")) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
 }
-
-// 📩 FUNCIÓN DE MENSAJERÍA (Para colas de RabbitMQ / Azure Bus)
-async function cargarConfigNotificaciones(proveedorId, token) {
-    console.log("🔔 Cargando preferencias de notificaciones...");
-    // Aquí se cargarían los booleanos de si quiere Email, SMS o WhatsApp
-}
-
-async function guardarConfigNotificaciones() {
-    // Al guardar aquí, el backend debería configurar los 'Topics' en el bus de mensajes
-    console.log("🚀 Sincronizando cola de mensajes para recordatorios...");
-}
-*/

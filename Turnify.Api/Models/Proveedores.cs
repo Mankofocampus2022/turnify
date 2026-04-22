@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore; // Para que reconozca DeleteBehavior si fuera necesario aquí
 
 namespace Turnify.Api.Models
 {
@@ -47,14 +46,10 @@ namespace Turnify.Api.Models
         [Column("fecha_actualizacion")]
         public DateTime? FechaActualizacion { get; set; }
 
-        // --- RELACIONES ---
-
         [ForeignKey("UsuarioId")]
         public virtual Usuarios? Usuario { get; set; }
         
-        // Relación con Horarios: Un proveedor tiene MUCHOS horarios
         public virtual ICollection<HorariosAtencion> Horarios { get; set; } = new List<HorariosAtencion>();
-
         public virtual ICollection<Suscripciones> Suscripciones { get; set; } = new List<Suscripciones>();
     }
 }

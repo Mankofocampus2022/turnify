@@ -1,46 +1,47 @@
 :root {
-    /* Paleta Extraída del Logo de Turnify */
-    --turnify-dark: #1b3d5f;      /* Azul oscuro del texto "TURNIFY" */
-    --turnify-primary: #48c1b5;   /* Cian brillante del círculo y tijeras */
-    --turnify-accent: #70e0a3;    /* Verde esmeralda para detalles/éxito */
-    --turnify-light: #e0f2f1;     /* Variación clara para fondos */
-    --text-muted: #7f8c8d;
-    --bg-body: #f8fafc;           /* Fondo grisáceo muy suave para contraste */
+    /* --- Paleta Original y Variables de Estructura --- */
+    --turnify-dark: #1b3d5f;      /* Azul profundo */
+    --turnify-bg-dark: #0a101e;   /* Azul casi negro para fondo */
+    --brand-emerald: #48c1b5;     /* Turquesa principal */
+    --turnify-primary: #48c1b5;   
+    --turnify-accent: #077933;    /* Verde bosque para degradados */
+    --heineken-border: rgba(255, 255, 255, 0.15);
+    --bg-dark-radial: radial-gradient(circle at top right, #1b3d5f, #0a101e);
     --white: #ffffff;
     --sidebar-width: 260px;
+
+    /* --- Nuevas Variables de Marca Turnify --- */
+    --turnify-teal: #48c1b5;
+    --turnify-light: #f4f7f6;
 }
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--bg-body);
-    color: var(--turnify-dark);
-    display: flex;
-}
-
-/* --- Layout del Dashboard --- */
-.dashboard-layout {
-    display: flex;
-    width: 100%;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg-dark-radial);
+    color: var(--white);
     min-height: 100vh;
 }
 
-/* --- Sidebar (Barra Lateral) --- */
+/* --- Layout Principal --- */
+.dashboard-layout {
+    display: flex;
+    width: 100%;
+}
+
+/* --- Sidebar (Efecto Sólido Profundo) --- */
 .sidebar {
     width: var(--sidebar-width);
-    background-color: var(--turnify-dark); /* Color base del logo */
+    background-color: #0a101e;
     color: var(--white);
     display: flex;
     flex-direction: column;
     position: fixed;
     height: 100vh;
     padding: 1.5rem;
-    box-shadow: 4px 0 15px rgba(27, 61, 95, 0.1);
+    border-right: 1px solid var(--heineken-border);
+    z-index: 100;
 }
 
 .sidebar-header {
@@ -48,56 +49,29 @@ body {
     align-items: center;
     gap: 12px;
     margin-bottom: 2.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
     padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
-.logo-icon {
-    color: var(--turnify-primary); /* El icono brilla con el cian */
-    font-size: 1.8rem;
-}
-
-.sidebar h2 {
-    font-size: 1.4rem;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    color: var(--white);
-}
+.logo-icon { color: var(--brand-emerald); font-size: 1.8rem; }
+.sidebar h2 { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.5px; }
 
 .sidebar-nav a {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.6);
     text-decoration: none;
     padding: 12px 15px;
-    border-radius: 10px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     gap: 10px;
     transition: all 0.3s ease;
+    margin-bottom: 8px;
 }
 
-/* Estado Activo con el Cian del logo */
 .sidebar-nav a:hover, .sidebar-nav a.active {
-    background-color: rgba(72, 193, 181, 0.15);
-    color: var(--turnify-primary);
+    background-color: rgba(72, 193, 181, 0.1);
+    color: var(--brand-emerald);
     transform: translateX(5px);
-}
-
-/* --- Botón de Salida --- */
-.btn-logout {
-    width: 100%;
-    padding: 10px;
-    background: transparent;
-    border: 1px solid var(--turnify-primary);
-    color: var(--turnify-primary);
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: 0.3s;
-}
-
-.btn-logout:hover {
-    background: var(--turnify-primary);
-    color: var(--turnify-dark);
 }
 
 /* --- Contenido Principal --- */
@@ -107,65 +81,138 @@ body {
     padding: 2.5rem;
 }
 
+/* --- Saludo y Encabezado --- */
 .welcome h2 {
-    color: var(--turnify-dark);
+    font-size: 2.2rem;
     font-weight: 800;
+    margin-bottom: 5px;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.3);
 }
 
-.badge {
-    background: var(--turnify-primary);
-    color: var(--turnify-dark);
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 800;
-    text-transform: uppercase;
+/* Soporte para IDs específicos y spans de saludo */
+#welcomeText { color: var(--white); font-size: 2.2rem; font-weight: 800; }
+#welcomeText span, .welcome h2 span { color: var(--turnify-teal); }
+
+.welcome p {
+    color: var(--brand-emerald);
+    font-weight: 500;
+    opacity: 0.8;
 }
 
-/* --- Tarjetas de Estadísticas --- */
+/* --- 🟥 TARJETAS ESTADÍSTICAS (Verticales y Separadas) --- */
+.stats-grid {
+    display: flex;
+    flex-direction: column; /* Alineación vertical solicitada */
+    gap: 20px;              /* Espaciado claro entre cards */
+    margin: 30px 0;
+}
+
 .stat-card {
-    background: var(--white);
+    /* Mezcla de Vidrio con el fondo blanco sutil solicitado */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(72, 193, 181, 0.02));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     padding: 1.8rem;
     border-radius: 20px;
-    border: 1px solid rgba(0,0,0,0.03);
-    box-shadow: 0 10px 30px rgba(27, 61, 95, 0.05);
+    border: 1px solid var(--heineken-border);
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease;
 }
 
-/* Tarjeta Principal con Degradado del Logo */
-.stat-card.primary {
-    background: linear-gradient(135deg, var(--turnify-dark) 0%, #2c527a 100%);
-    color: white;
+.stat-card:hover { 
+    transform: translateY(-5px); 
+    border-color: var(--turnify-teal);
+    box-shadow: 0 15px 35px rgba(72, 193, 181, 0.1);
 }
+
+.stat-card h3 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; margin-bottom: 10px; }
 
 .stat-card .number {
-    color: var(--turnify-dark);
-    font-size: 2.4rem;
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--turnify-teal);
 }
 
-.stat-card.primary .number {
-    color: var(--turnify-primary); /* Resalte en cian sobre fondo oscuro */
-}
-
-/* --- Tablas y Estados --- */
+/* --- 🟦 AGENDA Y FILTROS (Contenedor de Agenda) --- */
 .content-section {
-    background: var(--white);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(15px);
+    border-radius: 25px;
+    border: 1px solid var(--heineken-border);
+    padding: 2rem;
+    margin-top: 20px;
+}
+
+.filter-tabs { 
+    display: flex; 
+    gap: 12px; 
+    margin: 15px 0 25px 0; /* Combinación de márgenes */
+}
+
+.btn-filter {
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid var(--turnify-teal); /* Borde de marca */
+    color: white;
+    padding: 10px 22px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-filter.active, .btn-filter:hover {
+    background: linear-gradient(135deg, var(--turnify-teal) 0%, var(--turnify-accent) 100%);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 15px rgba(72, 193, 181, 0.4);
+}
+
+/* --- TABLA DE TURNOS --- */
+table { width: 100%; border-collapse: collapse; }
+
+thead th {
+    text-align: left;
+    color: var(--turnify-teal);
+    padding: 15px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--heineken-border);
+}
+
+tbody td {
+    padding: 18px 15px;
+    color: #e2e8f0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.status-pill {
+    padding: 5px 12px;
     border-radius: 20px;
-    box-shadow: 0 10px 40px rgba(27, 61, 95, 0.04);
+    font-size: 0.7rem;
+    font-weight: 800;
 }
 
-.status-pending {
-    background: #fff8e1;
-    color: #ffa000;
-    padding: 5px 12px;
-    border-radius: 8px;
-    font-weight: 600;
+/* 🟢 COLORES DE ESTADO */
+.status-activo { background: rgba(72, 193, 181, 0.2); color: #48c1b5; border: 1px solid #48c1b5; }
+.status-bloqueado { background: rgba(255, 94, 94, 0.2); color: #ff5e5e; border: 1px solid #ff5e5e; }
+.status-pendiente { background: rgba(255, 160, 0, 0.2); color: #ffa000; border: 1px solid #ffa000; }
+
+/* Botones de acción */
+.btn-activar { background: linear-gradient(135deg, #48c1b5 0%, #077933 100%); }
+.btn-bloquear { background: linear-gradient(135deg, #ff5e5e 0%, #ff2a2a 100%); }
+
+.btn-logout {
+    margin-top: auto;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid #ff5e5e;
+    color: #ff5e5e;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: 0.3s;
 }
 
-/* Un estado de éxito usando el verde del logo */
-.status-completed {
-    background: var(--turnify-light);
-    color: var(--turnify-accent);
-    padding: 5px 12px;
-    border-radius: 8px;
-    font-weight: 600;
-}
+.btn-logout:hover { background: #ff5e5e; color: white; }

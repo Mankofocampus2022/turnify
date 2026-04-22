@@ -1,14 +1,21 @@
+/* =========================================
+   TURNIFY - GESTIÓN DE USUARIOS (PRO)
+   ========================================= */
 const API_URL = 'http://localhost:5000/api/Usuarios';
 let listaUsuariosGlobal = []; 
 
-// 1. INICIALIZACIÓN
+// 1. EL GUARDIÁN (Blindado)
 document.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('turnify_token');
-    if (!token) {
+    // 🛡️ Buscamos en ambas llaves para evitar el "bug loco" de redirección
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    
+    if (!token || token === "undefined" || token === "null") {
+        console.error("🚨 Acceso denegado: Token no encontrado.");
         window.location.href = 'login.html';
         return;
     }
 
+    console.log("🔐 Sesión validada. Cargando sistema...");
     cargarUsuarios();
 
     // 🔥 ESCUCHADOR DEL BUSCADOR (FILTRO LOCAL)
@@ -26,41 +33,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// 2. OBTENER DATOS DE LA API
+// 2. OBTENER DATOS DE LA API (Con manejo de errores 401)
 async function cargarUsuarios() {
-    const token = localStorage.getItem('turnify_token');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    
     try {
         const response = await fetch(API_URL, {
             method: 'GET',
             headers: { 
                 'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
             }
         });
+
+        // 🛡️ Si la API dice que el token no vale (401), limpiamos y salimos
+        if (response.status === 401) {
+            console.warn("⚠️ Token inválido o expirado.");
+            logout();
+            return;
+        }
 
         if (response.ok) {
             listaUsuariosGlobal = await response.json(); 
             renderizarTabla(listaUsuariosGlobal); 
         } else {
-            console.error("Error al obtener usuarios:", response.statusText);
+            console.error("❌ Error API:", response.statusText);
         }
     } catch (error) {
-        console.error("Error de conexión:", error);
-        alert("🚀 Error de conexión con la API en el puerto 5000");
+        console.error("🚨 Error de conexión:", error);
     }
 }
 
-// 3. PINTAR LA TABLA (CON LÓGICA DE ROLES)
+// 3. PINTAR LA TABLA (Normalización de datos Senior)
 function renderizarTabla(usuarios) {
     const tabla = document.getElementById('tablaUsuarios');
-    // 1. Normalizamos el rol actual a Mayúsculas
+    if (!tabla) return;
+
     const userRoleActual = (localStorage.getItem('usuario_rol') || "").toUpperCase(); 
-    tabla.innerHTML = ''; 
+    
+    let htmlContent = ''; 
 
     usuarios.forEach(u => {
+        const id = u.id || u.Id;
         const nombre = u.nombre || u.Nombre || "Sin nombre";
         const email = u.email || u.Email || "Sin email";
-        const rol = u.rol || u.Rol || "Sin Rol"; 
+        const rol = u.rol || u.Rol || "Usuario"; 
         const bloqueado = u.esta_bloqueado ?? u.Esta_bloqueado ?? false;
         const fechaFinRaw = u.suscripcion_fin || u.Suscripcion_fin;
         const fechaFin = fechaFinRaw ? new Date(fechaFinRaw).toLocaleDateString() : 'N/A';
@@ -70,23 +88,21 @@ function renderizarTabla(usuarios) {
 
         let botonesExtra = '';
 
-        // Botón para Barberos (ya lo tenías en minúsculas, está bien)
-        if (rol.toLowerCase() === 'barbero') {
+        if (rol.toLowerCase().includes('barbero') || rol.toLowerCase().includes('proveedor')) {
             botonesExtra += `
-                <button class="btn-action" style="background-color: #ffc107; color: #000;" onclick="gestionarTarjeta('${u.id}')">
-                    💳 Tarjeta
+                <button class="btn-action" style="background-color: #ffc107; color: #000;" onclick="gestionarTarjeta('${id}')">
+                    <i class="fas fa-id-card"></i>
                 </button>`;
         }
 
-        // 2. CORRECCIÓN AQUÍ: Comparamos contra "SUPERADMIN" o "SUPERADMINISTRADOR"
-        if (userRoleActual === 'SUPERADMIN' || userRoleActual === 'SUPERADMINISTRADOR') {
+        if (userRoleActual.includes('ADMIN')) {
             botonesExtra += `
-                <button class="btn-action" style="background-color: #48c1b5; color: #1b3d5f;" onclick="renovarSuscripcion('${u.id}')">
-                    <i class="fas fa-calendar-plus"></i> Renovar
+                <button class="btn-action" style="background-color: #48c1b5; color: #1b3d5f;" onclick="renovarSuscripcion('${id}')">
+                    <i class="fas fa-calendar-plus"></i>
                 </button>`;
         }
 
-        tabla.innerHTML += `
+        htmlContent += `
             <tr>
                 <td class="td-user"><strong>${nombre}</strong></td>
                 <td class="td-user">${email}</td>
@@ -97,8 +113,8 @@ function renderizarTabla(usuarios) {
                 <td><span class="status-pill ${statusClass}">${statusText}</span></td>
                 <td>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn-action ${bloqueado ? 'btn-activar' : 'btn-bloquear'}" onclick="toggleUser('${u.id}', ${bloqueado})">
-                            ${bloqueado ? 'Activar' : 'Bloquear'}
+                        <button class="btn-action ${bloqueado ? 'btn-activar' : 'btn-bloquear'}" onclick="toggleUser('${id}', ${bloqueado})">
+                            <i class="fas ${bloqueado ? 'fa-check' : 'fa-ban'}"></i>
                         </button>
                         ${botonesExtra}
                     </div>
@@ -106,11 +122,13 @@ function renderizarTabla(usuarios) {
             </tr>
         `;
     });
+
+    tabla.innerHTML = htmlContent;
 }
 
-// 4. ACCIONES (BLOQUEAR, RENOVAR, TARJETA)
+// 4. ACCIONES (Normalizadas)
 async function toggleUser(id, estadoActual) {
-    const token = localStorage.getItem('turnify_token');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
     const nuevoEstado = !estadoActual;
     const accion = nuevoEstado ? 'BLOQUEAR' : 'ACTIVAR';
 
@@ -126,53 +144,100 @@ async function toggleUser(id, estadoActual) {
         });
 
         if (response.ok) {
-            alert(`¡Usuario ${accion.toLowerCase()}ado con éxito! 🚀`);
             cargarUsuarios(); 
         }
     } catch (error) { console.error(error); }
 }
 
 async function renovarSuscripcion(id) {
-    // Usamos un prompt simple para pedir los meses. 
-    const meses = prompt("¿Cuántos meses desea agregar a la suscripción?", "1");
-    
-    if (meses === null) return; // El usuario canceló
+    const meses = prompt("¿Cuántos meses desea agregar?", "1");
+    if (!meses) return;
     
     const numMeses = parseInt(meses);
-    if (isNaN(numMeses) || numMeses <= 0) {
-        alert("⚠️ Por favor, ingrese un número de meses válido (ej: 1, 3, 12).");
-        return;
-    }
+    if (isNaN(numMeses) || numMeses <= 0) return alert("⚠️ Número inválido");
 
-    const token = localStorage.getItem('turnify_token');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
     
     try {
-        // Pasamos el parámetro 'meses' en la URL
         const response = await fetch(`${API_URL}/renovar/${id}?meses=${numMeses}`, {
             method: 'PUT',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
 
         if (response.ok) {
-            const data = await response.json();
-            const fecha = new Date(data.nuevaFecha).toLocaleDateString();
-            alert(`✅ ¡Suscripción renovada con éxito hasta el ${fecha}! 🥂`);
-            cargarUsuarios(); // Recargamos la tabla para ver la nueva fecha
-        } else {
-            alert("❌ Hubo un error al intentar renovar.");
+            alert("✅ Renovado con éxito");
+            cargarUsuarios();
         }
-    } catch (error) { 
-        console.error(error);
-        alert("🚀 Error de conexión con el servidor."); 
-    }
+    } catch (error) { console.error(error); }
 }
 
-// 5. ✅ CIERRE DE SESIÓN GLOBAL
+// --- 🚩 5. FUNCIONALIDAD DE LA TARJETA DIGITAL (NUEVO) ---
+
+function gestionarTarjeta(id) {
+    // Buscamos los datos del usuario en la lista que ya cargamos de la API
+    const usuario = listaUsuariosGlobal.find(u => (u.id || u.Id) === id);
+    
+    if (!usuario) {
+        alert("❌ Error: No se encontró la información del usuario.");
+        return;
+    }
+
+    const nombre = usuario.nombre || usuario.Nombre || "Barbero Profesional";
+    const rol = usuario.rol || usuario.Rol || "Especialista";
+
+    // Llenamos el modal
+    document.getElementById('tarjetaNombre').innerText = nombre;
+    document.getElementById('tarjetaRol').innerText = rol;
+    
+    // Limpiamos el QR anterior para que no se amontone
+    const qrContainer = document.getElementById('qrcode');
+    qrContainer.innerHTML = "";
+
+    // Mostramos el modal
+    document.getElementById('modalTarjeta').style.display = 'flex';
+
+    // Generamos el código QR con el link de agendamiento
+    // 🛡️ TIP: Aquí puedes poner el link real de tu frontend para clientes
+    const linkReserva = `http://localhost:5000/agendar.html?barbero=${id}`;
+
+    new QRCode(qrContainer, {
+        text: linkReserva,
+        width: 200,
+        height: 200,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+    });
+}
+
+function cerrarTarjeta() {
+    const modal = document.getElementById('modalTarjeta');
+    if (modal) modal.style.display = 'none';
+}
+
+function descargarQR() {
+    const qrImg = document.querySelector('#qrcode img');
+    if (!qrImg) return alert("❌ Primero genera el código QR.");
+
+    const link = document.createElement('a');
+    const nombreBarbero = document.getElementById('tarjetaNombre').innerText;
+    
+    link.href = qrImg.src;
+    link.download = `QR_Turnify_${nombreBarbero.replace(/\s+/g, '_')}.png`;
+    link.click();
+}
+
+// Cerrar modal al hacer clic afuera de la tarjeta
+window.onclick = function(event) {
+    const modal = document.getElementById('modalTarjeta');
+    if (event.target === modal) {
+        cerrarTarjeta();
+    }
+};
+
+// 6. ✅ CIERRE DE SESIÓN LIMPIO
 window.logout = function() {
-    console.log("Cerrando sesión...");
+    console.log("🧹 Limpiando sesión...");
     localStorage.clear(); 
     window.location.href = 'login.html'; 
 };

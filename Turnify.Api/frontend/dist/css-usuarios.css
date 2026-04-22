@@ -90,18 +90,17 @@ tbody td {
     color: white;
     outline: none;
 }
+
 /* --- ENCABEZADO (Títulos sobre fondo oscuro) --- */
 .header-section h1 {
     font-size: 28px;
     font-weight: 800;
-    /* 🚩 CAMBIA ESTO: Usa blanco o el esmeralda para que se vea */
     color: #ffffff; 
     margin: 0;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.3); /* Sombra para que resalte más */
+    text-shadow: 0 2px 10px rgba(0,0,0,0.3);
 }
 
 .header-section p {
-    /* El subtítulo en el verde esmeralda del logo */
     color: var(--brand-emerald); 
     margin: 5px 0;
     font-size: 14px;
@@ -111,11 +110,11 @@ tbody td {
 
 /* El fondo oscuro desenfocado */
 .modal-overlay {
-    display: none; /* Empieza oculto */
+    display: none; 
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(10, 16, 30, 0.8);
-    backdrop-filter: blur(8px); /* Desenfoque de fondo */
+    backdrop-filter: blur(8px);
     z-index: 10000;
     justify-content: center;
     align-items: center;
@@ -157,4 +156,86 @@ tbody td {
 @keyframes popIn {
     from { transform: scale(0.8); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
+}
+
+/* =========================================
+   🚩 NUEVO: TARJETA DIGITAL PROFESIONAL (MODAL)
+   ========================================= */
+.modal-tarjeta {
+    display: none; 
+    position: fixed;
+    z-index: 20000; /* Por encima de todo */
+    left: 0; top: 0; width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px);
+    justify-content: center;
+    align-items: center;
+}
+
+.tarjeta-container {
+    background: linear-gradient(145deg, #1b3d5f 0%, #08121d 100%);
+    width: 340px;
+    margin: 5% auto;
+    padding: 40px 30px;
+    border-radius: 30px;
+    border: 1px solid rgba(72, 193, 181, 0.5);
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+    position: relative;
+    color: #ffffff;
+}
+
+.close-tarjeta {
+    position: absolute;
+    right: 20px; top: 15px;
+    font-size: 30px;
+    color: #ff5e5e;
+    cursor: pointer;
+}
+
+#tarjetaNombre {
+    font-size: 1.6rem;
+    margin-bottom: 5px;
+    font-weight: 800;
+}
+
+#tarjetaRol {
+    color: var(--brand-emerald);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    font-weight: 700;
+}
+
+#qrcode {
+    background: #ffffff;
+    padding: 15px;
+    border-radius: 20px;
+    display: inline-block;
+    margin: 30px 0;
+    box-shadow: 0 0 25px rgba(72, 193, 181, 0.4);
+}
+
+#qrcode img {
+    margin: 0 auto;
+    display: block;
+}
+
+.btn-descargar {
+    background: linear-gradient(135deg, #48c1b5 0%, #077933 100%);
+    color: white;
+    border: none;
+    padding: 14px 25px;
+    border-radius: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 10px;
+    text-transform: uppercase;
+    transition: all 0.3s;
+}
+
+.btn-descargar:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(7, 121, 51, 0.6);
 }

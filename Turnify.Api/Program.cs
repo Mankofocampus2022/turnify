@@ -117,36 +117,40 @@ var app = builder.Build();
 
 // 3. MIDDLEWARES (ORDEN SENIOR OBLIGATORIO)
 
-// --- 🛡️ ADICIÓN: ACTIVAR SWAGGER ---
 app.UseSwagger();
 app.UseSwaggerUI(c => {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Turnify API v1");
-    c.RoutePrefix = "swagger"; // Para entrar en localhost:5000/swagger
+    c.RoutePrefix = "swagger"; 
 });
 
 app.UseRequestLocalization(localizationOptions); 
 app.UseMiddleware<ExceptionMiddleware>();
-
-// --- 🛡️ ADICIÓN: ACTIVAR CORS ---
 app.UseCors("AllowTurnify");
 
-// --- 🛡️ BLOQUE DE ARCHIVOS ESTÁTICOS BLINDADO (Inteligente) ---
-var frontendPath = Path.Combine(builder.Environment.ContentRootPath, "frontend", "dist");
+// --- 🛡️ BLOQUE DE ARCHIVOS ESTÁTICOS BLINDADO (Sincronizado con Docker) ---
+// 🚩 CAMBIO CRÍTICO: Quitamos "dist" porque Docker ya mapea el contenido de dist en "frontend"
+var frontendPath = Path.Combine(builder.Environment.ContentRootPath, "frontend");
 
 Console.WriteLine($"--- 🔍 RUTA BUSCADA: {frontendPath} ---");
 
 if (Directory.Exists(frontendPath))
 {
     Console.WriteLine("--- ✅ CARPETA ENCONTRADA. ACTIVANDO FRONTEND ---");
+    
+    // Permitir archivos por defecto (login.html)
     app.UseDefaultFiles(new DefaultFilesOptions { 
-        FileProvider = new PhysicalFileProvider(frontendPath) 
+        FileProvider = new PhysicalFileProvider(frontendPath),
+        DefaultFileNames = new List<string> { "login.html" } // Blindaje extra
     });
+
     app.UseStaticFiles(new StaticFileOptions { 
-        FileProvider = new PhysicalFileProvider(frontendPath) 
+        FileProvider = new PhysicalFileProvider(frontendPath),
+        RequestPath = "" 
     });
 }
 else
 {
+    // Fallback por si corres local sin Docker
     string backupPath = Path.GetFullPath("frontend/dist");
     Console.WriteLine($"--- ❌ NO ENCONTRADA. INTENTANDO BACKUP: {backupPath} ---");
     
@@ -155,11 +159,9 @@ else
     }
 }
 
-// --- 🛡️ ADICIÓN: SEGURIDAD Y RUTEO (ESTO ES LO QUE TE FALTABA) ---
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 🏁 ESTA LÍNEA ES LA QUE MATA EL 404
 app.MapControllers(); 
 
 app.Run();
