@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Turnify.Api.Interfaces;
-using Turnify.Api.Models.DTOs; // Sincronizado con tus otros DTOs
-using Turnify.Api.Data; // Para buscar el proveedor vinculado
+using Turnify.Api.Models.DTOs; 
+using Turnify.Api.Data; 
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -14,7 +14,7 @@ namespace Turnify.Api.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly IDashboardService _dashboardService;
-        private readonly TurnifyDbContext _context; // Agregado para resolver el ProveedorId
+        private readonly TurnifyDbContext _context; 
 
         public DashboardController(IDashboardService dashboardService, TurnifyDbContext context)
         {
@@ -22,15 +22,13 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
-        // Endpoint original (Lo mantenemos como pediste, pero lo hacemos dinámico)
+        // 🚩 ENDPOINT PRINCIPAL: Soporte para periodos (diario/semana/mes)
         [HttpGet("resumen")]
-        public async Task<IActionResult> GetResumen([FromQuery] DateTime? fecha)
+        public async Task<IActionResult> GetResumen([FromQuery] string periodo = "diario", [FromQuery] DateTime? fecha = null)
         {
-            // 1. Extraemos el ID del usuario directamente del Token (Identidad blindada)
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (usuarioIdClaim == null) return Unauthorized();
 
-            // 2. Buscamos el proveedor que le pertenece a este usuario
             var proveedor = await _context.proveedores
                 .FirstOrDefaultAsync(p => p.UsuarioId == Guid.Parse(usuarioIdClaim));
 
@@ -39,8 +37,19 @@ namespace Turnify.Api.Controllers
                 return NotFound(new { message = "No se encontró un perfil de negocio para este usuario." });
             }
 
-            // 3. Llamamos al servicio con el ID real validado por el servidor
-            var resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha);
+            object resumen;
+            // 🛡️ REPARACIÓN SENIOR: 
+            // Si el periodo es mensual, usamos el método específico o el genérico según tu arquitectura
+            if (periodo.ToLower() == "mensual")
+            {
+                resumen = await _dashboardService.GetResumenMensualAsync(proveedor.Id);
+            }
+            else
+            {
+                // 🚩 CAMBIO CLAVE: Pasamos el 'periodo' (hoy/semana/mes) al Service 
+                // para que el filtro de fechas en SQL no se limite a 24 horas.
+                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha, periodo);
+            }
 
             if (resumen == null)
             {
@@ -50,13 +59,32 @@ namespace Turnify.Api.Controllers
             return Ok(resumen);
         }
 
-        // 🚩 Mantenemos la versión con ID por si necesitas consultar desde un panel de SuperAdmin
+        // 🚩 VERSIÓN ADMIN: Consultar cualquier proveedor con filtros
         [HttpGet("resumen/{proveedorId}")]
-        public async Task<IActionResult> GetResumenPorId(Guid proveedorId, [FromQuery] DateTime? fecha)
+        public async Task<IActionResult> GetResumenPorId(Guid proveedorId, [FromQuery] string periodo = "diario", [FromQuery] DateTime? fecha = null)
         {
             if (proveedorId == Guid.Empty) return BadRequest("El ID del proveedor no es válido.");
 
-            var resumen = await _dashboardService.GetResumenDiarioAsync(proveedorId, fecha);
+            // 🛡️ PUENTE DE IDENTIDAD: Sincronización de IDs (67F6... vs 93E4...)
+            var proveedorEncontrado = await _context.proveedores
+                .FirstOrDefaultAsync(p => p.Id == proveedorId || p.UsuarioId == proveedorId);
+
+            var idRealParaServicio = proveedorEncontrado != null ? proveedorEncontrado.Id : proveedorId;
+
+            object resumen;
+            if (periodo.ToLower() == "mensual")
+            {
+                resumen = await _dashboardService.GetResumenMensualAsync(idRealParaServicio);
+            }
+            else
+            {
+                // 🚩 CAMBIO CLAVE: Pasamos el 'periodo' para que el Service 
+                // sepa que si mandas 'mes', debe buscar 30 días y no solo 1.
+                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha, periodo);
+            }
+
+            if (resumen == null) return NotFound("No hay datos para este periodo.");
+
             return Ok(resumen);
         }
     }

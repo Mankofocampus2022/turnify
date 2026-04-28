@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization; 
 
 namespace Turnify.Api.Models
 {
@@ -9,7 +10,7 @@ namespace Turnify.Api.Models
         [Key]
         public Guid Id { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "El nombre del servicio es obligatorio")]
         [StringLength(100)]
         public string Nombre { get; set; } = string.Empty;
 
@@ -18,10 +19,12 @@ namespace Turnify.Api.Models
 
         [Required]
         [Column("Precio", TypeName = "decimal(18,2)")]
+        [Range(0, 9999999.99, ErrorMessage = "El precio debe ser un valor positivo")]
         public decimal Precio { get; set; }
 
         [Required]
         [Column("DuracionMinutos")]
+        [Range(1, 1440, ErrorMessage = "La duración debe ser al menos de 1 minuto")]
         public int DuracionMinutos { get; set; }
 
         [Required]
@@ -35,18 +38,22 @@ namespace Turnify.Api.Models
         [Column("ComisionPorcentaje", TypeName = "decimal(5,2)")]
         public decimal ComisionPorcentaje { get; set; } = 0.00m;
 
-        // 🚩 CAMBIO CLAVE: Ahora es INT para soportar 0, 1 y 2
+        // 🚩 ESTADO: 0 = Inactivo, 1 = Activo, 2 = En Proceso (Heineken Style)
+        [Required]
         [Column("Activo")]
         public int Activo { get; set; } = 1; 
 
         [Column("FechaCreacion")]
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
 
-        [Required]
+        // 🛡️ BLINDAJE SENIOR: Cambiamos a Guid? (Nulable)
+        // Quitamos el [Required] para que el SQL no rechace el registro si el SuperAdmin manda un null.
         [Column("ProveedorId")]
-        public Guid ProveedorId { get; set; }
+        public Guid? ProveedorId { get; set; } 
 
+        // 🚩 BLINDAJE JSON: Evita ciclos infinitos en el API
         [ForeignKey("ProveedorId")]
+        [JsonIgnore] 
         public virtual Proveedores? Proveedor { get; set; }
     }
 }

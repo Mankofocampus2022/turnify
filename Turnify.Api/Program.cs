@@ -9,9 +9,8 @@ using System.Text;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.AspNetCore.Diagnostics;
 
-// --- ALIAS DE SWAGGER ---
+// --- ALIAS DE SWAGGER (Se mantienen tus alias) ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
 using SwaggerSecurityScheme = Microsoft.OpenApi.Models.OpenApiSecurityScheme;
 using SwaggerSecurityRequirement = Microsoft.OpenApi.Models.OpenApiSecurityRequirement;
@@ -41,7 +40,7 @@ var localizationOptions = new RequestLocalizationOptions()
 
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
-// --- 🛡️ CONFIGURACIÓN DE CORS ---
+// --- 🛡️ CONFIGURACIÓN DE CORS (Abierto para desarrollo local/Docker) ---
 builder.Services.AddCors(options => {
     options.AddPolicy("AllowTurnify", b => 
     {
@@ -51,7 +50,7 @@ builder.Services.AddCors(options => {
     });
 });
 
-// CONFIGURACIÓN DE SWAGGER
+// CONFIGURACIÓN DE SWAGGER (Se mantiene tu seguridad JWT)
 builder.Services.AddSwaggerGen(c => {
     c.SwaggerDoc("v1", new SwaggerDocInfo { Title = "Turnify API", Version = "v1" });
     c.CustomSchemaIds(type => type.ToString());
@@ -93,16 +92,13 @@ builder.Services.AddAuthentication(x => {
     };
 });
 
-// --- 🛡️ CONFIGURACIÓN DE BASE DE DATOS CON RESILIENCIA ---
+// --- 🛡️ BASE DE DATOS CON RESILIENCIA ---
 builder.Services.AddDbContext<TurnifyDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection"),
         sqlServerOptionsAction: sqlOptions =>
         {
-            sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 10,
-                maxRetryDelay: TimeSpan.FromSeconds(30),
-                errorNumbersToAdd: null);
+            sqlOptions.EnableRetryOnFailure(maxRetryCount: 10, maxRetryDelay: TimeSpan.FromSeconds(30), errorNumbersToAdd: null);
         }
     ));
 
@@ -112,10 +108,9 @@ builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
-// --- 🏗️ CONSTRUCCIÓN DE LA APP ---
 var app = builder.Build();
 
-// 3. MIDDLEWARES (ORDEN SENIOR OBLIGATORIO)
+// 3. MIDDLEWARES (Orden Crítico)
 
 app.UseSwagger();
 app.UseSwaggerUI(c => {
@@ -127,42 +122,44 @@ app.UseRequestLocalization(localizationOptions);
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("AllowTurnify");
 
-// --- 🛡️ BLOQUE DE ARCHIVOS ESTÁTICOS BLINDADO (Sincronizado con Docker) ---
-// 🚩 CAMBIO CRÍTICO: Quitamos "dist" porque Docker ya mapea el contenido de dist en "frontend"
-var frontendPath = Path.Combine(builder.Environment.ContentRootPath, "frontend");
+// --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS MEJORADO ---
+// 🚩 Ajuste para Docker: Buscamos donde realmente esté el contenido
+string rootPath = builder.Environment.ContentRootPath;
+string frontendPath = Path.Combine(rootPath, "frontend");
 
-Console.WriteLine($"--- 🔍 RUTA BUSCADA: {frontendPath} ---");
+// Si dentro de frontend existe 'dist', priorizamos esa
+if (Directory.Exists(Path.Combine(frontendPath, "dist"))) {
+    frontendPath = Path.Combine(frontendPath, "dist");
+}
+
+Console.WriteLine($"--- 🔍 RUTA FINAL DE ARCHIVOS: {frontendPath} ---");
 
 if (Directory.Exists(frontendPath))
 {
-    Console.WriteLine("--- ✅ CARPETA ENCONTRADA. ACTIVANDO FRONTEND ---");
+    // Habilitar login.html como página de inicio
+    var fileOptions = new DefaultFilesOptions();
+    fileOptions.DefaultFileNames.Clear();
+    fileOptions.DefaultFileNames.Add("login.html");
+    fileOptions.FileProvider = new PhysicalFileProvider(frontendPath);
     
-    // Permitir archivos por defecto (login.html)
-    app.UseDefaultFiles(new DefaultFilesOptions { 
-        FileProvider = new PhysicalFileProvider(frontendPath),
-        DefaultFileNames = new List<string> { "login.html" } // Blindaje extra
-    });
+    app.UseDefaultFiles(fileOptions);
 
+    // Servir estáticos con mapeo directo
     app.UseStaticFiles(new StaticFileOptions { 
         FileProvider = new PhysicalFileProvider(frontendPath),
-        RequestPath = "" 
+        RequestPath = "" // Permite acceder a /reportes.js directamente
     });
-}
-else
-{
-    // Fallback por si corres local sin Docker
-    string backupPath = Path.GetFullPath("frontend/dist");
-    Console.WriteLine($"--- ❌ NO ENCONTRADA. INTENTANDO BACKUP: {backupPath} ---");
-    
-    if (Directory.Exists(backupPath)) {
-        app.UseStaticFiles(new StaticFileOptions { FileProvider = new PhysicalFileProvider(backupPath) });
-    }
 }
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers(); 
+
+// 🚩 Fallback: Si no es una ruta de API, manda al login
+app.MapFallbackToFile("login.html", new StaticFileOptions {
+    FileProvider = new PhysicalFileProvider(frontendPath)
+});
 
 app.Run();
 

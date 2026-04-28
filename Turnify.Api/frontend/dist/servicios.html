@@ -10,7 +10,7 @@
 </head>
 <body>
 
-<div class="dashboard-layout">
+<div class="dashboard-layout">  
     <aside class="sidebar">
         <div class="sidebar-header">
             <span class="logo-icon">🕒</span>
@@ -55,7 +55,7 @@
             <table class="turnify-table">
                 <thead>
                     <tr>
-                        <th>Servicio</th>
+                        <th>Servicio / ID</th>
                         <th>Categoría</th>
                         <th>Precio</th>
                         <th>Duración</th>
@@ -64,7 +64,12 @@
                     </tr>
                 </thead>
                 <tbody id="tablaServicios">
-                    </tbody>
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 30px; color: #48c1b5;">
+                            <i class="fas fa-sync fa-spin"></i> Cargando servicios de Turnify...
+                        </td>
+                    </tr>
+                </tbody>
             </table>
         </div>
     </main>
@@ -96,8 +101,7 @@
                             font-weight: 600;
                             outline: none; 
                             cursor: pointer;
-                            appearance: none; 
-                            -webkit-appearance: none;">
+                            appearance: none;">
                     <option value="Barbería" style="background: #1b3d5f; color: white;">💈 Barbería</option>
                     <option value="Manicura" style="background: #1b3d5f; color: white;">💅 Manicura / Nails</option>
                     <option value="Estética" style="background: #1b3d5f; color: white;">✨ Estética / Facial</option>
@@ -135,9 +139,7 @@
                                 color: #48c1b5; 
                                 font-weight: 600;
                                 outline: none; 
-                                cursor: pointer;
-                                appearance: none; 
-                                -webkit-appearance: none;">
+                                cursor: pointer;">
                         <option value="1" style="background: #1b3d5f; color: white;">🟢 Activo</option>
                         <option value="2" style="background: #1b3d5f; color: white;">🟡 En Proceso</option>
                         <option value="0" style="background: #1b3d5f; color: white;">🔴 Inactivo</option>
@@ -157,6 +159,8 @@
     </div>
 </div>
 
-<script src="auth-global.js"></script> <script src="js/servicios.js"></script>
+<script src="js/auth-global.js"></script> 
+<script src="js/servicios.js"></script>
+
 </body>
 </html>

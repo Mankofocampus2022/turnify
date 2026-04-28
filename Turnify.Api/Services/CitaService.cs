@@ -3,7 +3,7 @@ using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
 using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs;
-using System.Runtime.InteropServices; // Necesario para detectar el SO y la Zona Horaria
+using System.Runtime.InteropServices; 
 
 namespace Turnify.Api.Services
 {
@@ -58,7 +58,7 @@ namespace Turnify.Api.Services
             return await GetCitasRangoAsync(userId, hoyBogota, hoyBogota);
         }
 
-        // --- 📝 3. AGENDAR CITA (Blindado) ---
+        // --- 📝 3. AGENDAR CITA (Blindado y corregido) ---
         public async Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto)
         {
             var cliente = await _context.clientes.FindAsync(dto.ClienteId);
@@ -67,14 +67,21 @@ namespace Turnify.Api.Services
             var servicio = await _context.servicios.FindAsync(dto.ServicioId);
             if (servicio == null) return (false, "Servicio no encontrado.", null);
 
-            // 🛡️ Blindaje de tiempo: Usamos la hora de Bogotá, no la del servidor local (UTC)
+            // 🛡️ Blindaje de tiempo: Usamos la hora de Bogotá
             var ahoraBogota = GetBogotaTime();
             var fechaHoraCita = dto.Fecha.Date.Add(dto.Hora);
             
             if (fechaHoraCita < ahoraBogota)
                 return (false, "No puedes agendar una cita en el pasado.", null);
 
-            var proveedorId = servicio.ProveedorId;
+            // 🚩 REPARACIÓN LÍNEA 108 APROX: 
+            // Como el servicio ahora tiene un ProveedorId nulable (Guid?), 
+            // usamos .GetValueOrDefault() para asegurar que pase un Guid puro a la Cita.
+            var proveedorId = servicio.ProveedorId.GetValueOrDefault();
+            
+            if (proveedorId == Guid.Empty)
+                return (false, "Este servicio no tiene un proveedor asignado.", null);
+
             int diaDeLaSemana = (int)dto.Fecha.DayOfWeek;
 
             var horario = await _context.horarios_atencion
@@ -143,7 +150,6 @@ namespace Turnify.Api.Services
             var duracionCita = TimeSpan.FromMinutes(servicio.DuracionMinutos);
             var intervalo = TimeSpan.FromMinutes(30); 
 
-            // 🛡️ Sincronización de hora actual para el día de hoy
             var ahoraBogota = GetBogotaTime();
             TimeSpan limiteHora = fecha.Date == ahoraBogota.Date ? ahoraBogota.TimeOfDay : TimeSpan.Zero;
 

@@ -9,7 +9,7 @@ namespace Turnify.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    // [Authorize] 
+    // [Authorize] // Mantengo el comentario como pediste
     public class ServiciosController : ControllerBase
     {
         private readonly IServicioService _servicioService;
@@ -19,7 +19,7 @@ namespace Turnify.Api.Controllers
             _servicioService = servicioService;
         }
 
-        // 🚩 Versión 1 de GetAll
+        // --- 🚩 OBTENER TODOS ---
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
@@ -27,19 +27,16 @@ namespace Turnify.Api.Controllers
             return Ok(servicios);
         }
 
-        // 🚩 Obtener UN servicio por ID
+        // --- 🚩 OBTENER POR ID (Blindado con FromRoute) ---
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(Guid id)
+        public async Task<IActionResult> GetById([FromRoute] Guid id) // 🛡️ Explicitamos que viene de la URL
         {
             var servicio = await _servicioService.ObtenerPorId(id);
-            if (servicio == null) return NotFound();
+            if (servicio == null) return NotFound(new { message = "Servicio no encontrado." });
             return Ok(servicio);
         }
 
-        /* MIRA DARWIN: Este bloque de abajo es el que causaba el error CS0111 
-           porque es idéntico al de arriba. Lo dejo aquí pero comentado para 
-           que no te de error al compilar, tal como pediste de no borrar nada.
-        */
+        /* Bloque respetado (comentado por error CS0111 previo) */
         /*
         [HttpGet]
         public async Task<IActionResult> GetAll()
@@ -49,42 +46,50 @@ namespace Turnify.Api.Controllers
         }
         */
 
-        // 1. Obtener servicios de un proveedor específico
+        // --- 🚩 SERVICIOS POR PROVEEDOR ---
         [HttpGet("proveedor/{proveedorId}")]
-        public async Task<IActionResult> GetByProveedor(Guid proveedorId)
+        public async Task<IActionResult> GetByProveedor([FromRoute] Guid proveedorId)
         {
             var servicios = await _servicioService.ObtenerPorProveedor(proveedorId);
             return Ok(servicios);
         }
 
-        // 2. Crear un nuevo servicio
+        // --- 🚩 CREAR SERVICIO ---
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ServicioUpsertDto dto)
         {
+            // Si el DTO no cumple con los DataAnnotations (required, etc), devolvemos el error detallado
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var resultado = await _servicioService.CrearServicio(dto);
             return CreatedAtAction(nameof(GetById), new { id = resultado.Id }, resultado);
         }
 
-        // 3. ACTUALIZAR
+        // --- 🚩 ACTUALIZAR (Aquí es donde suele saltar el 400) ---
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(Guid id, [FromBody] ServicioUpsertDto dto)
+        public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] ServicioUpsertDto dto)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
+            // 🛡️ BLINDAJE SENIOR: Verificamos que el modelo sea válido antes de procesar
+            if (!ModelState.IsValid) 
+            {
+                return BadRequest(new { 
+                    message = "Error de validación en los datos enviados.",
+                    errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)
+                });
+            }
             
             var actualizado = await _servicioService.ActualizarServicio(id, dto);
-            if (actualizado == null) return NotFound("El servicio no existe.");
+            if (actualizado == null) return NotFound(new { message = "El servicio no existe o no pudo ser actualizado." });
             
             return Ok(actualizado);
         }
 
-        // 4. ELIMINAR (Borrado Lógico)
+        // --- 🚩 ELIMINAR ---
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(Guid id)
+        public async Task<IActionResult> Delete([FromRoute] Guid id)
         {
             var eliminado = await _servicioService.EliminarServicio(id);
-            if (!eliminado) return NotFound("No se pudo eliminar el servicio.");
+            if (!eliminado) return NotFound(new { message = "No se pudo eliminar el servicio." });
             
             return NoContent();
         }

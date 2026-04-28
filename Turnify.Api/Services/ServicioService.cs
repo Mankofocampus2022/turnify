@@ -52,7 +52,10 @@ namespace Turnify.Api.Services
             var nuevoServicio = new Servicios
             {
                 Id = Guid.NewGuid(),
-                ProveedorId = dto.ProveedorId,
+                // 🛡️ BLINDAJE FINAL: Ya no usamos GetValueOrDefault()
+                // Al ser Servicios.ProveedorId nulable (Guid?), pasamos el valor directo.
+                // Si es null, la DB lo aceptará sin estallar por el FK de ceros.
+                ProveedorId = dto.ProveedorId, 
                 Nombre = dto.Nombre,
                 Descripcion = dto.Descripcion,
                 DuracionMinutos = dto.DuracionMinutos,
@@ -82,6 +85,10 @@ namespace Turnify.Api.Services
             servicio.ComisionPorcentaje = dto.ComisionPorcentaje;
             servicio.ImagenUrl = dto.ImagenUrl;
             servicio.Activo = dto.Activo; // 🚩 Permite actualizar el estado (0, 1, 2)
+
+            // 🛡️ ACTUALIZACIÓN DE PROVEEDOR:
+            // Ahora permitimos que el proveedor cambie o se mantenga nulo
+            servicio.ProveedorId = dto.ProveedorId;
 
             await _context.SaveChangesAsync();
             return MapearADto(servicio);
