@@ -1,5 +1,5 @@
 /* =========================================
-   TURNIFY - LÓGICA DEL DASHBOARD 
+   TURNIFY - LÓGICA DEL DASHBOARD (PRO)
    ========================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -69,26 +69,24 @@ async function cambiarPeriodo(periodo, boton) {
         inicio.setDate(inicio.getDate() + 1);
         fin.setDate(fin.getDate() + 1);
     } else if (periodo === 'semana') {
-        // 🛡️ Ajuste Senior: Vamos al lunes de esta semana para no perder citas pasadas
         const day = inicio.getDay();
         const diff = inicio.getDate() - day + (day === 0 ? -6 : 1); 
         inicio.setDate(diff);
         fin.setDate(inicio.getDate() + 7);
     } else if (periodo === 'mes') {
-        // 🚩 EL ARREGLO PARA DARWIN: Retrocedemos al día 1 del mes actual (Abril 1)
         inicio.setDate(1); 
-        // Y el fin es el día 1 del mes siguiente (Mayo 1)
         fin.setMonth(fin.getMonth() + 1);
         fin.setDate(1);
     }
 
-    // 🛡️ Ajuste Senior: Captura citas de hace 2 días hasta hoy para ver lo "vencido" en la vista de Hoy
     if (periodo === 'hoy') {
-        inicio.setDate(inicio.getDate() - 2); 
+        // 🚩 CORRECCIÓN CRÍTICA: Eliminamos el -2 para que busque HOY realmente
+        inicio = new Date(); 
     }
 
-    const startStr = inicio.toISOString().split('T')[0];
-    const endStr = fin.toISOString().split('T')[0];
+    // 🛡️ Ajuste para que ISO no nos cambie la fecha por la diferencia horaria de Colombia (UTC-5)
+    const startStr = inicio.toLocaleDateString('en-CA'); // Formato YYYY-MM-DD local
+    const endStr = fin.toLocaleDateString('en-CA');
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
 
     const tablaBody = document.getElementById('turnosTable');
@@ -100,8 +98,6 @@ async function cambiarPeriodo(periodo, boton) {
         const user = JSON.parse(localStorage.getItem('user'));
         const provId = user?.proveedorId || user?.id;
 
-        // 📡 Usamos el endpoint de resumen con las fechas ya calculadas
-        // Pasamos el startStr para que el Service sepa desde dónde empezar a buscar
         const response = await fetch(`http://localhost:5000/api/Dashboard/resumen/${provId}?periodo=${periodo}&fecha=${startStr}`, {
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -111,7 +107,7 @@ async function cambiarPeriodo(periodo, boton) {
 
         if (response.ok) {
             const data = await response.json();
-            console.log("📅 JSON Recibido de API:", data);
+            console.log("📅 [DEBUG] Data Recibida:", data);
             
             renderizarTablaDashboard(data.proximasCitas || []);
             actualizarContadoresDashboard(data); 
@@ -134,15 +130,15 @@ function renderizarTablaDashboard(citas) {
     }
 
     tabla.innerHTML = citas.map(c => {
-        const estado = (c.estado || "pendiente").toLowerCase();
+        const estado = (c.estado || c.Estado || "pendiente").toLowerCase();
         const badgeClass = getEstadoClass(estado);
         
         return `
             <tr>
-                <td style="color: #48c1b5; font-weight: bold;"><i class="far fa-clock"></i> ${c.hora}</td> 
-                <td>${c.fecha || 'Hoy'}</td>
-                <td><strong>${c.cliente || 'Sin nombre'}</strong></td>
-                <td>${c.servicio || 'Servicio'}</td>
+                <td style="color: #48c1b5; font-weight: bold;"><i class="far fa-clock"></i> ${c.hora || c.Hora}</td> 
+                <td>${c.fecha ? c.fecha.split('T')[0] : 'Hoy'}</td>
+                <td><strong>${c.cliente || c.Cliente || 'Sin nombre'}</strong></td>
+                <td>${c.servicio || c.Servicio || 'Servicio'}</td>
                 <td><span class="status-pill ${badgeClass}">${estado}</span></td>
             </tr>
         `;
@@ -150,19 +146,60 @@ function renderizarTablaDashboard(citas) {
 }
 
 /**
- * 🔢 Actualiza los Cards de estadísticas
+ * 🔢 ACTUALIZACIÓN SENIOR: Ahora suma ingresos si el Backend no lo hace
  */
 function actualizarContadoresDashboard(data) {
     const totalCitasEl = document.getElementById('totalCitas') || document.getElementById('total-citas');
-    const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos') || document.getElementById('ingresosProyectados');
+    const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos') || document.getElementById('ingresosProyectados') || document.getElementById('txtIngresosTotales');
+    const clientesEl = document.getElementById('nuevosClientes') || document.getElementById('nuevos-clientes');
 
+    const listaCitas = data.proximasCitas || data.citas || [];
+
+    // 1. Citas Totales
     if (totalCitasEl) {
-        totalCitasEl.innerText = data.totalCitas !== undefined ? data.totalCitas : (data.length || 0);
+        // Usamos la longitud de la lista filtrada para que no cuente citas de otros
+        totalCitasEl.innerText = listaCitas.length;
     }
 
+    // 2. Clientes Nuevos (🚩 CORRECCIÓN PARA DARWIN)
+    if (clientesEl) {
+        // En lugar de usar data.nuevosClientes (que trae el global de 3),
+        // contamos los clientes únicos en la lista de citas de este barbero.
+        const clientesUnicos = new Set(listaCitas.map(c => c.clienteId || c.ClienteId || c.cliente || c.Cliente));
+        clientesEl.innerText = listaCitas.length > 0 ? clientesUnicos.size : 0;
+    }
+
+    // 3. Ingresos Totales (Suma Manual Blindada)
     if (ingresosEl) {
-        const monto = data.gananciaReal || data.ingresosReales || data.gananciaEstimada || 0;
-        ingresosEl.innerText = `$${monto.toLocaleString()}`;
+        let montoCalculado = 0;
+
+        if (listaCitas.length > 0) {
+            console.log("📡 Sumando ingresos de", listaCitas.length, "citas...");
+            montoCalculado = listaCitas.reduce((acc, c) => {
+                const valor = c.precioPactado || c.PrecioPactado || c.precio || c.Precio || c.valor || c.monto || 0;
+                const est = (c.estado || c.Estado || "").toLowerCase().trim();
+                
+                // SUMAMOS TODO: Completadas + Pendientes (Para la Proyección de $105.000)
+                if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente") || est.includes("pago")) {
+                    return acc + parseFloat(valor);
+                }
+                return acc;
+            }, 0);
+        }
+
+        // Respaldo por si la lista falla
+        if (montoCalculado === 0 && listaCitas.length === 0) {
+            montoCalculado = data.gananciaReal || data.ingresosReales || 0;
+        }
+
+        console.log("💵 [Lupe Debug] Resultado Proyectado:", montoCalculado);
+
+        // Formateo elegante: COP $ 105.000
+        ingresosEl.innerText = new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0
+        }).format(montoCalculado);
     }
 }
 
@@ -180,9 +217,6 @@ async function cargarResumenDashboard(token) {
 
         if (response.ok) {
             const data = await response.json();
-            const clientesEl = document.getElementById('nuevosClientes') || document.getElementById('nuevos-clientes');
-            if(clientesEl) clientesEl.innerText = data.nuevosClientes || data.nuevosClientesMes || 0;
-            
             actualizarContadoresDashboard(data);
         }
     } catch (error) { 
@@ -190,20 +224,15 @@ async function cargarResumenDashboard(token) {
     }
 }
 
-/**
- * 🎨 Asignación de clases CSS
- */
 function getEstadoClass(estado) {
-    if (estado.includes('completado') || estado.includes('confirmada')) return 'status-activo';
-    if (estado.includes('cancelada') || estado.includes('suspendido')) return 'status-bloqueado';
+    const est = estado.toLowerCase();
+    if (est.includes('completado') || est.includes('confirmada')) return 'status-activo';
+    if (est.includes('cancelada') || est.includes('suspendido')) return 'status-bloqueado';
     return 'status-pendiente'; 
 }
 
-/**
- * 🚪 Cerrar Sesión
- */
 function logout() {
-    if (confirm("¿Se va a abrir, mi perro? Guarde todo antes de salir.")) {
+    if (confirm("¿te vas a ir, mijito? Guarde todo antes de salir o si no , perdimos el tiempo.")) {
         localStorage.clear();
         window.location.href = 'login.html';
     }

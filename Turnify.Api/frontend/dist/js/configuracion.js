@@ -46,11 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const welcomeText = document.getElementById('welcomeText');
     if (welcomeText) {
-        // Estilo turquesa Heineken para tu nombre
         welcomeText.innerHTML = `¡Qué más, <span style="color: #48c1b5;">${nombreFinal}</span>!`;
     }
 
-    // --- 3. GESTIÓN DE TABS (Si estás en Configuración) ---
+    // --- 3. GESTIÓN DE TABS ---
     const menuItems = document.querySelectorAll('.config-menu-item');
     const sections = document.querySelectorAll('.config-content');
 
@@ -76,16 +75,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- 4. CARGA INICIAL DE DATOS ---
-    // Si existe el ID de proveedor, cargamos su perfil
     if(proveedorId) {
         cargarDatosConfig(proveedorId, token);
+        // 🚩 ADICIÓN SENIOR: Generar QR al iniciar si existe el ID
+        setTimeout(() => generarQRNegocio(proveedorId), 500);
     }
 
-    // Si existen botones de filtro, disparamos la agenda de 'Hoy'
     const btnHoy = document.querySelector(".btn-filter");
     if(btnHoy) cambiarPeriodo('hoy', btnHoy);
 
-    // Si existe el formulario de perfil, activamos el evento de guardado
     const formPerfil = document.getElementById('formConfigPerfil');
     if(formPerfil) {
         formPerfil.addEventListener('submit', (e) => guardarConfig(e, proveedorId, token));
@@ -135,7 +133,6 @@ function renderizarTablaDashboard(citas) {
         return;
     }
 
-    // 🚩 ORDEN SOLICITADO: HORA | FECHA | CLIENTE | SERVICIO | ESTADO
     tabla.innerHTML = citas.map(c => {
         const estado = (c.estado || "pendiente").toLowerCase();
         const badgeClass = getEstadoClass(estado);
@@ -155,8 +152,44 @@ function renderizarTablaDashboard(citas) {
 }
 
 /* =========================================
-   SECCIÓN: PERFIL Y HORARIOS
+   SECCIÓN: PERFIL, HORARIOS Y QR (THE BOSS)
    ========================================= */
+
+// 🚩 NUEVA FUNCIÓN: Generación de QR Dinámico
+function generarQRNegocio(proveedorId) {
+    // La URL a la que irá el cliente (Debe existir reservar.html)
+    const urlReserva = `${window.location.origin}/reservar.html?id=${proveedorId}`;
+    const container = document.getElementById('qr-container');
+    
+    if (!container) return; // Si no existe el div en el HTML, no hace nada
+
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlReserva)}&color=48c1b5&bgcolor=0a101e`;
+
+    container.innerHTML = `
+        <div style="text-align: center; padding: 20px; background: rgba(72,193,181,0.05); border: 1px solid rgba(72,193,181,0.2); border-radius: 20px;">
+            <img src="${qrUrl}" alt="QR Turnify" id="img-qr" style="border: 5px solid #48c1b5; border-radius: 15px; margin: 0 auto;">
+            <p style="margin-top: 15px; color: #48c1b5; font-weight: 800; font-size: 14px;">CLIENTES ESCANEAN AQUÍ</p>
+            <button onclick="descargarQR('${qrUrl}')" class="btn-save" style="margin-top: 10px; width: auto; padding: 10px 20px;">
+                <i class="fas fa-download"></i> Descargar QR
+            </button>
+        </div>
+    `;
+}
+
+// 🚩 NUEVA FUNCIÓN: Descarga del QR para impresión
+async function descargarQR(url) {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const fileUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.download = `QR_Turnify_Negocio.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (e) { alert("Error al descargar el QR"); }
+}
 
 async function cargarDatosConfig(proveedorId, token) {
     try {

@@ -16,7 +16,7 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
-        // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá (Blindaje para Docker/Linux/Windows)
+        // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá
         private DateTime GetBogotaTime()
         {
             var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -25,16 +25,24 @@ namespace Turnify.Api.Services
             return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
         }
 
-        // --- 📊 1. AGENDA POR RANGO ---
+        // --- 📊 1. AGENDA POR RANGO (Blindada contra filtraciones de fechas) ---
         public async Task<IEnumerable<object>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
         {
+            // 🛡️ BLINDAJE 1: Validación de seguridad
+            if (userId == Guid.Empty) return Enumerable.Empty<object>();
+
+            // 🛡️ BLINDAJE 2: Normalización de rangos para evitar el bug de "Abril en Junio"
+            // Forzamos el inicio al primer segundo del día y el fin al último segundo del día.
+            var fechaInicioStr = inicio.Date;
+            var fechaFinLimite = fin.Date.AddDays(1);
+
             return await _context.citas
                 .AsNoTracking()
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
                 .Where(c => c.ProveedorId == userId && 
-                            c.Fecha.Date >= inicio.Date && 
-                            c.Fecha.Date <= fin.Date && 
+                            c.Fecha >= fechaInicioStr && 
+                            c.Fecha < fechaFinLimite && // 🚩 Rango estricto: menor que el día siguiente
                             c.Estado != "cancelada")
                 .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
                 .Select(c => new {
@@ -46,19 +54,21 @@ namespace Turnify.Api.Services
                     c.Estado,
                     Precio = c.PrecioPactado,
                     Duracion = c.DuracionPactadaMin,
-                    c.Observaciones
+                    c.Observaciones,
+                    c.Modalidad,
+                    c.MetodoRegistro,
+                    c.Direccion
                 })
                 .ToListAsync();
         }
 
-        // --- 🕒 2. AGENDA DE HOY ---
         public async Task<IEnumerable<object>> GetAgendaHoyAsync(Guid userId)
         {
             var hoyBogota = GetBogotaTime().Date;
             return await GetCitasRangoAsync(userId, hoyBogota, hoyBogota);
         }
 
-        // --- 📝 3. AGENDAR CITA (Blindado y corregido) ---
+        // --- 📝 3. AGENDAR CITA (EVOLUCIONADA PARA QR & DOMICILIOS) ---
         public async Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto)
         {
             var cliente = await _context.clientes.FindAsync(dto.ClienteId);
@@ -67,16 +77,16 @@ namespace Turnify.Api.Services
             var servicio = await _context.servicios.FindAsync(dto.ServicioId);
             if (servicio == null) return (false, "Servicio no encontrado.", null);
 
-            // 🛡️ Blindaje de tiempo: Usamos la hora de Bogotá
+            // 🛡️ AUDITORÍA: Validación de Domicilio
+            if (dto.Modalidad.ToLower() == "domicilio" && string.IsNullOrWhiteSpace(dto.Direccion))
+                return (false, "La dirección es obligatoria para servicios a domicilio.", null);
+
             var ahoraBogota = GetBogotaTime();
             var fechaHoraCita = dto.Fecha.Date.Add(dto.Hora);
             
             if (fechaHoraCita < ahoraBogota)
                 return (false, "No puedes agendar una cita en el pasado.", null);
 
-            // 🚩 REPARACIÓN LÍNEA 108 APROX: 
-            // Como el servicio ahora tiene un ProveedorId nulable (Guid?), 
-            // usamos .GetValueOrDefault() para asegurar que pase un Guid puro a la Cita.
             var proveedorId = servicio.ProveedorId.GetValueOrDefault();
             
             if (proveedorId == Guid.Empty)
@@ -96,7 +106,6 @@ namespace Turnify.Api.Services
             if (inicioNueva < horario.HoraApertura || finNueva > horario.HoraCierre)
                 return (false, $"Fuera de rango de atención ({horario.HoraApertura} - {horario.HoraCierre}).", null);
 
-            // Validación de cruces
             var citasExistentes = await _context.citas
                 .AsNoTracking()
                 .Where(c => c.ProveedorId == proveedorId && c.Fecha.Date == dto.Fecha.Date && c.Estado != "cancelada")
@@ -118,10 +127,15 @@ namespace Turnify.Api.Services
                 Hora = inicioNueva,
                 Modalidad = dto.Modalidad ?? "local",
                 Estado = "pendiente",
-                PrecioPactado = servicio.Precio,
+                PrecioPactado = servicio.Precio + dto.CostoDomicilio,
                 DuracionPactadaMin = servicio.DuracionMinutos,
                 FechaCreacion = DateTime.UtcNow,
-                Observaciones = dto.Observaciones
+                Observaciones = dto.Observaciones,
+                Direccion = dto.Direccion,
+                MetodoRegistro = dto.MetodoRegistro ?? "Web",
+                Latitud = dto.Latitud,
+                Longitud = dto.Longitud,
+                CostoDomicilio = dto.CostoDomicilio
             };
 
             _context.citas.Add(nuevaCita);
@@ -167,13 +181,12 @@ namespace Turnify.Api.Services
             return slotsDisponibles;
         }
 
-        // --- 📅 5. AGENDA DEL DÍA ---
         public async Task<IEnumerable<object>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha)
         {
+            // 🚩 Llamamos al método de rango con la misma fecha para asegurar consistencia
             return await GetCitasRangoAsync(proveedorId, fecha, fecha);
         }
 
-        // --- ⚡ 6. ACTUALIZAR ESTADO ---
         public async Task<(bool Success, string Message)> UpdateEstadoCitaAsync(Guid id, string nuevoEstado)
         {
             var estadosValidos = new[] { "pendiente", "confirmada", "completada", "cancelada", "ausente" };
@@ -188,7 +201,6 @@ namespace Turnify.Api.Services
             return (true, $"Cita actualizada a: {nuevoEstado}");
         }
 
-        // --- 📜 7. HISTORIAL CLIENTE ---
         public async Task<IEnumerable<object>> GetHistorialClienteAsync(Guid clienteId)
         {
             return await _context.citas.AsNoTracking()
@@ -198,7 +210,8 @@ namespace Turnify.Api.Services
                 .Select(c => new {
                     c.Id, c.Fecha, c.Hora,
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no especificado",
-                    c.Estado, c.PrecioPactado, c.Observaciones
+                    c.Estado, c.PrecioPactado, c.Observaciones,
+                    c.Modalidad 
                 }).ToListAsync();
         }
     }

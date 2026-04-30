@@ -9,6 +9,12 @@ using System.Security.Claims;
 
 namespace Turnify.Api.Controllers
 {
+    // 🚩 DTO LOCAL: Para que el PATCH reciba el objeto correctamente
+    public class EstadoUpdateDto 
+    { 
+        public string NuevoEstado { get; set; } 
+    }
+
     [ApiController]
     [Route("api/[controller]")]
     [Authorize] 
@@ -51,15 +57,11 @@ namespace Turnify.Api.Controllers
         }
 
         // 📈 --- NUEVO ENDPOINT: ANALÍTICA PARA GRÁFICAS (Chart.js) ---
-        // Este es el que te dirá qué corte se hacen más o qué servicio de uñas domina
         [HttpGet("analitica-avanzada")]
         public async Task<IActionResult> GetAnaliticaAvanzada([FromQuery] Guid proveedorId, [FromQuery] string periodo = "mes", [FromQuery] DateTime? fecha = null)
         {
-            // 🛡️ ROLE DBA: Llamamos al servicio que agrupó la data por servicios y clientes
             var analitica = await _dashboardService.GetResumenDiarioAsync(proveedorId, fecha, periodo);
-            
             if (analitica == null) return NotFound(new { message = "No hay datos para este periodo" });
-
             return Ok(analitica);
         }
 
@@ -67,12 +69,11 @@ namespace Turnify.Api.Controllers
         [HttpGet("exportar/datos")]
         public async Task<IActionResult> GetDatosParaExportar([FromQuery] Guid proveedorId, [FromQuery] DateTime inicio, [FromQuery] DateTime fin)
         {
-            // Retorna la data plana pero ultra-detallada para que las librerías de JS generen el archivo
             var datos = await _citaService.GetCitasRangoAsync(proveedorId, inicio, fin);
             return Ok(datos);
         }
 
-        // --- 📝 ENDPOINT: CREAR NUEVA CITA ---
+        // --- 📝 ENDPOINT: CREAR NUEVA CITA (CORE PARA QR Y DOMICILIOS) ---
         [HttpPost("agendar")]
         [AllowAnonymous] 
         public async Task<IActionResult> Agendar([FromBody] CitaCreateDto dto)
@@ -80,7 +81,13 @@ namespace Turnify.Api.Controllers
             var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
             if (!result.Success) 
                 return BadRequest(new { message = result.Message });
-            return Ok(new { message = result.Message, citaId = result.CitaId });
+            
+            return Ok(new { 
+                message = result.Message, 
+                citaId = result.CitaId,
+                modalidad = dto.Modalidad,
+                registro = dto.MetodoRegistro 
+            });
         }
 
         // --- 🔍 ENDPOINT: CONSULTAR AGENDA POR PROVEEDOR ---
@@ -102,9 +109,12 @@ namespace Turnify.Api.Controllers
 
         // --- ⚡ ENDPOINT: ACTUALIZAR ESTADO DE LA CITA ---
         [HttpPatch("{id}/estado")]
-        public async Task<IActionResult> UpdateEstado(Guid id, [FromQuery] string nuevoEstado)
+        public async Task<IActionResult> UpdateEstado(Guid id, [FromBody] EstadoUpdateDto dto) // 🚩 CAMBIO: De [FromQuery] a [FromBody] con DTO
         {
-            var result = await _citaService.UpdateEstadoCitaAsync(id, nuevoEstado);
+            if (dto == null || string.IsNullOrEmpty(dto.NuevoEstado))
+                return BadRequest(new { message = "El nuevo estado es requerido en el cuerpo de la petición." });
+
+            var result = await _citaService.UpdateEstadoCitaAsync(id, dto.NuevoEstado);
             if (!result.Success) 
                 return BadRequest(new { message = result.Message });
             return Ok(new { message = result.Message });
@@ -118,6 +128,21 @@ namespace Turnify.Api.Controllers
             if (historial == null || !historial.Any())
                 return Ok(new { message = "Este cliente aún no tiene citas en su historial." });
             return Ok(historial);
+        }
+
+        // --- 📍 NUEVO ENDPOINT SENIOR: UBICACIÓN DE DOMICILIO ---
+        [HttpGet("{id}/ubicacion")]
+        public async Task<IActionResult> GetUbicacionDomicilio(Guid id)
+        {
+            var datos = await _citaService.GetCitasRangoAsync(Guid.Empty, DateTime.MinValue, DateTime.MaxValue);
+            var cita = datos.Cast<dynamic>().FirstOrDefault(c => c.Id == id);
+            
+            if (cita == null) return NotFound(new { message = "Cita no encontrada" });
+            
+            return Ok(new {
+                direccion = cita.Direccion,
+                modalidad = cita.Modalidad
+            });
         }
     }
 }

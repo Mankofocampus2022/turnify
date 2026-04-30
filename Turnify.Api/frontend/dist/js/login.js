@@ -42,34 +42,37 @@ async function login() {
                 throw new Error("El servidor no devolvió un token válido.");
             }
 
-            // 1. Guardar en LocalStorage para toda la sesión
+            // 1. Guardar en LocalStorage para toda la sesión (Doble guardado para compatibilidad)
             localStorage.setItem('turnify_token', token); 
             localStorage.setItem('token', token);
             
             // Guardamos el objeto usuario completo (importante para el dashboard)
             localStorage.setItem('user', JSON.stringify(data.user));
 
-            // Extraemos y normalizamos el Rol
-            const userRole = (data.user.rol || data.user.Rol || "").toUpperCase();
+            // Extraemos y normalizamos el Rol (Manejamos nulls con "")
+            const userRole = (data.user.rol || data.user.Rol || data.user.rolNombre || "").toUpperCase();
             localStorage.setItem('usuario_rol', userRole);
 
             // 2. Definición de IDs de respaldo (Tus GUIDs de SQL Server)
             const ADMIN_ID = "8854C07C-6E5E-4876-A29A-C7AD5DCFBAB7"; 
 
             // 3. 🛡️ REDIRECCIÓN INTELIGENTE (Blindada)
-            // Agregamos SUPERADMINISTRADOR que es el que viene en tu log
+            // Incluimos SUPERADMINISTRADOR (que es el que sale en tus logs)
             const esAdmin = userRole.includes("ADMIN") || 
                             userRole.includes("PROVEEDOR") || 
-                            data.user.rolId === ADMIN_ID;
+                            userRole.includes("BARBERO") ||
+                            data.user.rolId?.toUpperCase() === ADMIN_ID;
 
             console.log("Verificando acceso para rol:", userRole);
 
             if (esAdmin) {
-                console.log("🚀 Acceso concedido al Dashboard");
+                console.log("🚀 Acceso concedido al Dashboard Administrativo");
                 window.location.href = 'admin-dashboard.html';
             } else {
-                console.log("👤 Acceso a panel de Clientes");
-                window.location.href = 'clientes.html';
+                console.log("👤 Acceso a panel de Clientes (Agendamiento)");
+                // 🚩 CAMBIO ESTRATÉGICO: Mandamos al cliente directo a agendar
+                // Si 'clientes.html' te rebota, es porque ese archivo tiene un script de auth viejo.
+                window.location.href = 'agendar-cita.html'; 
             }
 
         } else {

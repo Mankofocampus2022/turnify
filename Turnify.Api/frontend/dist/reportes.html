@@ -49,13 +49,33 @@
             </div>
 
             <div class="actions-bar" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px;">
-                <div class="filters">
+                <div class="filters" style="display: flex; gap: 10px;">
                     <select id="filtro-periodo" class="btn-filter" style="background: #162431; color: #48c1b5; border: 1px solid #48c1b5; padding: 8px; border-radius: 5px; cursor: pointer; font-weight: bold;">
                         <option value="hoy">Hoy</option>
                         <option value="semana">Esta Semana</option>
-                        <option value="mes" selected>Este Mes</option>
+                        <option value="mes">Este Mes</option>
+                        <option value="especifico" selected>Mes Específico</option>
+                    </select>
+
+                    <select id="filtro-mes" class="btn-filter" style="background: #162431; color: #48c1b5; border: 1px solid #48c1b5; padding: 8px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        <option value="1">Enero</option>
+                        <option value="2">Febrero</option>
+                        <option value="3">Marzo</option>
+                        <option value="4" selected>Abril</option> <option value="5">Mayo</option>
+                        <option value="6">Junio</option>
+                        <option value="7">Julio</option>
+                        <option value="8">Agosto</option>
+                        <option value="9">Septiembre</option>
+                        <option value="10">Octubre</option>
+                        <option value="11">Noviembre</option>
+                        <option value="12">Diciembre</option>
+                    </select>
+
+                    <select id="filtro-anio" class="btn-filter" style="background: #162431; color: #48c1b5; border: 1px solid #48c1b5; padding: 8px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        <option value="">Año</option>
                     </select>
                 </div>
+
                 <div class="export-buttons">
                     <button id="btn-excel" class="btn-export" style="background: #1d6f42; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; margin-right: 10px; font-weight: bold;">
                         <i class="fas fa-file-excel"></i> EXCEL
@@ -104,6 +124,7 @@
                             <th>SERVICIO</th>
                             <th>MONTO</th>
                             <th>ESTADO</th>
+                            <th>ACCIONES</th> 
                         </tr>
                     </thead>
                     <tbody id="lista-reportes">

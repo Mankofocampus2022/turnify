@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Turnify | Agendar Cita</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css-dashboard.css">
+    <link rel="stylesheet" href="css-usuarios.css"> 
+    <link rel="stylesheet" href="css-configuracion.css">
+    <link rel="stylesheet" href="css-agendar.css">
+</head>
+<body>
+
+<div class="dashboard-layout">
+    <aside class="sidebar">
+        <div class="sidebar-header"><span class="logo-icon">🕒</span><h2>Turnify</h2></div>
+        <nav class="sidebar-nav">
+            <a href="admin-dashboard.html" id="nav-resumen" class="nav-item">
+                <i class="fas fa-chart-line"></i> Resumen
+            </a>
+            <a href="usuarios.html" id="nav-usuarios" class="nav-item">
+                <i class="fas fa-users"></i> Usuarios
+            </a>
+            <a href="servicios.html" id="nav-servicios" class="nav-item">
+                <i class="fas fa-cut"></i> Servicios
+            </a>
+            <a href="agendar-cita.html" id="nav-agendar" class="nav-item active">
+                <i class="fas fa-plus-circle"></i> Nueva Cita
+            </a>
+            <a href="configuracion.html" id="nav-config" class="nav-item">
+                <i class="fas fa-cog"></i> Configuración
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <button onclick="logout()" class="btn-logout">
+                <i class="fas fa-sign-out-alt"></i> Salir
+            </button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="header-section">
+            <h1>Panel de Agendamiento</h1>
+            <p id="subtituloAgendar">Gestiona tus servicios en el local o a domicilio.</p>
+        </div>
+
+        <div class="table-card booking-card">
+            <form id="formNuevaCita">
+                
+                <div id="sectionSeleccionarCliente" style="display: none;">
+                    <div class="step-title"><i class="fas fa-user-search"></i> 1. Seleccionar Cliente</div>
+                    <div class="form-group full-width">
+                        <select id="citaClienteId" class="input-style">
+                            <option value="">-- Buscar cliente registrado --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="sectionSeleccionarProveedor" style="display: none;">
+                    <div class="step-title"><i class="fas fa-user-tie"></i> 1. Seleccionar Profesional</div>
+                    <div class="form-group full-width">
+                        <select id="citaProveedorId" class="input-style" onchange="cargarServiciosPorProveedor()">
+                            <option value="">-- Cargando profesionales... --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="step-title"><i class="fas fa-cut"></i> 2. Selecciona el Servicio</div>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <select id="citaServicioId" class="input-style" required onchange="cargarDisponibilidad()">
+                            <option value="">¿Qué servicio realizaremos?</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="step-title"><i class="fas fa-motorcycle"></i> 3. Modalidad y Ubicación</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Tipo de atención</label>
+                        <select id="citaModalidad" class="input-style" onchange="toggleDireccionCita()">
+                            <option value="local">Atención en el local</option>
+                            <option value="domicilio">Servicio a Domicilio</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="groupDireccionCita" style="display: none;">
+                        <label>Dirección del servicio</label>
+                        <input type="text" id="citaDireccion" placeholder="Calle, número, barrio y apto">
+                    </div>
+                </div>
+
+                <div class="step-title"><i class="fas fa-calendar-alt"></i> 4. Fecha y Hora</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Fecha programada</label>
+                        <input type="date" id="citaFecha" class="input-style" required onchange="cargarDisponibilidad()">
+                    </div>
+                </div>
+                
+                <div id="containerSlots" class="time-slots">
+                    <p style="color: #64748b; font-size: 0.9em;">Selecciona profesional, servicio y fecha.</p>
+                </div>
+                <input type="hidden" id="citaHoraSeleccionada">
+
+                <div class="booking-footer">
+                    <button type="submit" class="btn-save">
+                        <i class="fas fa-check-circle"></i> Confirmar Cita
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+
+<script src="js/auth-global.js"></script> 
+<script src="js/agendar-cita.js"></script> 
+</body>
+</html>

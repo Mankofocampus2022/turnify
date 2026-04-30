@@ -1,0 +1,87 @@
+/* =========================================
+   TURNIFY - ESTILOS DE AGENDAMIENTO
+   ========================================= */
+
+.booking-card {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 30px;
+    background: #ffffff;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Títulos de los pasos */
+.step-title {
+    color: #48c1b5;
+    font-weight: bold;
+    margin: 25px 0 15px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.1rem;
+    border-bottom: 1px solid rgba(72, 193, 181, 0.1);
+    padding-bottom: 8px;
+}
+
+/* Grid de horarios */
+.time-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px;
+    margin-top: 15px;
+    padding: 10px;
+}
+
+/* Estilo de cada Slot (Hora) */
+.slot {
+    background: #1b3d5f;
+    color: #ffffff;
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 500;
+}
+
+.slot:hover {
+    border-color: #48c1b5;
+    background: rgba(72, 193, 181, 0.1);
+    color: #48c1b5;
+    transform: translateY(-2px);
+}
+
+.slot.selected {
+    background: #48c1b5;
+    color: #1b3d5f;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(72, 193, 181, 0.3);
+    border-color: #48c1b5;
+}
+
+/* Footer del Formulario */
+.booking-footer {
+    margin-top: 40px;
+}
+
+.booking-footer .btn-save {
+    width: 100%;
+    padding: 18px;
+    font-size: 1.1rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Ajustes Responsive */
+@media (max-width: 600px) {
+    .booking-card {
+        padding: 20px;
+    }
+    .time-slots {
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    }
+}

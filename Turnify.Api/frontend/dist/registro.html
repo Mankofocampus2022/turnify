@@ -4,13 +4,19 @@
     <meta charset="UTF-8">
     <title>Turnify | Crear Cuenta</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="css-registro.css?v=2.1">
 </head>
 <body>
 <div class="register-wrapper">
     <div class="register-card">
         <div class="register-header">
+            <div id="negocioDetected" style="display: none;">
+                <span id="nombreNegocioQR">Detectando negocio...</span>
+            </div>
+            
             <h2>Únete a Turnify</h2>
+            
             <div class="role-selector">
                 <button type="button" id="btnSoyCliente" class="active" onclick="cambiarRol('CLIENTE')">Soy Cliente</button>
                 <button type="button" id="btnSoyBarbero" onclick="cambiarRol('BARBERO')">Soy Barbero</button>
@@ -18,33 +24,74 @@
         </div>
 
         <form id="formRegistroCliente" class="form-grid">
+            
             <div class="input-group full-width">
-                <label>Nombre completo</label>
+                <label><i class="fas fa-user"></i> Nombre completo</label>
                 <input type="text" id="regNombre" placeholder="Ej: Darwin Ocampo" required>
             </div>
 
             <div class="input-group full-width">
-                <label>Correo electrónico</label>
+                <label><i class="fas fa-envelope"></i> Correo electrónico</label>
                 <input type="email" id="regEmail" placeholder="correo@ejemplo.com" required>
             </div>
 
             <div class="input-group full-width">
-                <label>Teléfono</label>
+                <label><i class="fas fa-phone"></i> Teléfono</label>
                 <input type="tel" id="regTelefono" placeholder="3001234567" required>
             </div>
 
             <div id="groupNegocio" class="input-group full-width" style="display: none;">
-                <label>Nombre de tu Barbería / Negocio</label>
+                <label><i class="fas fa-store"></i> Nombre de tu Barbería / Negocio</label>
                 <input type="text" id="regNegocio" placeholder="Ej: Barbería El Don">
             </div>
 
+            <div id="sectionReservaInmediata" class="full-width" style="display: none;">
+                <hr>
+                <p><strong>Detalles de tu Cita</strong></p>
+                
+                <div class="input-group full-width">
+                    <label><i class="fas fa-cut"></i> Servicio</label>
+                    <select id="regServicio">
+                        <option value="">Selecciona un servicio</option>
+                    </select>
+                </div>
+
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label><i class="fas fa-calendar-alt"></i> Fecha</label>
+                        <input type="date" id="regFecha">
+                    </div>
+
+                    <div class="input-group">
+                        <label><i class="fas fa-clock"></i> Hora</label>
+                        <select id="regHora">
+                            <option value="">Elige fecha primero</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-group full-width">
+                    <label><i class="fas fa-hand-holding-heart"></i> Modalidad del servicio</label>
+                    <select id="regModalidad" onchange="toggleDireccionRegistro()">
+                        <option value="local">En el local / Barbería</option>
+                        <option value="domicilio">A domicilio (Servicio Premium)</option>
+                    </select>
+                </div>
+
+                <div id="groupDireccionRegistro" class="input-group full-width" style="display: none;">
+                    <label><i class="fas fa-map-marker-alt"></i> Dirección exacta</label>
+                    <input type="text" id="regDireccion" placeholder="Calle, número y barrio">
+                </div>
+                <hr>
+            </div>
+
             <div class="input-group">
-                <label>Contraseña</label>
+                <label><i class="fas fa-key"></i> Contraseña</label>
                 <input type="password" id="regPassword" placeholder="••••••••" required>
             </div>
 
             <div class="input-group">
-                <label>Confirmar</label>
+                <label><i class="fas fa-shield-alt"></i> Confirmar</label>
                 <input type="password" id="regConfirmPassword" placeholder="••••••••" required>
             </div>
 
@@ -60,6 +107,8 @@
         </div>
     </div>
 </div>
+
 <script src="js/registro-clientes.js"></script>
+
 </body>
 </html>

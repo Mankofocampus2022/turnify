@@ -7,77 +7,102 @@ const API_URL = 'http://localhost:5000/api/Servicios';
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Sincronización de Identidad
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    const rol = localStorage.getItem('usuario_rol') || "";
-    const proveedorId = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
+    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
+    const userStr = localStorage.getItem('user'); // 🚩 Traemos el objeto completo de respaldo
+    
+    let proveedorId = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
     
     if (!token) {
         window.location.href = 'login.html';
         return;
     }
 
+    // 🚩 RESCATE DE LUPE: Si el ID no está suelto, lo buscamos dentro del usuario
+    if ((!proveedorId || proveedorId === "null" || proveedorId === "undefined") && userStr) {
+        try {
+            const userObj = JSON.parse(userStr);
+            // 🛡️ Buscamos todas las variantes posibles de ID
+            proveedorId = userObj.proveedorId || userObj.ProveedorId || userObj.id || userObj.Id;
+            console.log("🛠️ [Lupe Debug] ID rescatado del objeto user:", proveedorId);
+        } catch (e) { 
+            console.error("❌ Error al parsear user en servicios"); 
+        }
+    }
+
     localStorage.setItem('turnify_token', token);
     
-    // 🛡️ BLINDAJE: Solo guardamos el ID si es un valor real para evitar el string "null"
+    // 🛡️ BLINDAJE: Guardamos el ID rescatado para que el resto del código lo use
     if (proveedorId && proveedorId !== "null" && proveedorId !== "undefined") {
         localStorage.setItem('proveedor_id', proveedorId);
     }
 
     // 2. VALIDACIÓN FLEXIBLE DE ROLES
-    const rolNormalizado = rol.toUpperCase();
+    const rolNormalizado = rol.trim();
     const esAdmin = rolNormalizado.includes("ADMIN") || 
                     rolNormalizado.includes("6A7FA68F") || 
-                    rolNormalizado.includes("6DE2A606");
+                    rolNormalizado.includes("6DE2A606") ||
+                    rolNormalizado.includes("SUPERADMIN");
 
+    // Un profesional es válido si tiene el rol correcto y tenemos su ID
+    const esProfesional = rolNormalizado.includes("PROVEEDOR") || rolNormalizado.includes("BARBERO");
     const idValido = (proveedorId && proveedorId !== "null" && proveedorId !== "undefined");
 
+    // 🚩 Solo redirigimos si NO es admin Y tampoco logramos encontrar un ID válido
     if (!esAdmin && !idValido) {
-        console.error("🚫 Barbero sin ID de local. Redirigiendo...");
-        alert("Tu perfil de barbero no está configurado. Por favor, inicia sesión.");
+        console.error("🚫 Barbero sin ID identificado. Redirigiendo...");
+        console.log("Datos actuales:", { rol: rolNormalizado, id: proveedorId });
+        alert("Tu perfil de profesional no está configurado o la sesión expiró. Por favor, inicia sesión de nuevo.");
         window.location.href = 'login.html';
         return;
     }
 
-    console.log("✅ Acceso concedido como:", esAdmin ? "Admin" : "Barbero");
+    console.log("✅ Acceso concedido como:", esAdmin ? "Admin" : "Profesional (" + rolNormalizado + ")");
     cargarServicios();
     
     const form = document.getElementById('formServicio');
     if(form) form.addEventListener('submit', guardarServicio);
 });
 
-// 1. CARGAR SERVICIOS
+// 1. CARGAR SERVICIOS (Lógica de filtrado mejorada)
 async function cargarServicios() {
     const token = localStorage.getItem('turnify_token');
     const proveedorId = localStorage.getItem('proveedor_id');
-    const rol = localStorage.getItem('usuario_rol');
-    const rolNormalizado = (rol || "").toUpperCase();
+    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
 
-    const url = (rolNormalizado.includes("ADMIN") || rolNormalizado.includes("6A7FA68F") || rolNormalizado.includes("6DE2A606")) 
-                ? API_URL 
-                : `${API_URL}/proveedor/${proveedorId}`;
+    // 🚩 El ADMIN ve todo, el BARBERO/PROVEEDOR solo sus propios servicios
+    const esAdmin = rol.includes("ADMIN") || rol.includes("SUPERADMIN") || rol.includes("6A7FA68F");
+    const url = esAdmin ? API_URL : `${API_URL}/proveedor/${proveedorId}`;
+
+    console.log("📡 Cargando servicios desde:", url);
 
     try {
         const response = await fetch(url, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        const datos = await response.json();
-        if (response.ok && Array.isArray(datos)) {
-            renderizarTabla(datos);
+        if (response.ok) {
+            const datos = await response.json();
+            if (Array.isArray(datos)) {
+                // 🛡️ SEGUNDO FILTRO DE SEGURIDAD: Por si el API devuelve todo por error
+                const datosFiltrados = esAdmin ? datos : datos.filter(s => (s.proveedorId == proveedorId || s.ProveedorId == proveedorId));
+                renderizarTabla(datosFiltrados);
+            }
+        } else {
+            console.error("❌ Error API Servicios:", response.status);
         }
     } catch (error) {
         console.error("Error de conexión:", error);
     }
 }
 
-// 2. RENDERIZAR TABLA
+// 2. RENDERIZAR TABLA (Manteniendo tu diseño original)
 function renderizarTabla(servicios) {
     const tabla = document.getElementById('tablaServicios');
     if(!tabla) return;
     
     tabla.innerHTML = '';
-
     if (servicios.length === 0) {
-        tabla.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #48c1b5;">No hay servicios registrados.</td></tr>';
+        tabla.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #48c1b5;">No hay servicios registrados para este perfil.</td></tr>';
         return;
     }
 
@@ -88,12 +113,10 @@ function renderizarTabla(servicios) {
         const duracionMinutos = s.duracionMinutos || s.DuracionMinutos || 0;
         const categoria = s.categoria || s.Categoria || 'Barbería';
         const activo = (s.activo !== undefined) ? s.activo : s.Activo;
-        
         const catClass = categoria === 'Manicura' ? 'cat-manicura' : 'cat-barberia';
         
         let estadoTexto = (activo == 1 || activo === true) ? 'ACTIVO' : (activo == 2 ? 'EN PROCESO' : 'INACTIVO');
         let estadoClase = (activo == 1 || activo === true) ? 'badge-success' : (activo == 2 ? 'badge-warning' : 'badge-danger');
-
         const idCorto = id ? id.toString().substring(0,8) : '...';
 
         tabla.innerHTML += `
@@ -121,7 +144,7 @@ function renderizarTabla(servicios) {
     });
 }
 
-// 3. EDITAR SERVICIO
+// 3. EDITAR SERVICIO (Sin cambios estructurales)
 async function editarServicio(id) {
     const token = localStorage.getItem('turnify_token');
     try {
@@ -129,21 +152,20 @@ async function editarServicio(id) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const s = await res.json();
-
         if (res.ok) {
             document.getElementById('nombreServicio').value = s.nombre || s.Nombre || '';
             document.getElementById('precioServicio').value = s.precio || s.Precio || 0;
             document.getElementById('duracionServicio').value = s.duracionMinutos || s.DuracionMinutos || 0;
             document.getElementById('comisionServicio').value = s.comisionPorcentaje || s.ComisionPorcentaje || 0;
             document.getElementById('estadoServicio').value = (s.activo !== undefined) ? s.activo : (s.Activo ? 1 : 0);
-            
             document.getElementById('formServicio').setAttribute('data-id', s.id || s.Id);
-            
             abrirModal();
             const titulo = document.querySelector('.modal-header h2');
             if(titulo) titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Servicio';
         }
-    } catch (err) { console.error("Error al cargar para editar:", err); }
+    } catch (err) { 
+        console.error("Error al cargar para editar:", err); 
+    }
 }
 
 // 4. ELIMINAR SERVICIO
@@ -156,26 +178,23 @@ async function eliminarServicio(id) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) cargarServicios();
-    } catch (err) { console.error("Error al eliminar:", err); }
+    } catch (err) { 
+        console.error("Error al eliminar:", err); 
+    }
 }
 
 // 5. GUARDAR (CREAR O EDITAR)
 async function guardarServicio(e) {
     e.preventDefault();
     const token = localStorage.getItem('turnify_token');
-    
-    // 🛡️ BLINDAJE: Capturamos el proveedorId
     let pId = localStorage.getItem('proveedor_id');
-
-    // Si es un texto "null" o está vacío, lo convertimos a un null real de JS para el API
-    if (!pId || pId === "null" || pId === "undefined" || pId === "") {
-        pId = null;
-    }
+    
+    // 🛡️ Blindaje de ID para el DTO
+    if (!pId || pId === "null" || pId === "undefined" || pId === "") pId = null;
 
     const form = document.getElementById('formServicio');
     const idExistente = form.getAttribute('data-id');
-
-    // 🛡️ Construcción segura del objeto (Ahora el DTO sí aceptará este null)
+    
     const body = {
         nombre: document.getElementById('nombreServicio').value.trim(),
         categoria: document.getElementById('categoriaServicio').value, 
@@ -199,7 +218,6 @@ async function guardarServicio(e) {
             },
             body: JSON.stringify(body)
         });
-
         if (res.ok) {
             alert(idExistente ? "¡Servicio actualizado!" : "¡Servicio creado!");
             cerrarModal();
@@ -207,12 +225,12 @@ async function guardarServicio(e) {
         } else {
             const errorData = await res.json();
             let msg = errorData.title || "Error en los datos";
-            if(errorData.errors) {
-                msg = Object.values(errorData.errors).flat().join("\n");
-            }
+            if(errorData.errors) msg = Object.values(errorData.errors).flat().join("\n");
             alert("Error al guardar:\n" + msg);
         }
-    } catch (error) { console.error("Error de red:", error); }
+    } catch (error) { 
+        console.error("Error de red:", error); 
+    }
 }
 
 // UTILIDADES
@@ -234,11 +252,10 @@ function cerrarModal() {
 
 function logout() {
     localStorage.clear();
-    alert("Cerrando sesión...");
     window.location.href = 'login.html';
 }
 
-// 🚩 PUENTE GLOBAL: Esto es lo que soluciona el "ReferenceError"
+// PUENTE GLOBAL
 window.abrirModal = abrirModal;
 window.cerrarModal = cerrarModal;
 window.editarServicio = editarServicio;

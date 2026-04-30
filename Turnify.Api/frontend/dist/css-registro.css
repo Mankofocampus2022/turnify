@@ -15,6 +15,7 @@
     --t-green: #70e0a3;
     --t-white: #ffffff;
     --t-gray: #f4f7f6;
+    --t-danger: #e94560; /* 🚩 Nuevo: Para alertas */
 }
 
 body {
@@ -40,7 +41,7 @@ body {
     border-radius: 20px;
     box-shadow: 0 15px 35px rgba(0,0,0,0.5);
     width: 100%;
-    max-width: 480px; /* Ancho ideal para formularios */
+    max-width: 550px; /* 🚩 Ajustado: Un poco más ancho para el flujo de reserva */
     text-align: center;
     animation: fadeIn 0.5s ease;
 }
@@ -57,22 +58,40 @@ body {
     margin-bottom: 10px;
 }
 
-.register-header p {
-    color: #666;
-    margin-bottom: 25px;
-    font-size: 0.95rem;
+/* 🚩 NUEVO: Badge de negocio detectado (QR) */
+#negocioDetected {
+    margin-bottom: 15px;
 }
 
-/* 4. FORMULARIO Y CAMPOS */
+.status-pill {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-activo {
+    background: rgba(72, 193, 181, 0.2);
+    color: var(--t-cyan);
+    border: 1px solid var(--t-cyan);
+}
+
+/* 4. FORMULARIO Y CAMPOS (Mejorados) */
 .form-grid {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap; /* 🚩 Permitir dos columnas en pantallas anchas */
     gap: 15px;
     text-align: left;
 }
 
 .input-group {
-    margin-bottom: 5px;
+    flex: 1 1 calc(50% - 15px); /* Dos columnas */
+    min-width: 200px;
+}
+
+.full-width {
+    flex: 1 1 100%;
 }
 
 .input-group label {
@@ -83,7 +102,16 @@ body {
     font-size: 0.85rem;
 }
 
-.input-group input {
+/* 🚩 Iconos en labels */
+.input-group label i {
+    color: var(--t-cyan);
+    margin-right: 5px;
+    width: 15px;
+}
+
+/* 🚩 Sincronización: Input y Select con el mismo estilo */
+.input-group input, 
+.input-group select {
     width: 100%;
     padding: 12px;
     border: 2px solid #edf2f7;
@@ -91,13 +119,34 @@ body {
     background: var(--t-gray);
     font-size: 1rem;
     transition: all 0.3s ease;
+    color: var(--t-dark);
 }
 
-.input-group input:focus {
+.input-group input:focus,
+.input-group select:focus {
     border-color: var(--t-cyan);
     outline: none;
     background: #fff;
     box-shadow: 0 0 0 4px rgba(72, 193, 181, 0.1);
+}
+
+/* 🚩 Estilo para los divisores de sección (Cita / Seguridad) */
+.divider-text {
+    width: 100%;
+    text-align: center;
+    border-bottom: 1px solid #eee;
+    line-height: 0.1em;
+    margin: 25px 0 15px;
+    color: var(--t-cyan);
+    font-weight: bold;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.divider-text span {
+    background: #fff;
+    padding: 0 15px;
 }
 
 /* 5. BOTÓN DE ACCIÓN */
@@ -108,19 +157,29 @@ body {
     padding: 15px;
     border: none;
     border-radius: 10px;
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 800;
     cursor: pointer;
     transition: all 0.3s ease;
     margin-top: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
 }
 
 .btn-register:hover {
     background: var(--t-green);
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(112, 224, 163, 0.4);
+}
+
+.btn-register:disabled {
+    background: #cbd5e0;
+    cursor: not-allowed;
+    transform: none;
 }
 
 /* 6. FOOTER */
@@ -138,14 +197,7 @@ body {
     text-decoration: none;
 }
 
-.register-footer a:hover {
-    color: var(--t-dark);
-    text-decoration: underline;
-}
-
-/* =========================================
-   7. ROLE SELECTOR (EL CORAZÓN DEL REGISTRO)
-   ========================================= */
+/* 7. ROLE SELECTOR */
 .role-selector {
     display: flex;
     background: var(--t-gray);
@@ -165,23 +217,21 @@ body {
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     background: transparent;
-    color: #718096; /* Color gris suave para el inactivo */
+    color: #718096;
 }
 
-/* 🚩 ESTADO ACTIVO: Cuando el JS le pone la clase .active */
 .role-selector button.active {
     background: var(--t-white);
     color: var(--t-dark);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-/* Hover suave para el que no está seleccionado */
-.role-selector button:not(.active):hover {
-    color: var(--t-dark);
-    background: rgba(72, 193, 181, 0.1);
-}
-
-/* 🛡️ BLINDAJE UX: Feedback visual al hacer clic */
-.role-selector button:active {
-    transform: scale(0.95);
+/* 📱 RESPONSIVE SENIOR */
+@media (max-width: 480px) {
+    .register-card {
+        padding: 25px 20px;
+    }
+    .input-group {
+        flex: 1 1 100%;
+    }
 }

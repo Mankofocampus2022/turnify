@@ -8,7 +8,6 @@ namespace Turnify.Api.Models
     {
         [Key]
         [Column("id")]
-        // Opción recomendada: El servidor lo genera automáticamente al instanciar
         public Guid Id { get; set; } = Guid.NewGuid(); 
 
         [Required]
@@ -31,6 +30,7 @@ namespace Turnify.Api.Models
         [Column("hora")]
         public TimeSpan Hora { get; set; } 
 
+        // 🚩 "local" o "domicilio"
         [Required]
         [StringLength(20)]
         [Column("modalidad")]
@@ -39,6 +39,19 @@ namespace Turnify.Api.Models
         [StringLength(200)]
         [Column("direccion")]
         public string? Direccion { get; set; }
+
+        // 🚩 NUEVO: Para Google Maps mañana
+        [Column("latitud", TypeName = "decimal(18, 10)")]
+        public decimal? Latitud { get; set; }
+
+        [Column("longitud", TypeName = "decimal(18, 10)")]
+        public decimal? Longitud { get; set; }
+
+        // 🚩 NUEVO: Tracking del QR (QR, Web, Manual)
+        [Required]
+        [StringLength(20)]
+        [Column("metodo_registro")]
+        public string MetodoRegistro { get; set; } = "Web";
 
         [Required]
         [StringLength(20)]
@@ -56,16 +69,18 @@ namespace Turnify.Api.Models
         [Column("precio_pactado")]
         public decimal PrecioPactado { get; set; } 
 
+        // 🚩 NUEVO: Extra por domicilio
+        [Column("costo_domicilio")]
+        public decimal CostoDomicilio { get; set; } = 0;
+
         [Column("duracion_pactada_min")]
         public int DuracionPactadaMin { get; set; }
 
-        // --- RELACIONES (Navegación) ---
+        // --- RELACIONES ---
         [ForeignKey("ClienteId")]
         public virtual Clientes? Cliente { get; set; }
-
         [ForeignKey("ProveedorId")]
         public virtual Proveedores? Proveedor { get; set; }
-
         [ForeignKey("ServicioId")]
         public virtual Servicios? Servicio { get; set; }
     }
