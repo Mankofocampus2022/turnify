@@ -3,7 +3,7 @@ using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
 using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs;
-using System.Runtime.InteropServices; 
+using System.Runtime.InteropServices;
 
 namespace Turnify.Api.Services
 {
@@ -16,23 +16,29 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
-        // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá
+        // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá (Blindado contra fallos de TZ)
         private DateTime GetBogotaTime()
         {
-            var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-            var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
-            var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
+            try 
+            {
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
+                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
+            }
+            catch 
+            {
+                // Backup manual UTC-5 si falla el proveedor de zona horaria
+                return DateTime.UtcNow.AddHours(-5);
+            }
         }
 
-        // --- 📊 1. AGENDA POR RANGO (Blindada contra filtraciones de fechas) ---
+        // --- 📊 1. AGENDA POR RANGO ---
         public async Task<IEnumerable<object>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
         {
-            // 🛡️ BLINDAJE 1: Validación de seguridad
+            // 🛡️ Blindaje inicial: Evitar consultas con IDs vacíos
             if (userId == Guid.Empty) return Enumerable.Empty<object>();
 
-            // 🛡️ BLINDAJE 2: Normalización de rangos para evitar el bug de "Abril en Junio"
-            // Forzamos el inicio al primer segundo del día y el fin al último segundo del día.
             var fechaInicioStr = inicio.Date;
             var fechaFinLimite = fin.Date.AddDays(1);
 
@@ -42,7 +48,7 @@ namespace Turnify.Api.Services
                 .Include(c => c.Servicio)
                 .Where(c => c.ProveedorId == userId && 
                             c.Fecha >= fechaInicioStr && 
-                            c.Fecha < fechaFinLimite && // 🚩 Rango estricto: menor que el día siguiente
+                            c.Fecha < fechaFinLimite && 
                             c.Estado != "cancelada")
                 .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
                 .Select(c => new {
@@ -68,29 +74,32 @@ namespace Turnify.Api.Services
             return await GetCitasRangoAsync(userId, hoyBogota, hoyBogota);
         }
 
-        // --- 📝 3. AGENDAR CITA (EVOLUCIONADA PARA QR & DOMICILIOS) ---
+        // --- 📝 3. AGENDAR CITA (Transaccional y Blindada) ---
         public async Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto)
         {
+            // 🛡️ Validación de integridad de entrada
+            if (dto.ClienteId == Guid.Empty || dto.ServicioId == Guid.Empty)
+                return (false, "Los identificadores de cliente o servicio no pueden estar vacíos.", (Guid?)null);
+
             var cliente = await _context.clientes.FindAsync(dto.ClienteId);
-            if (cliente == null) return (false, "El cliente especificado no existe.", null);
+            if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
 
             var servicio = await _context.servicios.FindAsync(dto.ServicioId);
-            if (servicio == null) return (false, "Servicio no encontrado.", null);
+            if (servicio == null) return (false, "Servicio no encontrado.", (Guid?)null);
 
-            // 🛡️ AUDITORÍA: Validación de Domicilio
             if (dto.Modalidad.ToLower() == "domicilio" && string.IsNullOrWhiteSpace(dto.Direccion))
-                return (false, "La dirección es obligatoria para servicios a domicilio.", null);
+                return (false, "La dirección es obligatoria para servicios a domicilio.", (Guid?)null);
 
             var ahoraBogota = GetBogotaTime();
             var fechaHoraCita = dto.Fecha.Date.Add(dto.Hora);
             
             if (fechaHoraCita < ahoraBogota)
-                return (false, "No puedes agendar una cita en el pasado.", null);
+                return (false, $"No puedes agendar en el pasado. (Actual en Bog: {ahoraBogota:HH:mm})", (Guid?)null);
 
             var proveedorId = servicio.ProveedorId.GetValueOrDefault();
             
             if (proveedorId == Guid.Empty)
-                return (false, "Este servicio no tiene un proveedor asignado.", null);
+                return (false, "Este servicio no tiene un proveedor asignado.", (Guid?)null);
 
             int diaDeLaSemana = (int)dto.Fecha.DayOfWeek;
 
@@ -98,65 +107,107 @@ namespace Turnify.Api.Services
                 .AsNoTracking()
                 .FirstOrDefaultAsync(h => h.ProveedorId == proveedorId && h.DiaSemana == diaDeLaSemana);
 
-            if (horario == null) return (false, "El proveedor no trabaja este día.", null);
+            if (horario == null) return (false, "El proveedor no atiende en este día de la semana.", (Guid?)null);
 
             var inicioNueva = dto.Hora;
             var finNueva = inicioNueva.Add(TimeSpan.FromMinutes(servicio.DuracionMinutos));
 
             if (inicioNueva < horario.HoraApertura || finNueva > horario.HoraCierre)
-                return (false, $"Fuera de rango de atención ({horario.HoraApertura} - {horario.HoraCierre}).", null);
+                return (false, $"Fuera de horario: Abre {horario.HoraApertura} - Cierra {horario.HoraCierre}.", (Guid?)null);
 
-            var citasExistentes = await _context.citas
-                .AsNoTracking()
-                .Where(c => c.ProveedorId == proveedorId && c.Fecha.Date == dto.Fecha.Date && c.Estado != "cancelada")
-                .ToListAsync();
+            // 🛡️ [FIX] Estrategia de ejecución para SQL Server (Indispensable para transacciones con reintentos)
+            var strategy = _context.Database.CreateExecutionStrategy();
 
-            var yaExisteCita = citasExistentes.Any(c => 
-                inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva
-            );
-
-            if (yaExisteCita) return (false, "Este horario ya está ocupado.", null);
-
-            var nuevaCita = new Citas
+            return await strategy.ExecuteAsync<(bool Success, string Message, Guid? CitaId)>(async () =>
             {
-                Id = Guid.NewGuid(),
-                ClienteId = cliente.id,
-                ProveedorId = proveedorId,    
-                ServicioId = servicio.Id,
-                Fecha = dto.Fecha.Date,
-                Hora = inicioNueva,
-                Modalidad = dto.Modalidad ?? "local",
-                Estado = "pendiente",
-                PrecioPactado = servicio.Precio + dto.CostoDomicilio,
-                DuracionPactadaMin = servicio.DuracionMinutos,
-                FechaCreacion = DateTime.UtcNow,
-                Observaciones = dto.Observaciones,
-                Direccion = dto.Direccion,
-                MetodoRegistro = dto.MetodoRegistro ?? "Web",
-                Latitud = dto.Latitud,
-                Longitud = dto.Longitud,
-                CostoDomicilio = dto.CostoDomicilio
-            };
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var citasExistentes = await _context.citas
+                        .Where(c => c.ProveedorId == proveedorId && c.Fecha.Date == dto.Fecha.Date && c.Estado != "cancelada")
+                        .ToListAsync();
 
-            _context.citas.Add(nuevaCita);
-            await _context.SaveChangesAsync();
+                    var yaExisteCita = citasExistentes.Any(c => 
+                        inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva
+                    );
 
-            return (true, "¡Cita agendada con éxito!", nuevaCita.Id);
+                    if (yaExisteCita) 
+                        return (false, "Este horario ya fue ocupado mientras realizabas la solicitud.", (Guid?)null);
+
+                    var nuevaCita = new Citas
+                    {
+                        Id = Guid.NewGuid(),
+                        ClienteId = cliente.id,
+                        ProveedorId = proveedorId,    
+                        ServicioId = servicio.Id,
+                        Fecha = dto.Fecha.Date,
+                        Hora = inicioNueva,
+                        Modalidad = dto.Modalidad ?? "local",
+                        Estado = "pendiente",
+                        PrecioPactado = servicio.Precio + (dto.CostoDomicilio >= 0 ? dto.CostoDomicilio : 0), 
+                        DuracionPactadaMin = servicio.DuracionMinutos,
+                        FechaCreacion = DateTime.UtcNow,
+                        Observaciones = dto.Observaciones,
+                        Direccion = dto.Direccion,
+                        MetodoRegistro = dto.MetodoRegistro ?? "Web",
+                        Latitud = dto.Latitud,
+                        Longitud = dto.Longitud,
+                        CostoDomicilio = dto.CostoDomicilio
+                    };
+
+                    _context.citas.Add(nuevaCita);
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync(); 
+
+                    return (true, "¡Cita agendada con éxito!", (Guid?)nuevaCita.Id);
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync(); 
+                    Console.WriteLine($"❌ [Error-Fatal] Al agendar cita: {ex.Message}");
+                    return (false, "Error interno al procesar la cita. Intenta de nuevo.", (Guid?)null);
+                }
+            });
         }
 
-        // --- 🕒 4. DISPONIBILIDAD ---
+        // --- 🕒 4. DISPONIBILIDAD (MOTOR DE BÚSQUEDA BLINDADO) ---
         public async Task<IEnumerable<TimeSpan>> GetDisponibilidadAsync(Guid proveedorId, Guid servicioId, DateTime fecha)
         {
+            var ahoraBogota = GetBogotaTime();
+            
+            Console.WriteLine($"🔍 [Lupe-Debug] Consultando: Prov {proveedorId} | Serv {servicioId} | Fecha {fecha:yyyy-MM-dd}");
+
+            if (fecha.Date < ahoraBogota.Date) 
+            {
+                Console.WriteLine("⚠️ Bloqueo: Intento de consulta en fecha pasada.");
+                return Enumerable.Empty<TimeSpan>();
+            }
+
             var servicio = await _context.servicios.AsNoTracking().FirstOrDefaultAsync(s => s.Id == servicioId);
-            if (servicio == null) return Enumerable.Empty<TimeSpan>();
+            if (servicio == null) 
+            {
+                Console.WriteLine("⚠️ Bloqueo: El servicio no existe.");
+                return Enumerable.Empty<TimeSpan>();
+            }
 
+            var provIdReal = proveedorId == Guid.Empty ? servicio.ProveedorId.GetValueOrDefault() : proveedorId;
+
+            // 🛡️ Validación extra para asegurar que el proveedorId sea válido
+            if (provIdReal == Guid.Empty) return Enumerable.Empty<TimeSpan>();
+
+            int diaSemanaNet = (int)fecha.DayOfWeek; 
+            
             var horario = await _context.horarios_atencion.AsNoTracking()
-                .FirstOrDefaultAsync(h => h.ProveedorId == proveedorId && h.DiaSemana == (int)fecha.DayOfWeek);
+                .FirstOrDefaultAsync(h => h.ProveedorId == provIdReal && h.DiaSemana == diaSemanaNet);
 
-            if (horario == null) return Enumerable.Empty<TimeSpan>();
+            if (horario == null) 
+            {
+                Console.WriteLine($"⚠️ Bloqueo: Sin horario en DB para Prov {provIdReal} el día {diaSemanaNet}.");
+                return Enumerable.Empty<TimeSpan>();
+            }
 
             var citasOcupadas = await _context.citas.AsNoTracking()
-                .Where(c => c.ProveedorId == proveedorId && c.Fecha.Date == fecha.Date && c.Estado != "cancelada")
+                .Where(c => c.ProveedorId == provIdReal && c.Fecha.Date == fecha.Date && c.Estado != "cancelada")
                 .ToListAsync();
 
             var slotsDisponibles = new List<TimeSpan>();
@@ -164,26 +215,27 @@ namespace Turnify.Api.Services
             var duracionCita = TimeSpan.FromMinutes(servicio.DuracionMinutos);
             var intervalo = TimeSpan.FromMinutes(30); 
 
-            var ahoraBogota = GetBogotaTime();
-            TimeSpan limiteHora = fecha.Date == ahoraBogota.Date ? ahoraBogota.TimeOfDay : TimeSpan.Zero;
+            TimeSpan limiteHoraActual = fecha.Date == ahoraBogota.Date ? ahoraBogota.TimeOfDay : TimeSpan.Zero;
 
             while (tiempoActual + duracionCita <= horario.HoraCierre)
             {
-                if (tiempoActual > limiteHora) 
+                if (tiempoActual > limiteHoraActual) 
                 {
                     bool ocupado = citasOcupadas.Any(c => 
                         tiempoActual < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < tiempoActual + duracionCita
                     );
+                    
                     if (!ocupado) slotsDisponibles.Add(tiempoActual);
                 }
                 tiempoActual = tiempoActual.Add(intervalo);
             }
+
+            Console.WriteLine($"✅ Slots encontrados: {slotsDisponibles.Count}");
             return slotsDisponibles;
         }
 
         public async Task<IEnumerable<object>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha)
         {
-            // 🚩 Llamamos al método de rango con la misma fecha para asegurar consistencia
             return await GetCitasRangoAsync(proveedorId, fecha, fecha);
         }
 
@@ -196,6 +248,7 @@ namespace Turnify.Api.Services
             var cita = await _context.citas.FindAsync(id);
             if (cita == null) return (false, "La cita no existe.");
 
+            // 🛡️ Blindaje contra actualizaciones de estado a citas ya canceladas/completadas si fuera necesario
             cita.Estado = nuevoEstado;
             await _context.SaveChangesAsync();
             return (true, $"Cita actualizada a: {nuevoEstado}");
@@ -203,6 +256,8 @@ namespace Turnify.Api.Services
 
         public async Task<IEnumerable<object>> GetHistorialClienteAsync(Guid clienteId)
         {
+            if (clienteId == Guid.Empty) return Enumerable.Empty<object>();
+
             return await _context.citas.AsNoTracking()
                 .Include(c => c.Servicio)
                 .Where(c => c.ClienteId == clienteId)

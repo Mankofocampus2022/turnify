@@ -3,6 +3,10 @@ using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
 using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Turnify.Api.Services
 {
@@ -15,9 +19,11 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
+        // 🛡️ BLINDAJE: Usamos AsNoTracking() para que las consultas de lectura sean más rápidas
         public async Task<IEnumerable<ServicioReadDto>> ObtenerTodos()
         {
             var servicios = await _context.servicios
+                .AsNoTracking()
                 .Include(s => s.Proveedor)
                 .ToListAsync();
             return servicios.Select(s => MapearADto(s));
@@ -26,6 +32,7 @@ namespace Turnify.Api.Services
         public async Task<IEnumerable<ServicioReadDto>> ObtenerPorProveedor(Guid proveedorId)
         {
             var servicios = await _context.servicios
+                .AsNoTracking()
                 .Where(s => s.ProveedorId == proveedorId) 
                 .ToListAsync();
             return servicios.Select(s => MapearADto(s));
@@ -34,7 +41,8 @@ namespace Turnify.Api.Services
         public async Task<IEnumerable<ServicioReadDto>> ObtenerActivosPorProveedor(Guid proveedorId)
         {
             var servicios = await _context.servicios
-                // 🚩 CORRECCIÓN: Comparación numérica
+                .AsNoTracking()
+                // 🚩 CORRECCIÓN: Comparación numérica (1 = Activo)
                 .Where(s => s.ProveedorId == proveedorId && s.Activo == 1) 
                 .ToListAsync();
             return servicios.Select(s => MapearADto(s));
@@ -42,53 +50,59 @@ namespace Turnify.Api.Services
 
         public async Task<ServicioReadDto?> ObtenerPorId(Guid id)
         {
-            var s = await _context.servicios.FindAsync(id);
+            // 🛡️ Blindaje contra búsquedas de IDs vacíos
+            if (id == Guid.Empty) return null;
+
+            var s = await _context.servicios
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id);
+
             if (s == null) return null;
             return MapearADto(s);
         }
 
-        public async Task<ServicioReadDto> CrearServicio(ServicioUpsertDto dto)
+        // 🚩 AJUSTE: Recibe ServicioCreateDto sincronizado con el Controller y JS
+        public async Task<ServicioReadDto> CrearServicio(ServicioCreateDto dto)
         {
             var nuevoServicio = new Servicios
             {
                 Id = Guid.NewGuid(),
-                // 🛡️ BLINDAJE FINAL: Ya no usamos GetValueOrDefault()
-                // Al ser Servicios.ProveedorId nulable (Guid?), pasamos el valor directo.
-                // Si es null, la DB lo aceptará sin estallar por el FK de ceros.
-                ProveedorId = dto.ProveedorId, 
-                Nombre = dto.Nombre,
-                Descripcion = dto.Descripcion,
-                DuracionMinutos = dto.DuracionMinutos,
-                Precio = dto.Precio,
-                Categoria = dto.Categoria,
-                ComisionPorcentaje = dto.ComisionPorcentaje,
-                ImagenUrl = dto.ImagenUrl,
-                Activo = 1, // 🚩 CORRECCIÓN: 1 en lugar de true
+                // 🛡️ MAPEO SINCRONIZADO: DTO (snake_case) -> Modelo (PascalCase)
+                ProveedorId = dto.proveedor_id, 
+                Nombre = dto.nombre?.Trim(),
+                Descripcion = dto.descripcion?.Trim(),
+                DuracionMinutos = dto.duracion_minutos,
+                Precio = dto.precio,
+                Categoria = dto.categoria ?? "Barbería",
+                ComisionPorcentaje = dto.comision_porcentaje,
+                // 🛡️ BLINDAJE DE ESTADO: Convertimos bool (JS) a int (SQL)
+                Activo = dto.activo ? 1 : 0, 
                 FechaCreacion = DateTime.UtcNow
             };
 
             _context.servicios.Add(nuevoServicio);
             await _context.SaveChangesAsync();
+            
             return MapearADto(nuevoServicio);
         }
 
-        public async Task<ServicioReadDto?> ActualizarServicio(Guid id, ServicioUpsertDto dto)
+        public async Task<ServicioReadDto?> ActualizarServicio(Guid id, ServicioCreateDto dto)
         {
             var servicio = await _context.servicios.FindAsync(id);
             if (servicio == null) return null;
 
-            servicio.Nombre = dto.Nombre;
-            servicio.Descripcion = dto.Descripcion;
-            servicio.DuracionMinutos = dto.DuracionMinutos;
-            servicio.Precio = dto.Precio;
-            servicio.Categoria = dto.Categoria;
-            servicio.ComisionPorcentaje = dto.ComisionPorcentaje;
-            servicio.ImagenUrl = dto.ImagenUrl;
-            servicio.Activo = dto.Activo; // 🚩 Permite actualizar el estado (0, 1, 2)
+            servicio.Nombre = dto.nombre?.Trim() ?? servicio.Nombre;
+            servicio.Descripcion = dto.descripcion?.Trim() ?? servicio.Descripcion;
+            servicio.DuracionMinutos = dto.duracion_minutos;
+            servicio.Precio = dto.precio;
+            servicio.Categoria = dto.categoria ?? servicio.Categoria;
+            servicio.ComisionPorcentaje = dto.comision_porcentaje;
+            
+            // 🛡️ ACTUALIZACIÓN DE ESTADO: Sincronización bool -> int
+            servicio.Activo = dto.activo ? 1 : 0;
 
-            // 🛡️ ACTUALIZACIÓN DE PROVEEDOR:
-            // Ahora permitimos que el proveedor cambie o se mantenga nulo
-            servicio.ProveedorId = dto.ProveedorId;
+            // 🛡️ ACTUALIZACIÓN DE PROVEEDOR (Identidad protegida)
+            servicio.ProveedorId = dto.proveedor_id;
 
             await _context.SaveChangesAsync();
             return MapearADto(servicio);
@@ -99,22 +113,28 @@ namespace Turnify.Api.Services
             var servicio = await _context.servicios.FindAsync(id);
             if (servicio == null) return false;
 
-            servicio.Activo = 0; // 🚩 CORRECCIÓN: 0 en lugar de false
-            await _context.SaveChangesAsync();
-            return true;
+            servicio.Activo = 0; // 🚩 Soft delete (0 = Inactivo)
+            return await _context.SaveChangesAsync() > 0;
         }
 
-        private static ServicioReadDto MapearADto(Servicios s) => new ServicioReadDto
+        // 🛡️ MAPEADOR BLINDADO
+        private static ServicioReadDto MapearADto(Servicios s)
         {
-            Id = s.Id,
-            Nombre = s.Nombre,
-            Descripcion = s.Descripcion,
-            Precio = s.Precio,
-            DuracionMinutos = s.DuracionMinutos,
-            Categoria = s.Categoria,
-            ImagenUrl = s.ImagenUrl,
-            ComisionPorcentaje = s.ComisionPorcentaje,
-            Activo = s.Activo // Ambos son INT, aquí no hay lío
-        };
+            if (s == null) return new ServicioReadDto();
+
+            return new ServicioReadDto
+            {
+                Id = s.Id,
+                ProveedorId = s.ProveedorId, // 🚩 LÍNEA KILLER AGREGADA: Ahora el JS podrá filtrar
+                Nombre = s.Nombre,
+                Descripcion = s.Descripcion,
+                Precio = s.Precio,
+                DuracionMinutos = s.DuracionMinutos,
+                Categoria = s.Categoria,
+                ImagenUrl = s.ImagenUrl,
+                ComisionPorcentaje = s.ComisionPorcentaje,
+                Activo = s.Activo 
+            };
+        }
     }
 }

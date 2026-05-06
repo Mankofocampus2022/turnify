@@ -29,7 +29,7 @@ namespace Turnify.Api.Controllers
 
         // --- 🚩 OBTENER POR ID (Blindado con FromRoute) ---
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById([FromRoute] Guid id) // 🛡️ Explicitamos que viene de la URL
+        public async Task<IActionResult> GetById([FromRoute] Guid id) 
         {
             var servicio = await _servicioService.ObtenerPorId(id);
             if (servicio == null) return NotFound(new { message = "Servicio no encontrado." });
@@ -54,20 +54,33 @@ namespace Turnify.Api.Controllers
             return Ok(servicios);
         }
 
-        // --- 🚩 CREAR SERVICIO ---
+        // --- 🚩 CREAR SERVICIO (Blindaje corregido) ---
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] ServicioUpsertDto dto)
+        public async Task<IActionResult> Create([FromBody] ServicioCreateDto dto) // 🚩 Cambiado a ServicioCreateDto para coincidir con tu JS
         {
-            // Si el DTO no cumple con los DataAnnotations (required, etc), devolvemos el error detallado
-            if (!ModelState.IsValid) return BadRequest(ModelState);
+            // 🛡️ BLINDAJE: Si el modelo no es válido, extraemos los errores para el JS
+            if (!ModelState.IsValid) 
+            {
+                return BadRequest(new { 
+                    message = "Error de validación al crear servicio.",
+                    errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)
+                });
+            }
 
-            var resultado = await _servicioService.CrearServicio(dto);
-            return CreatedAtAction(nameof(GetById), new { id = resultado.Id }, resultado);
+            try 
+            {
+                var resultado = await _servicioService.CrearServicio(dto);
+                return CreatedAtAction(nameof(GetById), new { id = resultado.Id }, resultado);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error interno: " + ex.Message });
+            }
         }
 
         // --- 🚩 ACTUALIZAR (Aquí es donde suele saltar el 400) ---
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] ServicioUpsertDto dto)
+        public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] ServicioCreateDto dto) // 🚩 Sincronizado con el DTO
         {
             // 🛡️ BLINDAJE SENIOR: Verificamos que el modelo sea válido antes de procesar
             if (!ModelState.IsValid) 

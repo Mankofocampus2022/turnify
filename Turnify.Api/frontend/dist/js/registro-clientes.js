@@ -29,17 +29,17 @@ function cambiarRol(rol) {
     const sectionReserva = document.getElementById('sectionReservaInmediata');
 
     if (rol === 'BARBERO') {
-        groupNegocio.style.display = 'block';
+        if(groupNegocio) groupNegocio.style.display = 'block';
         if(sectionReserva) sectionReserva.style.display = 'none';
-        inputNegocio.required = true;
+        if(inputNegocio) inputNegocio.required = true;
         btnText.innerText = "Registrarme como Barbero";
         btnBarbero.classList.add('active');
         btnCliente.classList.remove('active');
     } else {
-        groupNegocio.style.display = 'none';
+        if(groupNegocio) groupNegocio.style.display = 'none';
         // Si hay un QR detectado, volvemos a mostrar la reserva al ser cliente
         if(qrProveedorId && sectionReserva) sectionReserva.style.display = 'block';
-        inputNegocio.required = false;
+        if(inputNegocio) inputNegocio.required = false;
         btnText.innerText = "Registrarme como Cliente";
         btnCliente.classList.add('active');
         btnBarbero.classList.remove('active');
@@ -83,7 +83,9 @@ async function inicializarFlujoQR() {
         if (response.ok) {
             const servicios = await response.json();
             const selectServicio = document.getElementById('regServicio');
-            selectServicio.innerHTML = servicios.map(s => `<option value="${s.id}">${s.nombre} - $${s.precio}</option>`).join('');
+            if(selectServicio) {
+                selectServicio.innerHTML = servicios.map(s => `<option value="${s.id}">${s.nombre} - $${s.precio}</option>`).join('');
+            }
             
             // También intentamos traer el nombre del negocio para el banner
             const respProv = await fetch(`http://localhost:5000/api/Proveedores/${qrProveedorId}`);
@@ -130,14 +132,15 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
     btnSubmit.disabled = true;
     btnSubmit.innerText = "Procesando Registro...";
 
-    // 📦 1. DATOS DE USUARIO
+    // 📦 1. DATOS DE USUARIO - 🛡️ BLINDAJE PARA EVITAR ERROR 400
     const registroData = {
         nombre: document.getElementById('regNombre').value.trim(),
         email: document.getElementById('regEmail').value.trim(),
         password: password,
         rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.BARBERO,
         telefono: document.getElementById('regTelefono').value.trim(),
-        nombreComercial: currentRole === 'BARBERO' ? document.getElementById('regNegocio').value.trim() : null
+        nombreComercial: currentRole === 'BARBERO' ? document.getElementById('regNegocio').value.trim() : "",
+        tipoNegocio: currentRole === 'BARBERO' ? (document.getElementById('regTipoNegocio')?.value || "Barbería") : "Particular"
     };
 
     try {
@@ -151,8 +154,8 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
         const result = await response.json();
 
         if (response.ok) {
-            // El backend debe devolver el ID del nuevo cliente (result.user.id o similar)
-            const clienteId = result.user?.id || result.id;
+            // 🚩 CORRECCIÓN CRÍTICA: El backend devuelve 'usuarioId' directamente en el objeto result
+            const clienteId = result.usuarioId || result.id;
 
             // PASO B: SI ES FLUJO QR, AGENDAMOS DE UNA VEZ
             if (qrProveedorId && currentRole === 'CLIENTE' && clienteId) {
@@ -166,7 +169,7 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
                     hora: document.getElementById('regHora').value,
                     modalidad: document.getElementById('regModalidad').value,
                     direccion: document.getElementById('regDireccion').value.trim(),
-                    metodoRegistro: "QR" // 🚩 El flag que el CEO pidió
+                    metodoRegistro: "QR" 
                 };
 
                 const resCita = await fetch('http://localhost:5000/api/Citas/agendar', {
@@ -186,7 +189,13 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
             
             window.location.href = 'login.html';
         } else {
-            alert("❌ Error: " + (result.message || "No se pudo completar el registro."));
+            // 🛡️ CAPTURA DE ERRORES DE VALIDACIÓN (Si el backend manda un 400 con detalles)
+            let errorMsg = result.message || "No se pudo completar el registro.";
+            if(result.errors) {
+                errorMsg = Object.values(result.errors).flat().join("\n");
+            }
+            alert("❌ Error: " + errorMsg);
+            
             btnSubmit.disabled = false;
             btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Barbero";
         }
@@ -200,4 +209,4 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
 });
 
 // Inicializamos si hay QR presente al cargar la página
-if(qrProveedorId) inicializarFlujoQR(); 
+if(qrProveedorId) inicializarFlujoQR();

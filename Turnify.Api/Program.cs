@@ -10,7 +10,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
 
-// --- ALIAS DE SWAGGER (Se mantienen tus alias) ---
+// --- ALIAS DE SWAGGER ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
 using SwaggerSecurityScheme = Microsoft.OpenApi.Models.OpenApiSecurityScheme;
 using SwaggerSecurityRequirement = Microsoft.OpenApi.Models.OpenApiSecurityRequirement;
@@ -40,7 +40,7 @@ var localizationOptions = new RequestLocalizationOptions()
 
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
-// --- 🛡️ CONFIGURACIÓN DE CORS (Abierto para desarrollo local/Docker) ---
+// --- 🛡️ CONFIGURACIÓN DE CORS ---
 builder.Services.AddCors(options => {
     options.AddPolicy("AllowTurnify", b => 
     {
@@ -122,21 +122,26 @@ app.UseRequestLocalization(localizationOptions);
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("AllowTurnify");
 
-// --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS MEJORADO ---
-// 🚩 Ajuste para Docker: Buscamos donde realmente esté el contenido
+// --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS DIAGNÓSTICO ---
 string rootPath = builder.Environment.ContentRootPath;
 string frontendPath = Path.Combine(rootPath, "frontend");
 
-// Si dentro de frontend existe 'dist', priorizamos esa
 if (Directory.Exists(Path.Combine(frontendPath, "dist"))) {
     frontendPath = Path.Combine(frontendPath, "dist");
 }
 
-Console.WriteLine($"--- 🔍 RUTA FINAL DE ARCHIVOS: {frontendPath} ---");
+Console.WriteLine($"--- 🔍 RUTA FINAL DE ARCHIVOS DETECTADA: {frontendPath} ---");
+Console.WriteLine($"--- 📂 ¿La carpeta existe?: {Directory.Exists(frontendPath)} ---");
 
 if (Directory.Exists(frontendPath))
 {
-    // Habilitar login.html como página de inicio
+    // Listamos qué archivos .html ve .NET físicamente dentro del contenedor
+    var files = Directory.GetFiles(frontendPath, "*.html");
+    Console.WriteLine($"--- 📄 Archivos HTML disponibles en Docker ({files.Length}): ---");
+    foreach (var file in files) {
+        Console.WriteLine($"   -> {Path.GetFileName(file)}");
+    }
+
     var fileOptions = new DefaultFilesOptions();
     fileOptions.DefaultFileNames.Clear();
     fileOptions.DefaultFileNames.Add("login.html");
@@ -144,11 +149,13 @@ if (Directory.Exists(frontendPath))
     
     app.UseDefaultFiles(fileOptions);
 
-    // Servir estáticos con mapeo directo
     app.UseStaticFiles(new StaticFileOptions { 
-        FileProvider = new PhysicalFileProvider(frontendPath),
-        RequestPath = "" // Permite acceder a /reportes.js directamente
+        FileProvider = new PhysicalFileProvider(frontendPath)
     });
+}
+else
+{
+    Console.WriteLine("⚠️ --- ADVERTENCIA: No se encontró la carpeta de frontend. ---");
 }
 
 app.UseAuthentication();
@@ -156,10 +163,12 @@ app.UseAuthorization();
 
 app.MapControllers(); 
 
-// 🚩 Fallback: Si no es una ruta de API, manda al login
-app.MapFallbackToFile("login.html", new StaticFileOptions {
-    FileProvider = new PhysicalFileProvider(frontendPath)
-});
+if (Directory.Exists(frontendPath))
+{
+    app.MapFallbackToFile("login.html", new StaticFileOptions {
+        FileProvider = new PhysicalFileProvider(frontendPath)
+    });
+}
 
 app.Run();
 

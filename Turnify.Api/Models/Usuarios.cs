@@ -32,16 +32,20 @@ namespace Turnify.Api.Models
         [JsonPropertyName("password_hash")]
         public string password_hash { get; set; } = string.Empty;
 
-        // 🔥 Agregamos el '?' para que acepte los NULL de la base de datos
+        // 🛡️ PROPIEDAD VIRTUAL (No existe en la tabla física 'usuarios')
+        [NotMapped] 
+        [StringLength(20)]
+        [JsonPropertyName("telefono")] 
+        public string? telefono { get; set; } = string.Empty;
+
         [JsonPropertyName("activo")]
         public bool? activo { get; set; } = true;
 
         [JsonPropertyName("fecha_creacion")]
         public DateTime fecha_creacion { get; set; } = DateTime.UtcNow;
 
-        // --- CAMPOS DE SUPERADMIN ---
+        // --- CAMPOS DE GESTIÓN ---
         
-        // 🔥 Agregamos el '?' aquí también para evitar el SqlNullValueException
         [JsonPropertyName("esta_bloqueado")]
         public bool? esta_bloqueado { get; set; } = false;
 
@@ -51,7 +55,7 @@ namespace Turnify.Api.Models
         [JsonPropertyName("ultima_conexion")]
         public DateTime? ultima_conexion { get; set; }
 
-        // --- CAMPOS DE RECUPERACIÓN ---
+        // --- CAMPOS DE RECUPERACIÓN (Asegúrate que coincidan con SQL) ---
         [JsonPropertyName("reset_token")]
         public string? ResetToken { get; set; }
 

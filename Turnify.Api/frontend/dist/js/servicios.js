@@ -1,5 +1,5 @@
 /* =========================================
-   TURNIFY - GESTIÓN DE SERVICIOS (PRO)
+   TURNIFY - GESTIÓN DE SERVICIOS 
    ========================================= */
 
 const API_URL = 'http://localhost:5000/api/Servicios';
@@ -10,20 +10,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
     const userStr = localStorage.getItem('user'); // 🚩 Traemos el objeto completo de respaldo
     
-    let proveedorId = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
+    // 🛡️ BLINDAJE: Limpiamos el ID de posibles strings basura
+    let pIdRaw = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
+    let proveedorId = (pIdRaw === "null" || pIdRaw === "undefined") ? null : pIdRaw;
     
     if (!token) {
         window.location.href = 'login.html';
         return;
     }
 
-    // 🚩 RESCATE DE LUPE: Si el ID no está suelto, lo buscamos dentro del usuario
-    if ((!proveedorId || proveedorId === "null" || proveedorId === "undefined") && userStr) {
+    // 🚩 RESCATE DE LUPE: Si el ID no está suelto, lo buscamos dentro del objeto user
+    if (!proveedorId && userStr) {
         try {
             const userObj = JSON.parse(userStr);
-            // 🛡️ Buscamos todas las variantes posibles de ID
-            proveedorId = userObj.proveedorId || userObj.ProveedorId || userObj.id || userObj.Id;
-            console.log("🛠️ [Lupe Debug] ID rescatado del objeto user:", proveedorId);
+            // 🛡️ CRÍTICO: El ID de la tabla 'usuarios' (userObj.id) NO es el mismo que el de 'proveedores'
+            // Solo aceptamos proveedorId. Si no está, Maruja no podrá crear servicios.
+            proveedorId = userObj.proveedorId || userObj.ProveedorId;
+            
+            console.log("🛠️ [Lupe Debug] ID de Proveedor rescatado:", proveedorId);
         } catch (e) { 
             console.error("❌ Error al parsear user en servicios"); 
         }
@@ -31,8 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     localStorage.setItem('turnify_token', token);
     
-    // 🛡️ BLINDAJE: Guardamos el ID rescatado para que el resto del código lo use
-    if (proveedorId && proveedorId !== "null" && proveedorId !== "undefined") {
+    // 🛡️ BLINDAJE: Aseguramos que el ID rescatado quede guardado para las peticiones
+    if (proveedorId) {
         localStorage.setItem('proveedor_id', proveedorId);
     }
 
@@ -43,15 +47,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     rolNormalizado.includes("6DE2A606") ||
                     rolNormalizado.includes("SUPERADMIN");
 
-    // Un profesional es válido si tiene el rol correcto y tenemos su ID
-    const esProfesional = rolNormalizado.includes("PROVEEDOR") || rolNormalizado.includes("BARBERO");
     const idValido = (proveedorId && proveedorId !== "null" && proveedorId !== "undefined");
 
-    // 🚩 Solo redirigimos si NO es admin Y tampoco logramos encontrar un ID válido
+    // 🚩 Solo redirigimos si NO es admin Y tampoco logramos encontrar un ID de proveedor válido
     if (!esAdmin && !idValido) {
-        console.error("🚫 Barbero sin ID identificado. Redirigiendo...");
-        console.log("Datos actuales:", { rol: rolNormalizado, id: proveedorId });
-        alert("Tu perfil de profesional no está configurado o la sesión expiró. Por favor, inicia sesión de nuevo.");
+        console.error("🚫 Profesional sin ID identificado. Redirigiendo...");
+        alert("Tu perfil de profesional no está configurado correctamente. Por favor, inicia sesión de nuevo.");
         window.location.href = 'login.html';
         return;
     }
@@ -69,10 +70,12 @@ async function cargarServicios() {
     const proveedorId = localStorage.getItem('proveedor_id');
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
 
-    // 🚩 El ADMIN ve todo, el BARBERO/PROVEEDOR solo sus propios servicios
     const esAdmin = rol.includes("ADMIN") || rol.includes("SUPERADMIN") || rol.includes("6A7FA68F");
-    const url = esAdmin ? API_URL : `${API_URL}/proveedor/${proveedorId}`;
+    
+    // 🛡️ BLINDAJE: Si no hay proveedorId y no es admin, no hacemos la petición inútil
+    if (!esAdmin && !proveedorId) return;
 
+    const url = esAdmin ? API_URL : `${API_URL}/proveedor/${proveedorId}`;
     console.log("📡 Cargando servicios desde:", url);
 
     try {
@@ -83,8 +86,12 @@ async function cargarServicios() {
         if (response.ok) {
             const datos = await response.json();
             if (Array.isArray(datos)) {
-                // 🛡️ SEGUNDO FILTRO DE SEGURIDAD: Por si el API devuelve todo por error
-                const datosFiltrados = esAdmin ? datos : datos.filter(s => (s.proveedorId == proveedorId || s.ProveedorId == proveedorId));
+                // 🛡️ SEGUNDO FILTRO: Aseguramos que Maruja solo vea sus servicios
+                const datosFiltrados = esAdmin ? datos : datos.filter(s => {
+                    const sId = (s.proveedorId || s.ProveedorId || "").toString().toLowerCase();
+                    const pId = (proveedorId || "").toString().toLowerCase();
+                    return sId === pId;
+                });
                 renderizarTabla(datosFiltrados);
             }
         } else {
@@ -95,13 +102,13 @@ async function cargarServicios() {
     }
 }
 
-// 2. RENDERIZAR TABLA (Manteniendo tu diseño original)
+// 2. RENDERIZAR TABLA (Manteniendo tu diseño original intacto)
 function renderizarTabla(servicios) {
     const tabla = document.getElementById('tablaServicios');
     if(!tabla) return;
     
     tabla.innerHTML = '';
-    if (servicios.length === 0) {
+    if (!servicios || servicios.length === 0) {
         tabla.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #48c1b5;">No hay servicios registrados para este perfil.</td></tr>';
         return;
     }
@@ -112,8 +119,8 @@ function renderizarTabla(servicios) {
         const precio = s.precio || s.Precio || 0;
         const duracionMinutos = s.duracionMinutos || s.DuracionMinutos || 0;
         const categoria = s.categoria || s.Categoria || 'Barbería';
-        const activo = (s.activo !== undefined) ? s.activo : s.Activo;
-        const catClass = categoria === 'Manicura' ? 'cat-manicura' : 'cat-barberia';
+        const activo = (s.activo !== undefined) ? s.activo : (s.Activo !== undefined ? s.Activo : true);
+        const catClass = categoria.toLowerCase() === 'manicura' ? 'cat-manicura' : 'cat-barberia';
         
         let estadoTexto = (activo == 1 || activo === true) ? 'ACTIVO' : (activo == 2 ? 'EN PROCESO' : 'INACTIVO');
         let estadoClase = (activo == 1 || activo === true) ? 'badge-success' : (activo == 2 ? 'badge-warning' : 'badge-danger');
@@ -144,31 +151,30 @@ function renderizarTabla(servicios) {
     });
 }
 
-// 3. EDITAR SERVICIO (Sin cambios estructurales)
+// 3. EDITAR SERVICIO (Mantenido intacto)
 async function editarServicio(id) {
     const token = localStorage.getItem('turnify_token');
     try {
         const res = await fetch(`${API_URL}/${id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const s = await res.json();
         if (res.ok) {
+            const s = await res.json();
             document.getElementById('nombreServicio').value = s.nombre || s.Nombre || '';
             document.getElementById('precioServicio').value = s.precio || s.Precio || 0;
             document.getElementById('duracionServicio').value = s.duracionMinutos || s.DuracionMinutos || 0;
             document.getElementById('comisionServicio').value = s.comisionPorcentaje || s.ComisionPorcentaje || 0;
             document.getElementById('estadoServicio').value = (s.activo !== undefined) ? s.activo : (s.Activo ? 1 : 0);
+            document.getElementById('categoriaServicio').value = s.categoria || s.Categoria || 'Barbería';
             document.getElementById('formServicio').setAttribute('data-id', s.id || s.Id);
             abrirModal();
             const titulo = document.querySelector('.modal-header h2');
             if(titulo) titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Servicio';
         }
-    } catch (err) { 
-        console.error("Error al cargar para editar:", err); 
-    }
+    } catch (err) { console.error("Error al cargar para editar:", err); }
 }
 
-// 4. ELIMINAR SERVICIO
+// 4. ELIMINAR SERVICIO (Mantenido intacto)
 async function eliminarServicio(id) {
     if (!confirm("¿Seguro que quieres borrar este servicio?")) return;
     const token = localStorage.getItem('turnify_token');
@@ -178,19 +184,20 @@ async function eliminarServicio(id) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) cargarServicios();
-    } catch (err) { 
-        console.error("Error al eliminar:", err); 
-    }
+    } catch (err) { console.error("Error al eliminar:", err); }
 }
 
-// 5. GUARDAR (CREAR O EDITAR)
+// 5. GUARDAR (CREAR O EDITAR) - 🛡️ BLINDAJE KILLER
 async function guardarServicio(e) {
     e.preventDefault();
     const token = localStorage.getItem('turnify_token');
     let pId = localStorage.getItem('proveedor_id');
     
-    // 🛡️ Blindaje de ID para el DTO
-    if (!pId || pId === "null" || pId === "undefined" || pId === "") pId = null;
+    // 🛡️ REGLA DE ORO: Si no hay proveedor_id, no enviamos nada
+    if (!pId || pId === "null" || pId === "undefined") {
+        alert("🚨 Error de sesión: No se encontró tu ID de proveedor. Por favor, cierra sesión y vuelve a entrar.");
+        return;
+    }
 
     const form = document.getElementById('formServicio');
     const idExistente = form.getAttribute('data-id');
@@ -200,14 +207,16 @@ async function guardarServicio(e) {
         categoria: document.getElementById('categoriaServicio').value, 
         precio: parseFloat(document.getElementById('precioServicio').value) || 0,
         duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
-        proveedorId: pId, 
+        proveedorId: pId, // 🚩 El ID correcto que rescatamos
         comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
-        activo: parseInt(document.getElementById('estadoServicio').value) || 0,
-        descripcion: "" 
+        activo: parseInt(document.getElementById('estadoServicio').value) === 1, // Booleano para C#
+        descripcion: "Servicio de Turnify" 
     };
 
     const metodo = idExistente ? 'PUT' : 'POST';
     const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;
+
+    console.log(`📡 Enviando ${metodo} a ${url}...`, body);
 
     try {
         const res = await fetch(url, {
@@ -224,16 +233,17 @@ async function guardarServicio(e) {
             cargarServicios();
         } else {
             const errorData = await res.json();
-            let msg = errorData.title || "Error en los datos";
+            console.error("❌ Error del API:", errorData);
+            let msg = errorData.message || errorData.title || "Error en los datos";
             if(errorData.errors) msg = Object.values(errorData.errors).flat().join("\n");
             alert("Error al guardar:\n" + msg);
         }
     } catch (error) { 
-        console.error("Error de red:", error); 
+        console.error("🚨 Error de red:", error); 
     }
 }
 
-// UTILIDADES
+// UTILIDADES (Sin cambios)
 function abrirModal() { 
     const modal = document.getElementById('modalServicio');
     if(modal) modal.style.display = 'flex'; 

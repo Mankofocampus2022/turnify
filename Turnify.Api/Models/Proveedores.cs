@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -22,6 +24,16 @@ namespace Turnify.Api.Models
         [Column("nombre_comercial")] 
         public string NombreComercial { get; set; } = string.Empty;
 
+        // 🚩 AGREGADO: Sincronización para Validación Dual (Killer Fix)
+        [Column("email")]
+        [EmailAddress(ErrorMessage = "El formato del correo no es válido.")]
+        public string? Email { get; set; }
+
+        // 🚩 Campo de teléfono para validación y contacto
+        [Column("telefono")]
+        [StringLength(20)]
+        public string Telefono { get; set; } = string.Empty;
+
         [Column("descripcion")]
         public string? Descripcion { get; set; }
 
@@ -41,7 +53,7 @@ namespace Turnify.Api.Models
         public bool Eliminado { get; set; } = false;
 
         [Column("fecha_creacion")]
-        public DateTime FechaCreacion { get; set; } = DateTime.Now;
+        public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
 
         [Column("fecha_actualizacion")]
         public DateTime? FechaActualizacion { get; set; }

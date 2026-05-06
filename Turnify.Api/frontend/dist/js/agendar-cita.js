@@ -9,12 +9,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const user = JSON.parse(userStr);
-    // 🚩 Limpiamos el rol de espacios o saltos de línea invisibles
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
     const esCliente = rol.includes("CLIENTE");
 
     console.log("🚀 [Turnify Log] Rol Detectado:", rol);
-    console.log("🚀 [Turnify Log] ¿Es Cliente?:", esCliente);
 
     // 🚩 LÓGICA DE INTERFAZ POR ROL
     const sectionCliente = document.getElementById('sectionSeleccionarCliente');
@@ -22,25 +20,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     const subtitulo = document.getElementById('subtituloAgendar');
 
     if (esCliente) {
-        console.log("👤 Ejecutando Flujo Cliente...");
         if (sectionCliente) sectionCliente.style.display = 'none';
         if (sectionProveedor) sectionProveedor.style.display = 'block';
         if (subtitulo) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
-        
         cargarProveedores(token); 
     } else {
-        console.log("💈 Ejecutando Flujo Barbero/Admin...");
         if (sectionCliente) sectionCliente.style.display = 'block';
         if (sectionProveedor) sectionProveedor.style.display = 'none';
         if (subtitulo) subtitulo.innerText = "Registro manual de servicios (Local / Domicilio)";
-        
-        // 🛡️ FIX: Solo intentamos cargar clientes si NO somos rol cliente
         cargarClientes(token);
-        
-        // Si es barbero, cargamos sus propios servicios de una vez
         const proveedorId = user.proveedorId || user.id;
-        console.log("🎯 Barbero detectado. Cargando sus servicios con ID:", proveedorId);
         cargarServicios(proveedorId, token);
+    }
+
+    // 🔥 [KILLER FIX] - VINCULACIÓN DE EVENTOS DE DISPONIBILIDAD
+    // Estos eventos "despiertan" la búsqueda de horarios cada vez que algo cambia
+    const inputFecha = document.getElementById('citaFecha');
+    const selectServicio = document.getElementById('citaServicioId');
+    const selectModalidad = document.getElementById('citaModalidad');
+
+    if (inputFecha) inputFecha.addEventListener('change', cargarDisponibilidad);
+    if (selectServicio) selectServicio.addEventListener('change', cargarDisponibilidad);
+    
+    // Vinculamos la modalidad para el tema de domicilios
+    if (selectModalidad) {
+        selectModalidad.addEventListener('change', () => {
+            toggleDireccionCita();
+            cargarDisponibilidad();
+        });
     }
 
     // Evento de guardado
@@ -51,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * 🚩 NUEVO: Carga la lista de profesionales para que el cliente elija
+ * 🚩 CARGA DE PROVEEDORES
  */
 async function cargarProveedores(token) {
     console.log("📡 [Fetch] Cargando lista de Proveedores...");
@@ -61,49 +68,38 @@ async function cargarProveedores(token) {
         });
         if (resp.ok) {
             const proveedores = await resp.json();
-            console.log("✅ Proveedores recibidos:", proveedores.length);
             const selectProv = document.getElementById('citaProveedorId');
             if (selectProv) {
                 selectProv.innerHTML = '<option value="">-- Selecciona Profesional --</option>' + 
                     proveedores.map(p => `<option value="${p.id}">${p.nombreComercial || p.nombre}</option>`).join('');
                 
-                // 🚩 Forzamos la vinculación del evento
                 selectProv.onchange = () => {
                     console.log("🖱️ [Event] Cambio detectado en Profesional");
                     cargarServiciosPorProveedor();
+                    // Limpiamos slots al cambiar de barbero
+                    const container = document.getElementById('containerSlots');
+                    if (container) container.innerHTML = "";
                 };
             }
-        } else {
-            console.error("❌ Error al cargar proveedores. Status:", resp.status);
         }
     } catch (e) { console.error("🔥 Error proveedores:", e); }
 }
 
-/**
- * 🚩 NUEVO: Cuando el cliente elige profesional, cargamos sus servicios específicos
- */
 async function cargarServiciosPorProveedor() {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
     const selectProv = document.getElementById('citaProveedorId');
-    if (!selectProv) {
-        console.error("❌ No se encontró el elemento citaProveedorId");
-        return;
-    }
+    if (!selectProv) return;
     
     const proveedorId = selectProv.value;
-    console.log("🆔 [ID Seleccionado]:", proveedorId);
-
     if (proveedorId) {
         cargarServicios(proveedorId, token);
     } else {
-        console.warn("⚠️ No se seleccionó ningún proveedorId válido.");
         const selectServicio = document.getElementById('citaServicioId');
         if (selectServicio) selectServicio.innerHTML = '<option value="">¿Qué servicio realizaremos?</option>';
     }
 }
 
 async function cargarServicios(proveedorId, token) {
-    console.log("📡 [Fetch] Solicitando servicios al API para ID:", proveedorId);
     try {
         const resp = await fetch(`http://localhost:5000/api/Servicios/proveedor/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -111,29 +107,20 @@ async function cargarServicios(proveedorId, token) {
 
         if (resp.ok) {
             const servicios = await resp.json();
-            console.log("✅ Servicios cargados con éxito:", servicios);
-
             const selectServicio = document.getElementById('citaServicioId');
             if (selectServicio) {
                 if (servicios.length === 0) {
-                    console.warn("Empty Data: El proveedor no tiene servicios registrados.");
                     selectServicio.innerHTML = '<option value="">Sin servicios disponibles</option>';
                 } else {
                     selectServicio.innerHTML = '<option value="">Selecciona un servicio</option>' + 
                         servicios.map(s => `<option value="${s.id}">${s.nombre} ($${s.precio})</option>`).join('');
                 }
             }
-        } else {
-            console.error("❌ Error API Servicios. Status:", resp.status);
-            // Si el error es 500 o 404, el log nos dirá la verdad
-            const errorText = await resp.text();
-            console.log("📄 Respuesta del servidor:", errorText);
         }
     } catch (e) { console.error("🔥 Error servicios:", e); }
 }
 
 async function cargarClientes(token) {
-    console.log("📡 [Fetch] Cargando lista de Clientes (Modo Admin)...");
     try {
         const resp = await fetch(`http://localhost:5000/api/Clientes`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -166,10 +153,14 @@ function toggleDireccionCita() {
     }
 }
 
+// 🕒 [REPARADO] - CARGAR DISPONIBILIDAD CON BLINDAJE DE DATOS
 async function cargarDisponibilidad() {
     const fecha = document.getElementById('citaFecha').value;
     const servicioId = document.getElementById('citaServicioId').value;
-    const user = JSON.parse(localStorage.getItem('user'));
+    const userStr = localStorage.getItem('user');
+    if (!userStr) return;
+
+    const user = JSON.parse(userStr);
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
     
     const selectProv = document.getElementById('citaProveedorId');
@@ -177,28 +168,38 @@ async function cargarDisponibilidad() {
         (selectProv ? selectProv.value : null) : 
         (user.proveedorId || user.id);
 
-    console.log("📅 [Consultando Disponibilidad] Fecha:", fecha, "| Serv:", servicioId, "| Prov:", proveedorId);
-
+    // 🛡️ BLINDAJE: Si falta algún dato, no disparamos el fetch pero limpiamos el mensaje anterior
     const container = document.getElementById('containerSlots');
-    if (!fecha || !servicioId || !proveedorId) return;
+    if (!fecha || !servicioId || !proveedorId) {
+        if (container) container.innerHTML = "<p style='color: #48c1b5;'>Por favor selecciona fecha y servicio.</p>";
+        return;
+    }
 
-    if (container) container.innerHTML = "<p style='color: #48c1b5;'>Consultando agenda...</p>";
+    console.log("📅 [Consultando Disponibilidad] Fecha:", fecha, "| Serv:", servicioId, "| Prov:", proveedorId);
+    if (container) container.innerHTML = "<p style='color: #48c1b5;'><i class='fas fa-spinner fa-spin'></i> Consultando agenda...</p>";
 
     try {
+        // 🚩 LLAMADA AL API BLINDADA
         const resp = await fetch(`http://localhost:5000/api/Citas/disponibilidad?proveedorId=${proveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
         if (resp.ok) {
             const slots = await resp.json();
             if (container) {
-                if(slots.length === 0) {
+                if(!slots || slots.length === 0) {
                     container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad para este día.</p>";
                     return;
                 }
+                // Renderizamos los slots
                 container.innerHTML = slots.map(h => 
                     `<div class="slot" onclick="seleccionarHora('${h}', this)">${h.slice(0, 5)}</div>`
                 ).join('');
             }
+        } else {
+            if (container) container.innerHTML = "<p style='color: #e94560;'>Error al consultar horarios.</p>";
         }
-    } catch (e) { console.error("🔥 Error disponibilidad:", e); }
+    } catch (e) { 
+        console.error("🔥 Error disponibilidad:", e); 
+        if (container) container.innerHTML = "<p style='color: #e94560;'>Error de conexión.</p>";
+    }
 }
 
 function seleccionarHora(hora, elemento) {
@@ -241,8 +242,6 @@ async function guardarCita(e, token, user, rol) {
         metodoRegistro: esCliente ? "Panel_Cliente" : "Barbero_Manual" 
     };
 
-    console.log("📦 [Enviando Cita DTO]:", dto);
-
     try {
         const resp = await fetch(`http://localhost:5000/api/Citas/agendar`, {
             method: 'POST',
@@ -268,3 +267,6 @@ async function guardarCita(e, token, user, rol) {
         btn.innerHTML = originalHTML;
     }
 }
+
+// PUENTE GLOBAL PARA HTML
+window.seleccionarHora = seleccionarHora;

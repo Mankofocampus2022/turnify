@@ -18,7 +18,7 @@ namespace Turnify.Api.Data
         public DbSet<Suscripciones> suscripciones { get; set; }
         public DbSet<HorariosAtencion> horarios_atencion { get; set; }
 
-      protected override void OnModelCreating(ModelBuilder modelBuilder)
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
@@ -39,13 +39,27 @@ namespace Turnify.Api.Data
             modelBuilder.Entity<Suscripciones>().ToTable("suscripciones");
             modelBuilder.Entity<HorariosAtencion>().ToTable("horarios_atencion");
 
-            // 🚩 MAPEO DE COLUMNAS PARA USUARIOS (Corregido a minúsculas para que compile)
+            // 🚩 MAPEO DE COLUMNAS PARA USUARIOS
             modelBuilder.Entity<Usuarios>(entity => {
                 entity.ToTable("usuarios");
-                // Usamos los nombres exactos de tu Usuarios.cs
                 entity.Property(u => u.esta_bloqueado).HasColumnName("esta_bloqueado");
                 entity.Property(u => u.suscripcion_fin).HasColumnName("suscripcion_fin");
                 entity.Property(u => u.ultima_conexion).HasColumnName("ultima_conexion");
+            });
+
+            // 🛡️ BLINDAJE EXTRA PARA CLIENTES
+            modelBuilder.Entity<Clientes>(entity => {
+                entity.ToTable("clientes");
+                entity.Property(c => c.telefono).HasColumnName("telefono").IsRequired(false);
+                entity.Property(c => c.email).HasColumnName("email").IsRequired(false); 
+            });
+
+            // 🛡️ BLINDAJE EXTRA PARA PROVEEDORES (Sincronizado con el nuevo campo)
+            modelBuilder.Entity<Proveedores>(entity => {
+                entity.ToTable("proveedores");
+                entity.Property(p => p.Telefono).HasColumnName("telefono").IsRequired(false);
+                // 🚩 NUEVO: Mapeo del email en proveedores para Validación Dual
+                entity.Property(p => p.Email).HasColumnName("email").IsRequired(false); 
             });
 
             // 3. Relaciones de Citas (TU LÓGICA ORIGINAL INTACTA)
@@ -61,13 +75,12 @@ namespace Turnify.Api.Data
                 .HasForeignKey(c => c.ServicioId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // --- 🚀 ESTO ES LO QUE PEGAMOS PARA ARREGLAR EL ERROR DEL SQL (INTACTO) ---
+            // --- 🚀 CONFIGURACIÓN DE HORARIOS (INTACTO) ---
             modelBuilder.Entity<HorariosAtencion>()
                 .HasOne(h => h.Proveedor)
                 .WithMany(p => p.Horarios)
                 .HasForeignKey(h => h.ProveedorId)
                 .OnDelete(DeleteBehavior.NoAction);
-            // ----------------------------------------------------------------
 
             // 4. DATOS SEMILLA - ROLES (TUS GUIDS SAGRADOS)
             modelBuilder.Entity<Roles>().HasData(

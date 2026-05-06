@@ -3,6 +3,10 @@ using Turnify.Api.Models.DTOs;
 using Turnify.Api.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Data;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Turnify.Api.Services
 {
@@ -17,7 +21,7 @@ namespace Turnify.Api.Services
 
         public async Task<(bool Success, string Message, Guid? UsuarioId)> RegistrarAsync(UsuarioRegistroDTO dto)
         {
-            // 🛡️ Estrategia de ejecución para manejar reintentos en SQL
+            // 🛡️ Estrategia de ejecución para manejar reintentos en SQL (Manteniendo tu lógica)
             var strategy = _context.Database.CreateExecutionStrategy();
 
             return await strategy.ExecuteAsync<(bool Success, string Message, Guid? UsuarioId)>(async () =>
@@ -26,7 +30,11 @@ namespace Turnify.Api.Services
                 
                 try
                 {
-                    var existeEmail = await _context.usuarios.AnyAsync(u => u.email == dto.Email);
+                    // 🛡️ Blindaje 1: Normalización de entrada
+                    var emailNormalizado = dto.Email?.Trim().ToLower() ?? string.Empty;
+                    var telefonoLimpio = new string((dto.Telefono ?? "").Where(char.IsDigit).ToArray());
+
+                    var existeEmail = await _context.usuarios.AnyAsync(u => u.email == emailNormalizado);
                     if (existeEmail) 
                     {
                         return (false, "El correo electrónico ya se encuentra registrado.", (Guid?)null);
@@ -35,8 +43,8 @@ namespace Turnify.Api.Services
                     // 1. CREACIÓN DEL USUARIO BASE
                     var usuario = new Usuarios {
                         id = Guid.NewGuid(),
-                        nombre = dto.Nombre,
-                        email = dto.Email,
+                        nombre = dto.Nombre?.Trim(),
+                        email = emailNormalizado,
                         password_hash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                         rol_id = dto.RolId,
                         fecha_creacion = DateTime.UtcNow,
@@ -50,13 +58,14 @@ namespace Turnify.Api.Services
                     var idCliente = Guid.Parse("56992f75-6420-4d55-a5f9-9223248c50d7");
                     var idProveedor = Guid.Parse("8854c07c-6e5e-4876-a29a-c7ad5dcfbab7");
 
-                    // 3. ESPECIALIZACIÓN DE PERFIL (Sin columna 'telefono' para evitar el Crash)
+                    // 3. ESPECIALIZACIÓN DE PERFIL (Blindaje contra nulos y sincronización dual)
                     if (dto.RolId == idCliente) {
                         _context.clientes.Add(new Clientes {
                             id = Guid.NewGuid(),
                             usuario_id = usuario.id,
-                            nombre = dto.Nombre,
-                            // 🚩 QUITAMOS EL TELÉFONO AQUÍ
+                            nombre = usuario.nombre,
+                            telefono = telefonoLimpio,
+                            email = emailNormalizado, // Sincronizado       
                             activo = true,
                             fecha_creacion = DateTime.UtcNow
                         });
@@ -65,9 +74,11 @@ namespace Turnify.Api.Services
                         _context.proveedores.Add(new Proveedores {
                             Id = Guid.NewGuid(),
                             UsuarioId = usuario.id,
-                            NombreComercial = dto.NombreComercial ?? $"Barbería de {dto.Nombre}",
-                            Tipo = "Barbería",
-                            // 🚩 QUITAMOS EL TELÉFONO AQUÍ
+                            NombreComercial = dto.NombreComercial ?? $"Barbería de {usuario.nombre}",
+                            Tipo = dto.TipoNegocio ?? "Barbería",
+                            // 🚩 KILLER FIX: Guardamos el email en la tabla proveedores para la Validación Dual
+                            Email = emailNormalizado, 
+                            Telefono = telefonoLimpio,
                             Activo = true,
                             FechaCreacion = DateTime.UtcNow,
                             Direccion = "Pendiente de configuración"
@@ -82,16 +93,18 @@ namespace Turnify.Api.Services
                 catch (Exception ex)
                 {
                     await transaction.RollbackAsync();
-                    Console.WriteLine($"--- 🚨 ERROR EN REGISTRO: {ex.Message} ---");
-                    throw; // Re-lanzamos para que la estrategia de reintento gestione el fallo
+                    Console.WriteLine($"--- 🚨 ERROR CRÍTICO EN REGISTRO: {ex.Message} ---");
+                    throw; 
                 }
             });
         }
 
         public async Task<(bool Success, string Message, object? Data)> LoginAsync(LoginDto dto) {
-            // El login crasheaba porque al incluir el Rol o buscar el Proveedor después, 
-            // EF intentaba leer la columna 'telefono' inexistente.
-            var u = await _context.usuarios.Include(x => x.Rol).FirstOrDefaultAsync(x => x.email == dto.Email);
+            var emailInput = dto.Email?.Trim().ToLower();
+            
+            var u = await _context.usuarios
+                .Include(x => x.Rol)
+                .FirstOrDefaultAsync(x => x.email == emailInput);
             
             if (u == null || !BCrypt.Net.BCrypt.Verify(dto.Password, u.password_hash)) 
                 return (false, "Credenciales incorrectas.", null);
@@ -100,11 +113,10 @@ namespace Turnify.Api.Services
         }
 
         public async Task<int> GetTotalUsuariosActivosAsync() {
-            // Comparación segura para bool?
             return await _context.usuarios.CountAsync(u => u.activo == true);
         }
 
-        // --- MÉTODOS CRUD (Mantenidos intactos como pediste) ---
+        // --- MÉTODOS CRUD (Manteniendo tu estructura original intacta) ---
         public async Task<Usuarios?> GetUsuarioByIdAsync(Guid id) => await _context.usuarios.Include(u => u.Rol).FirstOrDefaultAsync(u => u.id == id);
         public async Task<bool> ActualizarAsync(Usuarios u) { _context.Entry(u).State = EntityState.Modified; return await _context.SaveChangesAsync() > 0; }
         public async Task<bool> EliminarLogicoAsync(Guid id) { var u = await _context.usuarios.FindAsync(id); if (u == null) return false; u.activo = false; return await _context.SaveChangesAsync() > 0; }

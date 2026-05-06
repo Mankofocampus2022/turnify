@@ -11,8 +11,13 @@ namespace Turnify.Api.Interfaces
         Task<IEnumerable<ServicioReadDto>> ObtenerActivosPorProveedor(Guid proveedorId);
 
         Task<ServicioReadDto?> ObtenerPorId(Guid id);
-        Task<ServicioReadDto> CrearServicio(ServicioUpsertDto dto);
-        Task<ServicioReadDto?> ActualizarServicio(Guid id, ServicioUpsertDto dto);
+
+        // 🛡️ AJUSTE KILLER: Sincronizado con ServicioCreateDto (SnakeCase + JsonProperty)
+        Task<ServicioReadDto> CrearServicio(ServicioCreateDto dto);
+
+        // 🛡️ AJUSTE KILLER: Sincronizado con ServicioCreateDto
+        Task<ServicioReadDto?> ActualizarServicio(Guid id, ServicioCreateDto dto);
+
         Task<bool> EliminarServicio(Guid id);
     }
 }
