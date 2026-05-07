@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (sectionProveedor) sectionProveedor.style.display = 'block';
         if (subtitulo) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
         cargarProveedores(token); 
+        // 🛡️ [NUEVO] Cargamos historial para clientes
+        cargarMisCitas(user.id, token, "cliente");
     } else {
         if (sectionCliente) sectionCliente.style.display = 'block';
         if (sectionProveedor) sectionProveedor.style.display = 'none';
@@ -31,10 +33,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         cargarClientes(token);
         const proveedorId = user.proveedorId || user.id;
         cargarServicios(proveedorId, token);
+        // 🛡️ [NUEVO] Cargamos agenda para barberos
+        cargarMisCitas(proveedorId, token, "proveedor");
     }
 
     // 🔥 [KILLER FIX] - VINCULACIÓN DE EVENTOS DE DISPONIBILIDAD
-    // Estos eventos "despiertan" la búsqueda de horarios cada vez que algo cambia
     const inputFecha = document.getElementById('citaFecha');
     const selectServicio = document.getElementById('citaServicioId');
     const selectModalidad = document.getElementById('citaModalidad');
@@ -42,7 +45,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (inputFecha) inputFecha.addEventListener('change', cargarDisponibilidad);
     if (selectServicio) selectServicio.addEventListener('change', cargarDisponibilidad);
     
-    // Vinculamos la modalidad para el tema de domicilios
     if (selectModalidad) {
         selectModalidad.addEventListener('change', () => {
             toggleDireccionCita();
@@ -50,12 +52,93 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Evento de guardado
     const formCita = document.getElementById('formNuevaCita');
     if (formCita) {
         formCita.addEventListener('submit', (e) => guardarCita(e, token, user, rol));
     }
 });
+
+// --- [NUEVO] 📜 GESTIÓN DE MIS CITAS (VER, CANCELAR, CAMBIAR) ---
+async function cargarMisCitas(id, token, tipo) {
+    const container = document.getElementById('listaMisCitas'); 
+    if (!container) return;
+
+    console.log(`📡 [Fetch] Obteniendo agenda para ${tipo}...`);
+    const url = tipo === "cliente" ? 
+        `http://localhost:5000/api/Citas/historial/${id}` : 
+        `http://localhost:5000/api/Citas/hoy`; 
+
+    try {
+        const resp = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+            const citas = await resp.json();
+            renderizarCitas(citas, container, token);
+        }
+    } catch (e) { 
+        console.error("🔥 Error cargando mis citas:", e);
+        container.innerHTML = "<p style='color: #ff5e5e; font-size: 0.7rem;'>Error al cargar agenda.</p>";
+    }
+}
+
+// 🛡️ REPARACIÓN DE RENDERIZADO: Mata el "asco" visual y aplica el estilo Glass
+function renderizarCitas(citas, container, token) {
+    if (!citas || citas.length === 0) {
+        container.innerHTML = "<p style='color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 10px;'>No tienes citas registradas.</p>";
+        return;
+    }
+
+    // 🚩 Inyectamos la estructura limpia que el CSS "Blindado" espera
+    container.innerHTML = citas.map(c => `
+        <div class="card-cita-sidebar ${c.estado.toLowerCase()}">
+            ${c.estado === 'pendiente' ? `
+                <button class="btn-cancelar-mini" onclick="cancelarCita('${c.id}', '${token}')" title="Cancelar Cita">
+                    <i class="fas fa-times-circle"></i>
+                </button>
+            ` : ''}
+            <h6>${c.servicioNombre || c.servicio || "Servicio"}</h6>
+            <div class="cita-info">
+                <i class="far fa-calendar-alt"></i> ${c.fecha.split('T')[0]}
+            </div>
+            <div class="cita-info">
+                <i class="far fa-clock"></i> ${c.hora.slice(0, 5)}
+            </div>
+            <div class="cita-info">
+                <i class="fas fa-info-circle"></i> ${c.estado.toUpperCase()}
+            </div>
+            ${c.tokenValidacion ? `
+                <div class="token-tag">
+                    <i class="fas fa-key"></i> TOKEN: ${c.tokenValidacion}
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+// 🛡️ CANCELACIÓN BLINDADA
+async function cancelarCita(id, token) {
+    if (!confirm("⚠️ ¿Estás seguro de que deseas cancelar esta cita?")) return;
+
+    try {
+        const resp = await fetch(`http://localhost:5000/api/Citas/${id}/estado`, {
+            method: 'PATCH',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({ nuevoEstado: 'cancelada' })
+        });
+
+        if (resp.ok) {
+            alert("✅ Cita cancelada correctamente.");
+            location.reload(); 
+        } else {
+            const err = await resp.json();
+            alert("❌ Error: " + (err.message || "No se pudo cancelar."));
+        }
+    } catch (e) { console.error("🔥 Error conexión cancelación:", e); }
+}
 
 /**
  * 🚩 CARGA DE PROVEEDORES
@@ -76,7 +159,6 @@ async function cargarProveedores(token) {
                 selectProv.onchange = () => {
                     console.log("🖱️ [Event] Cambio detectado en Profesional");
                     cargarServiciosPorProveedor();
-                    // Limpiamos slots al cambiar de barbero
                     const container = document.getElementById('containerSlots');
                     if (container) container.innerHTML = "";
                 };
@@ -153,7 +235,6 @@ function toggleDireccionCita() {
     }
 }
 
-// 🕒 [REPARADO] - CARGAR DISPONIBILIDAD CON BLINDAJE DE DATOS
 async function cargarDisponibilidad() {
     const fecha = document.getElementById('citaFecha').value;
     const servicioId = document.getElementById('citaServicioId').value;
@@ -168,38 +249,29 @@ async function cargarDisponibilidad() {
         (selectProv ? selectProv.value : null) : 
         (user.proveedorId || user.id);
 
-    // 🛡️ BLINDAJE: Si falta algún dato, no disparamos el fetch pero limpiamos el mensaje anterior
     const container = document.getElementById('containerSlots');
     if (!fecha || !servicioId || !proveedorId) {
-        if (container) container.innerHTML = "<p style='color: #48c1b5;'>Por favor selecciona fecha y servicio.</p>";
+        if (container) container.innerHTML = "<p style='color: #48c1b5;'>Selecciona fecha y servicio.</p>";
         return;
     }
 
-    console.log("📅 [Consultando Disponibilidad] Fecha:", fecha, "| Serv:", servicioId, "| Prov:", proveedorId);
-    if (container) container.innerHTML = "<p style='color: #48c1b5;'><i class='fas fa-spinner fa-spin'></i> Consultando agenda...</p>";
+    if (container) container.innerHTML = "<p><i class='fas fa-spinner fa-spin'></i> Consultando...</p>";
 
     try {
-        // 🚩 LLAMADA AL API BLINDADA
         const resp = await fetch(`http://localhost:5000/api/Citas/disponibilidad?proveedorId=${proveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
         if (resp.ok) {
             const slots = await resp.json();
             if (container) {
                 if(!slots || slots.length === 0) {
-                    container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad para este día.</p>";
+                    container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad.</p>";
                     return;
                 }
-                // Renderizamos los slots
                 container.innerHTML = slots.map(h => 
                     `<div class="slot" onclick="seleccionarHora('${h}', this)">${h.slice(0, 5)}</div>`
                 ).join('');
             }
-        } else {
-            if (container) container.innerHTML = "<p style='color: #e94560;'>Error al consultar horarios.</p>";
         }
-    } catch (e) { 
-        console.error("🔥 Error disponibilidad:", e); 
-        if (container) container.innerHTML = "<p style='color: #e94560;'>Error de conexión.</p>";
-    }
+    } catch (e) { console.error("🔥 Error disponibilidad:", e); }
 }
 
 function seleccionarHora(hora, elemento) {
@@ -209,6 +281,7 @@ function seleccionarHora(hora, elemento) {
     if (inputHora) inputHora.value = hora;
 }
 
+// 🛡️ REPARACIÓN DE GUARDAR CITA: Captura de Token y Observaciones
 async function guardarCita(e, token, user, rol) {
     e.preventDefault();
     
@@ -222,14 +295,16 @@ async function guardarCita(e, token, user, rol) {
     const clienteIdFinal = esCliente ? user.id : (selectCliente ? selectCliente.value : null);
     const proveedorIdFinal = esCliente ? (selectProv ? selectProv.value : null) : (user.proveedorId || user.id);
 
-    if (!clienteIdFinal) return alert("Error: Selecciona un cliente.");
-    if (!proveedorIdFinal) return alert("Error: Selecciona un profesional.");
-    if (!hora) return alert("Debes seleccionar una hora.");
+    if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("Completa todos los campos y selecciona hora.");
 
     const btn = e.target.querySelector('button');
     const originalHTML = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Agendando...';
+
+    // 🚩 CAPTURA DE OBSERVACIONES (Si el input existe en el HTML)
+    const inputObs = document.getElementById('citaObservaciones');
+    const observaciones = inputObs ? inputObs.value.trim() : "";
 
     const dto = {
         clienteId: clienteIdFinal,
@@ -239,6 +314,7 @@ async function guardarCita(e, token, user, rol) {
         hora: hora,
         modalidad: document.getElementById('citaModalidad').value,
         direccion: document.getElementById('citaDireccion').value.trim(),
+        observaciones: observaciones,
         metodoRegistro: esCliente ? "Panel_Cliente" : "Barbero_Manual" 
     };
 
@@ -252,12 +328,14 @@ async function guardarCita(e, token, user, rol) {
             body: JSON.stringify(dto)
         });
 
+        const data = await resp.json();
+
         if (resp.ok) {
-            alert("✅ Cita agendada exitosamente.");
-            window.location.href = esCliente ? 'agendar-cita.html' : 'admin-dashboard.html';
+            // El mensaje del servidor ahora incluye el token V9MJ8U
+            alert(`✅ ${data.message}`); 
+            window.location.reload(); 
         } else {
-            const err = await resp.json();
-            alert("❌ No se pudo agendar: " + (err.message || "Error desconocido"));
+            alert("❌ Error: " + (data.message || "No se pudo agendar."));
             btn.disabled = false;
             btn.innerHTML = originalHTML;
         }
@@ -270,3 +348,4 @@ async function guardarCita(e, token, user, rol) {
 
 // PUENTE GLOBAL PARA HTML
 window.seleccionarHora = seleccionarHora;
+window.cancelarCita = cancelarCita;

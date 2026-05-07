@@ -1,87 +1,378 @@
 /* =========================================
-   TURNIFY - ESTILOS DE AGENDAMIENTO
+   1. VARIABLES UNIFICADAS (Single Source of Truth)
    ========================================= */
-
-.booking-card {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 30px;
-    background: #ffffff;
-    border-radius: 15px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+:root {
+    --sidebar-width: 260px;
+    --navy-deep: #1b3d5f;
+    --bg-dark-radial: radial-gradient(circle at top right, #1b3d5f, #0a101e);
+    --brand-emerald: #48c1b5;      
+    --brand-accent: #077933;
+    --lava-orange: #ff4500;        
+    --text-white: #f8fafc;
+    --danger-red: #ff5e5e;
+    --glass-bg: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.15);
 }
 
-/* Títulos de los pasos */
-.step-title {
-    color: #48c1b5;
-    font-weight: bold;
-    margin: 25px 0 15px;
+/* =========================================
+   2. RESET Y LAYOUT GLOBAL
+   ========================================= */
+* { 
+    margin: 0; 
+    padding: 0; 
+    box-sizing: border-box; 
+}
+
+body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg-dark-radial);
+    color: var(--text-white);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+.dashboard-layout { 
+    display: flex; 
+    width: 100%; 
+}
+
+.main-content {
+    margin-left: var(--sidebar-width);
+    flex-grow: 1;
+    padding: 35px !important;
+    width: calc(100% - var(--sidebar-width));
+}
+
+/* =========================================
+   3. SIDEBAR (MODULAR & FIXED NAVIGATION)
+   ========================================= */
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: #0a101e;
+    border-right: 1px solid var(--glass-border);
+    position: fixed;
+    height: 100vh;
+    padding: 1.5rem;
     display: flex;
+    flex-direction: column; /* Layout vertical flexible */
+    z-index: 100;
+    overflow: hidden; /* El contenedor padre nunca debe scrollear */
+}
+
+.sidebar-header {
+    display: flex;
+    flex-shrink: 0; /* 🛡️ BLOQUEO: Evita que el header se mueva */
     align-items: center;
     gap: 12px;
-    font-size: 1.1rem;
-    border-bottom: 1px solid rgba(72, 193, 181, 0.1);
-    padding-bottom: 8px;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
-/* Grid de horarios */
-.time-slots {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-    gap: 12px;
-    margin-top: 15px;
-    padding: 10px;
-}
-
-/* Estilo de cada Slot (Hora) */
-.slot {
-    background: #1b3d5f;
-    color: #ffffff;
-    padding: 12px;
-    border-radius: 10px;
-    text-align: center;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    font-weight: 500;
-}
-
-.slot:hover {
-    border-color: #48c1b5;
-    background: rgba(72, 193, 181, 0.1);
-    color: #48c1b5;
-    transform: translateY(-2px);
-}
-
-.slot.selected {
-    background: #48c1b5;
-    color: #1b3d5f;
-    font-weight: bold;
-    box-shadow: 0 4px 12px rgba(72, 193, 181, 0.3);
-    border-color: #48c1b5;
-}
-
-/* Footer del Formulario */
-.booking-footer {
-    margin-top: 40px;
-}
-
-.booking-footer .btn-save {
-    width: 100%;
-    padding: 18px;
-    font-size: 1.1rem;
+/* 🚩 NAVEGACIÓN ESTÁTICA (NUEVA CITA) */
+.sidebar-nav {
     display: flex;
+    flex-direction: column;
+    flex-shrink: 0; /* 🛡️ BLOQUEO: "Nueva Cita" se queda estática aquí */
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.sidebar-nav a {
+    color: rgba(255, 255, 255, 0.6);
+    text-decoration: none;
+    padding: 12px 15px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 5px;
+}
+
+.sidebar-nav a:hover, 
+.sidebar-nav a.active {
+    background: rgba(72, 193, 181, 0.1);
+    color: var(--brand-emerald);
+}
+
+/* 🚩 ÁREA DE CITAS (ÚNICA ZONA CON SCROLL) */
+.sidebar-scroll-area {
+    flex-grow: 1; /* 🛡️ DINÁMICO: Toma el espacio restante */
+    overflow-y: auto; /* Habilita el scroll solo en esta sección */
+    padding-right: 5px;
+    margin-bottom: 15px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--brand-emerald) transparent;
+}
+
+/* Personalización del Scrollbar para Webkit */
+.sidebar-scroll-area::-webkit-scrollbar { 
+    width: 4px; 
+}
+
+.sidebar-scroll-area::-webkit-scrollbar-thumb { 
+    background: var(--brand-emerald); 
+    border-radius: 10px; 
+}
+
+.sidebar-appointments-section {
+    margin-top: 10px;
+    width: 100%;
+}
+
+.sidebar-title {
+    font-size: 0.7rem;
+    font-weight: 900;
+    color: var(--brand-emerald);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 15px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 15px;
+}
+
+/* 🛡️ FOOTER FIJO (Botón Salir - Lava Orange) */
+.sidebar-footer {
+    flex-shrink: 0; /* 🛡️ BLOQUEO: Siempre visible al fondo */
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.sidebar-footer .btn-logout {
+    width: 100%;
+    background: linear-gradient(135deg, var(--lava-orange), #cc3700) !important;
+    color: white !important;
+    border: none !important;
+    padding: 12px !important;
+    border-radius: 12px !important;
+    font-weight: 800 !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 10px;
+    box-shadow: 0 4px 15px rgba(255, 69, 0, 0.3);
+    transition: 0.3s ease-in-out;
+}
+
+.sidebar-footer .btn-logout:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 69, 0, 0.5);
+    filter: brightness(1.1);
+}
+
+/* =========================================
+   4. DASHBOARD: ESTADÍSTICAS (HORIZONTAL)
+   ========================================= */
+.stats-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+    gap: 20px !important;
+    margin: 25px 0 !important;
+}
+
+.stat-card {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border) !important;
+    border-top: 3px solid var(--brand-emerald) !important;
+    border-radius: 18px !important;
+    padding: 20px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 15px !important;
+    transition: 0.3s ease;
+}
+
+.stat-card:hover { 
+    transform: translateY(-5px); 
+    border-color: var(--brand-emerald); 
+}
+
+.stat-card .number {
+    font-size: 1.8rem !important;
+    font-weight: 800;
+    color: var(--brand-emerald);
+    line-height: 1;
+}
+
+.stat-card h3 {
+    font-size: 0.75rem !important;
+    opacity: 0.7;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+/* =========================================
+   5. BOOKING CARD (ANCHO COMPLETO)
+   ========================================= */
+.booking-card {
+    background: rgba(255, 255, 255, 0.04) !important;
+    backdrop-filter: blur(20px);
+    border-radius: 24px !important;
+    border: 1px solid var(--glass-border) !important;
+    padding: 35px !important;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    width: 100% !important; 
+    max-width: 1000px !important;
+    margin: 0 auto;
+}
+
+.step-title {
+    color: var(--brand-emerald);
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin: 25px 0 15px;
+    border-bottom: 1px solid rgba(72, 193, 181, 0.2);
+    padding-bottom: 10px;
+    display: flex;
     align-items: center;
     gap: 10px;
 }
 
-/* Ajustes Responsive */
-@media (max-width: 600px) {
-    .booking-card {
-        padding: 20px;
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+    gap: 25px !important;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Inputs Blindados */
+.input-style, 
+select.input-style, 
+input[type="date"] {
+    width: 100% !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+    color: white !important;
+    outline: none;
+    transition: 0.3s ease;
+}
+
+.input-style:focus { 
+    border-color: var(--brand-emerald); 
+    background: rgba(255,255,255,0.08); 
+    box-shadow: 0 0 10px rgba(72, 193, 181, 0.2);
+}
+
+/* Slots de Horas */
+.time-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.slot {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.3s;
+}
+
+.slot:hover { 
+    border-color: var(--brand-emerald); 
+}
+
+.slot.selected { 
+    background: var(--brand-emerald); 
+    color: var(--navy-deep); 
+}
+
+/* Botón de Guardar */
+.btn-save {
+    width: 100%;
+    background: linear-gradient(135deg, var(--brand-emerald), var(--brand-accent)) !important;
+    color: var(--navy-deep) !important;
+    border: none !important;
+    border-radius: 14px !important;
+    padding: 18px !important;
+    font-weight: 800 !important;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 30px;
+    transition: 0.4s;
+}
+
+.btn-save:hover { 
+    transform: translateY(-3px); 
+    box-shadow: 0 10px 20px rgba(72, 193, 181, 0.3); 
+}
+
+/* =========================================
+   6. TARJETAS SIDEBAR Y ACCIONES LAVA
+   ========================================= */
+
+/* 🛡️ Botón de Cancelar Cita (Lava Orange) */
+.btn-cancelar-mini {
+    position: absolute !important;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 69, 0, 0.2) !important;
+    color: var(--lava-orange) !important;
+    border: 1px solid rgba(255, 69, 0, 0.4) !important;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.2s;
+    font-size: 0.9rem;
+}
+
+.btn-cancelar-mini:hover {
+    background: var(--lava-orange) !important;
+    color: white !important;
+    transform: scale(1.1);
+}
+
+.card-cita-sidebar {
+    background: rgba(255, 255, 255, 0.07) !important;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 12px;
+    border-left: 5px solid #64748b;
+    position: relative;
+    transition: 0.3s;
+}
+
+.card-cita-sidebar.pendiente { 
+    border-left-color: #f1c40f !important; 
+}
+
+.card-cita-sidebar.completada { 
+    border-left-color: #2ecc71 !important; 
+}
+
+.card-cita-sidebar.cancelada { 
+    border-left-color: #e74c3c !important; 
+    opacity: 0.5; 
+}
+
+/* =========================================
+   7. AJUSTES RESPONSIVE FINALES
+   ========================================= */
+@media (max-width: 850px) {
+    .sidebar { 
+        display: none; 
     }
-    .time-slots {
-        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    .main-content { 
+        margin-left: 0; 
+        width: 100%; 
     }
 }
+/* Fin del archivo - Estructura Validada */

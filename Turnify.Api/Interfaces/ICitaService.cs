@@ -4,21 +4,52 @@ namespace Turnify.Api.Interfaces
 {
     public interface ICitaService
     {
-        // 1. GESTIÓN DE CITAS Y DISPONIBILIDAD
-        Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto);
-        Task<(bool Success, string Message)> UpdateEstadoCitaAsync(Guid id, string nuevoEstado);
-        Task<IEnumerable<TimeSpan>> GetDisponibilidadAsync(Guid proveedorId, Guid servicioId, DateTime fecha);
-        Task<IEnumerable<object>> GetHistorialClienteAsync(Guid clienteId);
-
-        // 2. CONSULTAS DE AGENDA (Sincronizadas con el Controller)
+        // --- 📝 1. GESTIÓN DE AGENDAMIENTO ---
         
-        // 🚩 ESTE ES EL QUE CAUSABA EL ERROR CS1061:
+        /// <summary>
+        /// Ageda una cita validando bloques de tiempo (Fix Overbooking PRO) y generando Token de seguridad.
+        /// </summary>
+        Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto);
+
+        /// <summary>
+        /// Actualiza el estado de una cita (pendiente, confirmada, completada, cancelada, ausente).
+        /// </summary>
+        Task<(bool Success, string Message)> UpdateEstadoCitaAsync(Guid id, string nuevoEstado);
+
+        /// <summary>
+        /// [CRÍTICO] Valida la presencia física mediante el Token de 6 dígitos (Check-in).
+        /// </summary>
+        Task<(bool Success, string Message)> ConfirmarAsistenciaAsync(Guid citaId, string token);
+
+
+        // --- 🕒 2. MOTOR DE DISPONIBILIDAD ---
+        
+        /// <summary>
+        /// Calcula slots libres validando que el servicio solicitado quepa completo en la agenda.
+        /// </summary>
+        Task<IEnumerable<TimeSpan>> GetDisponibilidadAsync(Guid proveedorId, Guid servicioId, DateTime fecha);
+
+
+        // --- 📊 3. CONSULTAS Y REPORTES (Dashboard & BI) ---
+        
+        /// <summary>
+        /// Obtiene la agenda específica de un día (Fix Reportes "Hoy").
+        /// </summary>
         Task<IEnumerable<object>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha);
         
-        // El método para el Dashboard inicial (Hoy)
+        /// <summary>
+        /// Obtiene la agenda del día actual para el dashboard del profesional.
+        /// </summary>
         Task<IEnumerable<object>> GetAgendaHoyAsync(Guid userId);
         
-        // El método potente para filtrar por Semana o Mes
+        /// <summary>
+        /// Obtiene citas en un rango de fechas para reportes semanales, mensuales o analítica avanzada.
+        /// </summary>
         Task<IEnumerable<object>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin);
+
+        /// <summary>
+        /// Recupera el historial completo de citas de un cliente (Blindado para Privacidad).
+        /// </summary>
+        Task<IEnumerable<object>> GetHistorialClienteAsync(Guid clienteId);
     }
 }

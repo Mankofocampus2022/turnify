@@ -5,16 +5,17 @@
     <title>Turnify | Agendar Cita</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="css-dashboard.css">
-    <link rel="stylesheet" href="css-usuarios.css"> 
-    <link rel="stylesheet" href="css-configuracion.css">
     <link rel="stylesheet" href="css-agendar.css">
 </head>
 <body>
 
 <div class="dashboard-layout">
     <aside class="sidebar">
-        <div class="sidebar-header"><span class="logo-icon">🕒</span><h2>Turnify</h2></div>
+        <div class="sidebar-header">
+            <span class="logo-icon">🕒</span>
+            <h2>Turnify</h2>
+        </div>
+        
         <nav class="sidebar-nav">
             <a href="admin-dashboard.html" id="nav-resumen" class="nav-item">
                 <i class="fas fa-chart-line"></i> Resumen
@@ -32,6 +33,20 @@
                 <i class="fas fa-cog"></i> Configuración
             </a>
         </nav>
+
+        <div class="sidebar-scroll-area">
+            <div class="sidebar-appointments-section">
+                <div class="sidebar-title">
+                    <i class="fas fa-calendar-check"></i> Mis Citas
+                </div>
+                <div id="listaMisCitas" class="sidebar-appointments-list">
+                    <div class="text-center p-3">
+                        <i class="fas fa-spinner fa-spin"></i> Cargando agenda...
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="sidebar-footer">
             <button onclick="logout()" class="btn-logout">
                 <i class="fas fa-sign-out-alt"></i> Salir
@@ -86,7 +101,7 @@
                     </div>
                     <div class="form-group" id="groupDireccionCita" style="display: none;">
                         <label>Dirección del servicio</label>
-                        <input type="text" id="citaDireccion" placeholder="Calle, número, barrio y apto">
+                        <input type="text" id="citaDireccion" class="input-style" placeholder="Calle, número, barrio y apto">
                     </div>
                 </div>
 

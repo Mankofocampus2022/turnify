@@ -4,6 +4,8 @@ using Turnify.Api.Interfaces;
 using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Turnify.Api.Services
 {
@@ -33,12 +35,30 @@ namespace Turnify.Api.Services
             }
         }
 
-        // --- 📊 1. AGENDA POR RANGO ---
+        // 🛡️ MÉTODO PRIVADO: Generador de Token de Check-in (6 Caracteres Alfanuméricos)
+        private string GenerarTokenCheckIn()
+        {
+            const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Evitamos O, 0, I, 1 por confusión
+            var random = new byte[6];
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(random);
+            }
+            var result = new StringBuilder(6);
+            foreach (byte b in random)
+            {
+                result.Append(chars[b % chars.Length]);
+            }
+            return result.ToString();
+        }
+
+        // --- 📊 1. AGENDA POR RANGO (Fix de Reportes "Hoy") ---
         public async Task<IEnumerable<object>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
         {
             // 🛡️ Blindaje inicial: Evitar consultas con IDs vacíos
             if (userId == Guid.Empty) return Enumerable.Empty<object>();
 
+            // 🚩 FIX CRÍTICO: Aseguramos que si inicio y fin son iguales (Hoy), el rango sea estricto
             var fechaInicioStr = inicio.Date;
             var fechaFinLimite = fin.Date.AddDays(1);
 
@@ -63,7 +83,9 @@ namespace Turnify.Api.Services
                     c.Observaciones,
                     c.Modalidad,
                     c.MetodoRegistro,
-                    c.Direccion
+                    c.Direccion,
+                    // 🛡️ Añadimos el token a la respuesta para que el barbero lo vea en su reporte
+                    TokenValidacion = c.CodigoVerificacion 
                 })
                 .ToListAsync();
         }
@@ -71,10 +93,37 @@ namespace Turnify.Api.Services
         public async Task<IEnumerable<object>> GetAgendaHoyAsync(Guid userId)
         {
             var hoyBogota = GetBogotaTime().Date;
+            // Forzamos el rango de un solo día para el Dashboard
             return await GetCitasRangoAsync(userId, hoyBogota, hoyBogota);
         }
 
-        // --- 📝 3. AGENDAR CITA (Transaccional y Blindada) ---
+        // --- 📊 [NUEVO] 1.1 ESTADÍSTICAS PARA GRÁFICA DE TORTA ---
+        public async Task<object> GetEstadisticasTortaAsync(Guid proveedorId)
+        {
+            var citas = await _context.citas
+                .AsNoTracking()
+                .Where(c => c.ProveedorId == proveedorId)
+                .ToListAsync();
+
+            int total = citas.Count;
+            if (total == 0) return new { completadas = 0, pendientes = 0, canceladas = 0, total = 0 };
+
+            var completadas = citas.Count(c => c.Estado == "completada");
+            var pendientes = citas.Count(c => c.Estado == "pendiente");
+            var canceladas = citas.Count(c => c.Estado == "cancelada");
+
+            return new {
+                total,
+                porcentajes = new {
+                    completadas = Math.Round((double)completadas / total * 100, 2),
+                    pendientes = Math.Round((double)pendientes / total * 100, 2),
+                    canceladas = Math.Round((double)canceladas / total * 100, 2)
+                },
+                conteo = new { completadas, pendientes, canceladas }
+            };
+        }
+
+        // --- 📝 3. AGENDAR CITA (Transaccional, Blindada y con Token) ---
         public async Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto)
         {
             // 🛡️ Validación de integridad de entrada
@@ -83,6 +132,13 @@ namespace Turnify.Api.Services
 
             var cliente = await _context.clientes.FindAsync(dto.ClienteId);
             if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
+
+            // 🛡️ REGLA DE NEGOCIO: Expiración de 3 meses (90 días)
+            var diasDesdeCreacion = (DateTime.UtcNow - cliente.fecha_creacion).TotalDays;
+            if (diasDesdeCreacion > 90)
+            {
+                return (false, "Cuenta de cliente expirada (máximo 3 meses). Favor actualizar perfil.", (Guid?)null);
+            }
 
             var servicio = await _context.servicios.FindAsync(dto.ServicioId);
             if (servicio == null) return (false, "Servicio no encontrado.", (Guid?)null);
@@ -109,13 +165,13 @@ namespace Turnify.Api.Services
 
             if (horario == null) return (false, "El proveedor no atiende en este día de la semana.", (Guid?)null);
 
+            // 🛡️ FIX OVERBOOKING PRO: Validación de bloque completo
             var inicioNueva = dto.Hora;
             var finNueva = inicioNueva.Add(TimeSpan.FromMinutes(servicio.DuracionMinutos));
 
             if (inicioNueva < horario.HoraApertura || finNueva > horario.HoraCierre)
-                return (false, $"Fuera de horario: Abre {horario.HoraApertura} - Cierra {horario.HoraCierre}.", (Guid?)null);
+                return (false, $"Fuera de horario: El servicio de {servicio.DuracionMinutos} min no cabe antes del cierre ({horario.HoraCierre}).", (Guid?)null);
 
-            // 🛡️ [FIX] Estrategia de ejecución para SQL Server (Indispensable para transacciones con reintentos)
             var strategy = _context.Database.CreateExecutionStrategy();
 
             return await strategy.ExecuteAsync<(bool Success, string Message, Guid? CitaId)>(async () =>
@@ -127,12 +183,12 @@ namespace Turnify.Api.Services
                         .Where(c => c.ProveedorId == proveedorId && c.Fecha.Date == dto.Fecha.Date && c.Estado != "cancelada")
                         .ToListAsync();
 
+                    // 🛡️ Algoritmo de colisión de bloques (Detecta solapamientos parciales o totales)
                     var yaExisteCita = citasExistentes.Any(c => 
                         inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva
                     );
 
-                    if (yaExisteCita) 
-                        return (false, "Este horario ya fue ocupado mientras realizabas la solicitud.", (Guid?)null);
+                    if (yaExisteCita) return (false, "Este bloque de tiempo ya está reservado o interfiere con otra cita.", (Guid?)null);
 
                     var nuevaCita = new Citas
                     {
@@ -152,14 +208,21 @@ namespace Turnify.Api.Services
                         MetodoRegistro = dto.MetodoRegistro ?? "Web",
                         Latitud = dto.Latitud,
                         Longitud = dto.Longitud,
-                        CostoDomicilio = dto.CostoDomicilio
+                        CostoDomicilio = dto.CostoDomicilio,
+                        // 🛡️ GENERACIÓN DE TOKEN DE CHECK-IN
+                        CodigoVerificacion = GenerarTokenCheckIn()
                     };
 
                     _context.citas.Add(nuevaCita);
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync(); 
 
-                    return (true, "¡Cita agendada con éxito!", (Guid?)nuevaCita.Id);
+                    // 🛡️ [NOTIFICACIONES INTEGRADAS]
+                    // Aquí el token ya está en base de datos. Se puede disparar el correo/WhatsApp.
+                    // string msg = $"Turnify: Tu token es {nuevaCita.CodigoVerificacion}.";
+                    // EnviarNotificacion(cliente.telefono, msg);
+
+                    return (true, $"¡Cita agendada! Código de Check-in: {nuevaCita.CodigoVerificacion}", (Guid?)nuevaCita.Id);
                 }
                 catch (Exception ex)
                 {
@@ -170,12 +233,12 @@ namespace Turnify.Api.Services
             });
         }
 
-        // --- 🕒 4. DISPONIBILIDAD (MOTOR DE BÚSQUEDA BLINDADO) ---
+        // --- 🕒 4. DISPONIBILIDAD (MOTOR DE BÚSQUEDA BLINDADO - FIX OVERBOOKING PRO) ---
         public async Task<IEnumerable<TimeSpan>> GetDisponibilidadAsync(Guid proveedorId, Guid servicioId, DateTime fecha)
         {
             var ahoraBogota = GetBogotaTime();
             
-            Console.WriteLine($"🔍 [Lupe-Debug] Consultando: Prov {proveedorId} | Serv {servicioId} | Fecha {fecha:yyyy-MM-dd}");
+            Console.WriteLine($"🔍 [Lupe-Debug] Consultando Disponibilidad PRO: Prov {proveedorId} | Serv {servicioId} | Fecha {fecha:yyyy-MM-dd}");
 
             if (fecha.Date < ahoraBogota.Date) 
             {
@@ -212,17 +275,18 @@ namespace Turnify.Api.Services
 
             var slotsDisponibles = new List<TimeSpan>();
             var tiempoActual = horario.HoraApertura;
-            var duracionCita = TimeSpan.FromMinutes(servicio.DuracionMinutos);
+            var duracionSolicitada = TimeSpan.FromMinutes(servicio.DuracionMinutos);
             var intervalo = TimeSpan.FromMinutes(30); 
 
             TimeSpan limiteHoraActual = fecha.Date == ahoraBogota.Date ? ahoraBogota.TimeOfDay : TimeSpan.Zero;
 
-            while (tiempoActual + duracionCita <= horario.HoraCierre)
+            while (tiempoActual + duracionSolicitada <= horario.HoraCierre)
             {
                 if (tiempoActual > limiteHoraActual) 
                 {
+                    // 🛡️ REFINAMIENTO CRÍTICO: ¿El servicio de X minutos cabe aquí sin chocar con NADIE?
                     bool ocupado = citasOcupadas.Any(c => 
-                        tiempoActual < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < tiempoActual + duracionCita
+                        tiempoActual < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < tiempoActual + duracionSolicitada
                     );
                     
                     if (!ocupado) slotsDisponibles.Add(tiempoActual);
@@ -230,8 +294,22 @@ namespace Turnify.Api.Services
                 tiempoActual = tiempoActual.Add(intervalo);
             }
 
-            Console.WriteLine($"✅ Slots encontrados: {slotsDisponibles.Count}");
+            Console.WriteLine($"✅ Slots Dinámicos Encontrados: {slotsDisponibles.Count} (Servicio de {servicio.DuracionMinutos} min)");
             return slotsDisponibles;
+        }
+
+        // 🛡️ NUEVO: Confirmar Asistencia vía Token (Check-in)
+        public async Task<(bool Success, string Message)> ConfirmarAsistenciaAsync(Guid citaId, string token)
+        {
+            var cita = await _context.citas.FindAsync(citaId);
+            if (cita == null) return (false, "Cita no encontrada.");
+
+            if (cita.CodigoVerificacion != token.ToUpper())
+                return (false, "Token de validación incorrecto.");
+
+            cita.Estado = "completada"; // O "confirmada" según tu flujo
+            await _context.SaveChangesAsync();
+            return (true, "Asistencia confirmada exitosamente.");
         }
 
         public async Task<IEnumerable<object>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha)
@@ -248,7 +326,6 @@ namespace Turnify.Api.Services
             var cita = await _context.citas.FindAsync(id);
             if (cita == null) return (false, "La cita no existe.");
 
-            // 🛡️ Blindaje contra actualizaciones de estado a citas ya canceladas/completadas si fuera necesario
             cita.Estado = nuevoEstado;
             await _context.SaveChangesAsync();
             return (true, $"Cita actualizada a: {nuevoEstado}");
@@ -263,9 +340,13 @@ namespace Turnify.Api.Services
                 .Where(c => c.ClienteId == clienteId)
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
                 .Select(c => new {
-                    c.Id, c.Fecha, c.Hora,
+                    c.Id,
+                    c.Fecha,
+                    c.Hora,
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no especificado",
-                    c.Estado, c.PrecioPactado, c.Observaciones,
+                    c.Estado,
+                    c.PrecioPactado,
+                    c.Observaciones,
                     c.Modalidad 
                 }).ToListAsync();
         }

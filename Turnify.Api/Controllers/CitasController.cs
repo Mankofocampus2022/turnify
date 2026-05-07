@@ -9,10 +9,16 @@ using System.Security.Claims;
 
 namespace Turnify.Api.Controllers
 {
-    // 🚩 DTO LOCAL: Mantenido para el PATCH
+    // 🚩 DTOs LOCALES: Blindados contra Warning CS8618 (Nulabilidad)
     public class EstadoUpdateDto 
     { 
-        public string NuevoEstado { get; set; } 
+        public string NuevoEstado { get; set; } = string.Empty; 
+    }
+
+    public class CheckInDto
+    {
+        public Guid CitaId { get; set; }
+        public string Token { get; set; } = string.Empty;
     }
 
     [ApiController]
@@ -29,7 +35,7 @@ namespace Turnify.Api.Controllers
             _dashboardService = dashboardService;
         }
 
-        // --- 📅 1. AGENDA DE HOY ---
+        // --- 📅 1. AGENDA DE HOY (Filtro Estricto) ---
         [HttpGet("hoy")]
         public async Task<IActionResult> GetCitasHoy()
         {
@@ -47,10 +53,8 @@ namespace Turnify.Api.Controllers
         public async Task<IActionResult> GetCitasRango([FromQuery] DateTime? inicio, [FromQuery] DateTime? fin)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim)) 
-                return Unauthorized(new { message = "Sesión no válida" });
+            if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized(new { message = "Sesión no válida" });
 
-            // 🛡️ BLINDAJE: Si no vienen fechas, usamos el día de hoy por defecto
             var fechaInicio = inicio ?? DateTime.Today;
             var fechaFin = fin ?? DateTime.Today;
 
@@ -63,6 +67,12 @@ namespace Turnify.Api.Controllers
         [HttpGet("analitica-avanzada")]
         public async Task<IActionResult> GetAnaliticaAvanzada([FromQuery] Guid proveedorId, [FromQuery] string periodo = "mes", [FromQuery] DateTime? fecha = null)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            
+            // 🛡️ Blindaje: Solo el proveedor o un Admin pueden ver esta analítica
+            if (proveedorId != Guid.Empty && userIdClaim != proveedorId.ToString() && !User.IsInRole("Admin"))
+                return Forbid();
+
             var analitica = await _dashboardService.GetResumenDiarioAsync(proveedorId, fecha, periodo);
             if (analitica == null) return NotFound(new { message = "No hay datos para este periodo" });
             return Ok(analitica);
@@ -72,16 +82,26 @@ namespace Turnify.Api.Controllers
         [HttpGet("exportar/datos")]
         public async Task<IActionResult> GetDatosParaExportar([FromQuery] Guid proveedorId, [FromQuery] DateTime inicio, [FromQuery] DateTime fin)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdClaim != proveedorId.ToString() && !User.IsInRole("Admin")) return Forbid();
+
             var datos = await _citaService.GetCitasRangoAsync(proveedorId, inicio, fin);
             return Ok(datos);
         }
 
-        // --- 📝 5. AGENDAR CITA (CORE) ---
+        // --- 📝 5. AGENDAR CITA (CON RETORNO DE TOKEN) ---
         [HttpPost("agendar")]
         [AllowAnonymous] 
         public async Task<IActionResult> Agendar([FromBody] CitaCreateDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            // 🛡️ BLINDAJE JWT: Si es un cliente logueado, protegemos que no agende para otro ID
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole("Cliente"))
+            {
+                dto.ClienteId = Guid.Parse(userIdClaim);
+            }
 
             var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
             if (!result.Success) 
@@ -91,39 +111,50 @@ namespace Turnify.Api.Controllers
                 message = result.Message, 
                 citaId = result.CitaId,
                 modalidad = dto.Modalidad,
-                registro = dto.MetodoRegistro 
+                registro = dto.MetodoRegistro ?? "Web"
             });
         }
 
-        // --- 🔍 6. CONSULTAR AGENDA POR PROVEEDOR (Blindado) ---
+        // 🛡️ NUEVO: --- 🚩 5.1 VALIDAR CHECK-IN (TOKEN) ---
+        [HttpPost("validar-checkin")]
+        public async Task<IActionResult> ValidarCheckIn([FromBody] CheckInDto dto)
+        {
+            if (dto.CitaId == Guid.Empty || string.IsNullOrEmpty(dto.Token))
+                return BadRequest(new { message = "Cita ID y Token son obligatorios." });
+
+            // 🚩 Conexión con el método del Service
+            var result = await _citaService.ConfirmarAsistenciaAsync(dto.CitaId, dto.Token);
+            if (!result.Success)
+                return BadRequest(new { message = result.Message });
+
+            return Ok(new { message = result.Message });
+        }
+
+        // --- 🔍 6. CONSULTAR AGENDA POR PROVEEDOR ---
         [HttpGet("agenda/{proveedorId}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetAgenda(Guid proveedorId, [FromQuery] DateTime? fecha)
         {
-            // 🛡️ Si la fecha llega nula o vacía desde el JS, forzamos a Hoy
             var fechaConsulta = fecha ?? DateTime.Today;
             var agenda = await _citaService.GetAgendaDiaAsync(proveedorId, fechaConsulta);
             return Ok(agenda);
         }
 
-        // --- 🕒 7. DISPONIBILIDAD (EL KILLER FIX PARA EL BUG "SIN DISPONIBILIDAD") ---
+        // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO) ---
         [HttpGet("disponibilidad")]
         [AllowAnonymous] 
         public async Task<IActionResult> GetDisponibilidad([FromQuery] Guid proveedorId, [FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
         {
-            // 🛡️ BLINDAJE DE SEGURIDAD:
-            // Si el frontend envía una fecha vacía (""), .NET la recibe como nula o DateTime.MinValue.
             if (!fecha.HasValue || fecha.Value == DateTime.MinValue)
             {
-                // En lugar de devolver error, intentamos salvar la petición usando el día de hoy
                 fecha = DateTime.Today;
             }
 
             var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fecha.Value);
             
-            // Si no hay slots, devolvemos un mensaje claro para el log del JS
             if (slots == null || !slots.Any())
             {
-                return Ok(new List<TimeSpan>()); // Devolvemos lista vacía pero con estatus 200
+                return Ok(new List<TimeSpan>()); 
             }
 
             return Ok(slots);
@@ -142,10 +173,16 @@ namespace Turnify.Api.Controllers
             return Ok(new { message = result.Message });
         }
 
-        // --- 📜 9. HISTORIAL ---
+        // --- 📜 9. HISTORIAL (Blindaje de Privacidad) ---
         [HttpGet("historial/{clienteId}")]
         public async Task<IActionResult> GetHistorial(Guid clienteId)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            
+            // 🛡️ Un cliente solo puede ver SU propio historial
+            if (User.IsInRole("Cliente") && userIdClaim != clienteId.ToString())
+                return Forbid();
+
             var historial = await _citaService.GetHistorialClienteAsync(clienteId);
             if (historial == null || !historial.Any())
                 return Ok(new { message = "Este cliente aún no tiene citas en su historial." });
@@ -156,8 +193,8 @@ namespace Turnify.Api.Controllers
         [HttpGet("{id}/ubicacion")]
         public async Task<IActionResult> GetUbicacionDomicilio(Guid id)
         {
-            // 🛡️ Usamos un rango amplio para buscar la cita específica
-            var datos = await _citaService.GetCitasRangoAsync(Guid.Empty, DateTime.Today.AddYears(-1), DateTime.Today.AddYears(1));
+            // Rango preventivo para búsqueda de metadata de ubicación
+            var datos = await _citaService.GetCitasRangoAsync(Guid.Empty, DateTime.Today.AddMonths(-3), DateTime.Today.AddMonths(3));
             var cita = datos.Cast<dynamic>().FirstOrDefault(c => c.Id == id);
             
             if (cita == null) return NotFound(new { message = "Cita no encontrada" });
