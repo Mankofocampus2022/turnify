@@ -1,7 +1,14 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Turnify.Api.Models.DTOs;
 
 namespace Turnify.Api.Interfaces 
 {
+    /// <summary>
+    /// Interfaz de servicios para la gestión de citas.
+    /// Define las reglas de negocio para el motor de disponibilidad y validación de seguridad.
+    /// </summary>
     public interface ICitaService
     {
         // --- 📝 1. GESTIÓN DE AGENDAMIENTO ---
@@ -25,7 +32,8 @@ namespace Turnify.Api.Interfaces
         // --- 🕒 2. MOTOR DE DISPONIBILIDAD ---
         
         /// <summary>
-        /// Calcula slots libres validando que el servicio solicitado quepa completo en la agenda.
+        /// Calcula slots libres validando que el servicio solicitado (servicioId) quepa completo 
+        /// en el "túnel de tiempo" del proveedor en la fecha solicitada.
         /// </summary>
         Task<IEnumerable<TimeSpan>> GetDisponibilidadAsync(Guid proveedorId, Guid servicioId, DateTime fecha);
 
@@ -34,22 +42,23 @@ namespace Turnify.Api.Interfaces
         
         /// <summary>
         /// Obtiene la agenda específica de un día (Fix Reportes "Hoy").
+        /// Blindado con CitaResponseDto para evitar exposición de datos sensibles.
         /// </summary>
-        Task<IEnumerable<object>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha);
+        Task<IEnumerable<CitaResponseDto>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha);
         
         /// <summary>
         /// Obtiene la agenda del día actual para el dashboard del profesional.
         /// </summary>
-        Task<IEnumerable<object>> GetAgendaHoyAsync(Guid userId);
+        Task<IEnumerable<CitaResponseDto>> GetAgendaHoyAsync(Guid userId);
         
         /// <summary>
         /// Obtiene citas en un rango de fechas para reportes semanales, mensuales o analítica avanzada.
         /// </summary>
-        Task<IEnumerable<object>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin);
+        Task<IEnumerable<CitaResponseDto>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin);
 
         /// <summary>
         /// Recupera el historial completo de citas de un cliente (Blindado para Privacidad).
         /// </summary>
-        Task<IEnumerable<object>> GetHistorialClienteAsync(Guid clienteId);
+        Task<IEnumerable<CitaResponseDto>> GetHistorialClienteAsync(Guid clienteId);
     }
 }

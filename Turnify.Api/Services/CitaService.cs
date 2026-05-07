@@ -53,10 +53,10 @@ namespace Turnify.Api.Services
         }
 
         // --- 📊 1. AGENDA POR RANGO (Fix de Reportes "Hoy") ---
-        public async Task<IEnumerable<object>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
+        public async Task<IEnumerable<CitaResponseDto>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
         {
             // 🛡️ Blindaje inicial: Evitar consultas con IDs vacíos
-            if (userId == Guid.Empty) return Enumerable.Empty<object>();
+            if (userId == Guid.Empty) return Enumerable.Empty<CitaResponseDto>();
 
             // 🚩 FIX CRÍTICO: Aseguramos que si inicio y fin son iguales (Hoy), el rango sea estricto
             var fechaInicioStr = inicio.Date;
@@ -71,26 +71,26 @@ namespace Turnify.Api.Services
                             c.Fecha < fechaFinLimite && 
                             c.Estado != "cancelada")
                 .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
-                .Select(c => new {
-                    c.Id,
-                    Fecha = c.Fecha.ToString("yyyy-MM-dd"),
-                    Hora = c.Hora.ToString(@"hh\:mm"),
+                .Select(c => new CitaResponseDto {
+                    Id = c.Id,
+                    Fecha = c.Fecha,
+                    Hora = c.Hora,
                     ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
-                    c.Estado,
-                    Precio = c.PrecioPactado,
-                    Duracion = c.DuracionPactadaMin,
-                    c.Observaciones,
-                    c.Modalidad,
-                    c.MetodoRegistro,
-                    c.Direccion,
+                    Estado = c.Estado,
+                    PrecioPactado = c.PrecioPactado,
+                    DuracionPactadaMin = c.DuracionPactadaMin,
+                    Observaciones = c.Observaciones,
+                    Modalidad = c.Modalidad,
+                    MetodoRegistro = c.MetodoRegistro,
+                    Direccion = c.Direccion,
                     // 🛡️ Añadimos el token a la respuesta para que el barbero lo vea en su reporte
-                    TokenValidacion = c.CodigoVerificacion 
+                    CodigoVerificacion = c.CodigoVerificacion 
                 })
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<object>> GetAgendaHoyAsync(Guid userId)
+        public async Task<IEnumerable<CitaResponseDto>> GetAgendaHoyAsync(Guid userId)
         {
             var hoyBogota = GetBogotaTime().Date;
             // Forzamos el rango de un solo día para el Dashboard
@@ -134,7 +134,7 @@ namespace Turnify.Api.Services
             if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
 
             // 🛡️ REGLA DE NEGOCIO: Expiración de 3 meses (90 días)
-            var diasDesdeCreacion = (DateTime.UtcNow - cliente.fecha_creacion).TotalDays;
+            var diasDesdeCreacion = (GetBogotaTime() - cliente.fecha_creacion).TotalDays;
             if (diasDesdeCreacion > 90)
             {
                 return (false, "Cuenta de cliente expirada (máximo 3 meses). Favor actualizar perfil.", (Guid?)null);
@@ -312,7 +312,7 @@ namespace Turnify.Api.Services
             return (true, "Asistencia confirmada exitosamente.");
         }
 
-        public async Task<IEnumerable<object>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha)
+        public async Task<IEnumerable<CitaResponseDto>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha)
         {
             return await GetCitasRangoAsync(proveedorId, fecha, fecha);
         }
@@ -331,23 +331,23 @@ namespace Turnify.Api.Services
             return (true, $"Cita actualizada a: {nuevoEstado}");
         }
 
-        public async Task<IEnumerable<object>> GetHistorialClienteAsync(Guid clienteId)
+        public async Task<IEnumerable<CitaResponseDto>> GetHistorialClienteAsync(Guid clienteId)
         {
-            if (clienteId == Guid.Empty) return Enumerable.Empty<object>();
+            if (clienteId == Guid.Empty) return Enumerable.Empty<CitaResponseDto>();
 
             return await _context.citas.AsNoTracking()
                 .Include(c => c.Servicio)
                 .Where(c => c.ClienteId == clienteId)
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
-                .Select(c => new {
-                    c.Id,
-                    c.Fecha,
-                    c.Hora,
+                .Select(c => new CitaResponseDto {
+                    Id = c.Id,
+                    Fecha = c.Fecha,
+                    Hora = c.Hora,
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no especificado",
-                    c.Estado,
-                    c.PrecioPactado,
-                    c.Observaciones,
-                    c.Modalidad 
+                    Estado = c.Estado,
+                    PrecioPactado = c.PrecioPactado,
+                    Observaciones = c.Observaciones,
+                    Modalidad = c.Modalidad 
                 }).ToListAsync();
         }
     }

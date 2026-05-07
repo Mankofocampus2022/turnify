@@ -24,6 +24,20 @@
             font-weight: bold;
         }
         .btn-filter:hover { background: rgba(72, 193, 181, 0.2); }
+        
+        /* 🛡️ Estilo para el botón de Check-in dentro de la tabla */
+        .btn-checkin {
+            background: #48c1b5;
+            border: none;
+            color: #1b3d5f;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-checkin:hover { transform: scale(1.05); background: #3aa89d; }
     </style>
 </head>
 <body>
@@ -108,11 +122,12 @@
                             <th>CLIENTE</th>
                             <th>SERVICIO</th>
                             <th>ESTADO</th>
+                            <th>ACCIONES</th>
                         </tr>
                     </thead>
                     <tbody id="turnosTable">
                         <tr>
-                            <td colspan="5" style="text-align: center; padding: 20px; color: white;">
+                            <td colspan="6" style="text-align: center; padding: 20px; color: white;">
                                 <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
                             </td>
                         </tr>

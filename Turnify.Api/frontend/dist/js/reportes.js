@@ -1,11 +1,11 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Configuración Validada
-    const API_BASE_URL = 'http://localhost:5000/api'; 
+    // 1. Configuración Validada (URL Dinámica Blindada)
+    const API_BASE_URL = window.location.origin + '/api'; 
     
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : null;
     
-    // Rescate de ID para que no use el genérico si el barbero ya entró
+    // Rescate de ID Senior para que no use el genérico si el barbero ya entró
     const proveedorId = user ? (user.proveedorId || user.id) : 'F34FE619-8F7D-4EEE-8473-22979451EBC0'; 
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📡 Función Maestra de Carga
+     * 📡 Función Maestra de Carga (Blindada con Parámetros UTC)
      */
     async function cargarReportes() {
         try {
@@ -60,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // 🚩 REFUERZO ANTIBUGS: Aseguramos que los parámetros viajen limpios al backend
             let url = `${API_BASE_URL}/Dashboard/resumen/${proveedorId}?periodo=${periodo}`;
             
-            // Si hay mes y año, forzamos la precisión para que el Service no use fallbacks
             if (mesSeleccionado && anioSeleccionado) {
                 url = `${API_BASE_URL}/Dashboard/resumen/${proveedorId}?periodo=mes&mes=${mesSeleccionado}&anio=${anioSeleccionado}`;
             }
@@ -81,10 +80,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("📊 Analítica Recibida:", data);
 
             // A. Actualizar Stats Cards
-            txtTotalCitas.innerText = data.totalServicios || data.totalCitas || 0;
-            const ingresos = data.gananciaReal || data.ingresosReales || 0;
+            txtTotalCitas.innerText = data.totalCitas || 0;
+            const ingresos = data.gananciaReal || 0;
             txtTotalIngresos.innerText = formatter.format(ingresos);
-            txtNuevosClientes.innerText = data.nuevosClientesTotales || data.nuevosClientes || 0;
+            txtNuevosClientes.innerText = data.nuevosClientesTotales || 0;
 
             // B. Pintar Tabla
             const detalles = data.proximasCitas || data.detalles || [];
@@ -112,15 +111,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
 
-        if (chartServicios) {
-            chartServicios.destroy();
-        }
+        if (chartServicios) chartServicios.destroy();
         
-        const existingChart = Chart.getChart(canvas); 
-        if (existingChart) {
-            existingChart.destroy();
-        }
-
         chartServicios = new Chart(ctx, {
             type: 'doughnut',
             data: {
@@ -148,14 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
 
-        if (chartClientes) {
-            chartClientes.destroy();
-        }
-        
-        const existingChart = Chart.getChart(canvas); 
-        if (existingChart) {
-            existingChart.destroy();
-        }
+        if (chartClientes) chartClientes.destroy();
 
         chartClientes = new Chart(ctx, {
             type: 'line',
@@ -181,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📝 Renderizado de Tabla (CON REVERSIÓN Y CANCELACIÓN ROJO LAVA)
+     * 📝 Renderizado de Tabla (CON SOPORTE DE REVERSIÓN PARA ERRORES)
      */
     function renderizarTabla(lista) {
         if(!tablaCuerpo) return;
@@ -193,28 +178,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         lista.forEach(item => {
-            const fechaVal = item.fecha || '---';
+            const fechaVal = item.fecha ? item.fecha.split('T')[0] : '---';
             const horaVal = item.hora || '---';
-            const cliente = item.cliente || item.clienteNombre || 'Anónimo';
-            const servicio = item.servicio || item.servicioNombre || 'N/A';
-            const monto = item.monto || item.precioPactado || 0;
-            const estado = (item.estado || 'pendiente').toLowerCase();
+            const cliente = item.cliente || 'Anónimo';
+            const servicio = item.servicio || 'N/A';
+            const monto = item.precioPactado || 0;
+            const estadoRaw = (item.estado || 'pendiente').toLowerCase();
 
             const tr = document.createElement('tr');
-            let badgeClass = 'status-pending';
-            if (estado.includes('completada')) badgeClass = 'status-success';
-            if (estado.includes('cancelada')) badgeClass = 'status-danger';
+            
+            // 🛡️ Lógica de visualización de estados
+            let badgeClass = 'status-pendiente';
+            let textoEstado = estadoRaw;
 
-            // 🚩 LÓGICA DE BOTONES DINÁMICOS
+            if (estadoRaw.includes('completada')) {
+                badgeClass = 'status-activo';
+                textoEstado = 'Finalizada';
+            } else if (estadoRaw.includes('cancelada')) {
+                badgeClass = 'status-bloqueado';
+                textoEstado = 'Anulada / No asistió';
+            }
+
+            // 🚩 LÓGICA DE BOTONES DINÁMICOS (CON BOTÓN DE CORRECCIÓN)
             let btnAccion = "";
-            if (estado === "pendiente") {
+            if (estadoRaw === "pendiente") {
                 btnAccion = `
-                    <button onclick="finalizarCita('${item.id || item.Id}', 'completada')" style="background: #48c1b5; color: #162431; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.7rem; margin-right: 5px;"><i class="fas fa-check"></i> COBRAR</button>
-                    <button onclick="finalizarCita('${item.id || item.Id}', 'cancelada')" style="background: #ff4b2b; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.7rem;"><i class="fas fa-times"></i> CANCELAR</button>
+                    <button class="btn-checkin-report" onclick="lanzarCheckIn('${item.id}', '${item.codigoVerificacion}')">
+                        <i class="fas fa-user-check"></i> CHECK-IN
+                    </button>
+                    <button onclick="finalizarCita('${item.id}', 'cancelada')" style="background: transparent; color: #ff5e5e; border: 1px solid #ff5e5e; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; margin-top: 5px; width: 100%;">
+                        <i class="fas fa-times"></i> ANULAR CITA
+                    </button>
                 `;
             } else {
-                // 🚩 BOTÓN DE REVERSIÓN: Permite corregir errores (vuelve a pendiente)
-                btnAccion = `<button onclick="finalizarCita('${item.id || item.Id}', 'pendiente')" style="background: transparent; color: #ccc; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.65rem;"><i class="fas fa-undo"></i> REVERSAR</button>`;
+                // 🛡️ BOTÓN DE DESHACER: En caso de error del administrador
+                btnAccion = `
+                    <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;">
+                        <span style="font-size: 0.7rem; color: #888;"><i class="fas fa-lock"></i> Procesada</span>
+                        <button onclick="finalizarCita('${item.id}', 'pendiente')" style="background: rgba(72, 193, 181, 0.1); color: #48c1b5; border: 1px solid #48c1b5; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.65rem; width: 100%;">
+                            <i class="fas fa-undo"></i> CORREGIR / DESHACER
+                        </button>
+                    </div>
+                `;
             }
 
             tr.innerHTML = `
@@ -225,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><strong>${cliente}</strong></td>
                 <td>${servicio}</td>
                 <td style="color: #48c1b5; font-weight: bold;">${formatter.format(monto)}</td>
-                <td><span class="status-pill ${badgeClass}">${estado}</span></td>
+                <td><span class="status-pill ${badgeClass}">${textoEstado}</span></td>
                 <td style="text-align: center;">${btnAccion}</td>
             `;
             tablaCuerpo.appendChild(tr);
@@ -233,12 +238,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * ⚡ FUNCIÓN PARA ACTUALIZAR ESTADO (PATCH)
+     * 🛡️ MOTOR DE VALIDACIÓN (CHECK-IN DE 6 DÍGITOS)
      */
-    async function finalizarCita(id, nuevoEstado = "completada") {
-        if (!id || id === 'undefined') return;
+    async function lanzarCheckIn(citaId, tokenSugerido) {
+        const userInput = prompt(`⚠️ VALIDACIÓN DE PRESENCIA\nIngrese el código de 6 dígitos del cliente para cerrar la cita:\n(Código: ${tokenSugerido})`);
         
-        const confirmMsg = nuevoEstado === 'pendiente' ? "¿Deseas REVERSAR esta cita a estado pendiente?" : `¿Deseas marcar esta cita como ${nuevoEstado.toUpperCase()}?`;
+        if (!userInput) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/Citas/validar-checkin`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ citaId: citaId, token: userInput })
+            });
+
+            if (response.ok) {
+                alert("✅ Check-in exitoso. La cita se ha cobrado y cerrado.");
+                cargarReportes(); 
+            } else {
+                const error = await response.json();
+                alert("❌ Código incorrecto. No se puede cerrar la cita.");
+            }
+        } catch (e) { alert("🔌 Error de red al validar."); }
+    }
+
+    /**
+     * ⚡ FUNCIÓN PARA ACTUALIZAR ESTADO (PATCH) CON REVERSIÓN
+     */
+    async function finalizarCita(id, nuevoEstado) {
+        let confirmMsg = `¿Seguro que deseas marcar como ${nuevoEstado.toUpperCase()}?`;
+        if (nuevoEstado === 'pendiente') {
+            confirmMsg = "⚠️ ¿Deseas DESHACER el estado de esta cita y volverla a poner como PENDIENTE?\n(Esto reactivará el botón de Check-in)";
+        }
+
         if (!confirm(confirmMsg)) return;
 
         try {
@@ -252,55 +287,45 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                alert(`✅ Estado actualizado a ${nuevoEstado}.`);
+                alert(`✅ Estado actualizado.`);
                 cargarReportes(); 
             } else {
-                const errorText = await response.text();
-                console.error("Error:", errorText);
                 alert("❌ No se pudo actualizar el estado.");
             }
-        } catch (e) { console.error("Error al actualizar estado:", e); }
+        } catch (e) { console.error(e); }
     }
 
+    window.lanzarCheckIn = lanzarCheckIn;
     window.finalizarCita = finalizarCita;
 
-    // --- 📤 LÓGICA DE EXPORTACIÓN ---
+    // --- 📤 EXPORTACIÓN ---
     document.getElementById('btn-excel')?.addEventListener('click', () => {
         if (!window.datosActuales) return;
         const worksheet = XLSX.utils.json_to_sheet(window.datosActuales);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_Turnify");
-        XLSX.writeFile(workbook, "Reporte_Actividad_Turnify.xlsx");
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Analitica_Turnify");
+        XLSX.writeFile(workbook, "Reporte_Auditoria_Turnify.xlsx");
     });
 
     document.getElementById('btn-pdf')?.addEventListener('click', () => {
         const elemento = document.getElementById('contenido-reporte');
         elemento.classList.add('pdf-export-mode');
-        const opt = {
-            margin: [10, 10],
-            filename: `Reporte_Turnify_${new Date().toLocaleDateString()}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0b141d', letterRendering: true },
+        html2pdf().set({
+            margin: 10,
+            filename: 'Reporte_Mensual_Turnify.pdf',
+            html2canvas: { scale: 2, backgroundColor: '#0a101e' },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-        html2pdf().set(opt).from(elemento).save().then(() => {
-            elemento.classList.remove('pdf-export-mode');
-        });
+        }).from(elemento).save().then(() => elemento.classList.remove('pdf-export-mode'));
     });
 
-    // Filtros y Logout
     document.getElementById('filtro-periodo')?.addEventListener('change', cargarReportes);
     document.getElementById('filtro-mes')?.addEventListener('change', cargarReportes);
     document.getElementById('filtro-anio')?.addEventListener('change', cargarReportes);
 
-    const btnLogout = document.getElementById('btn-logout');
-    if (btnLogout) {
-        btnLogout.addEventListener('click', (e) => {
-            e.preventDefault();
-            localStorage.clear(); 
-            window.location.href = 'login.html'; 
-        });
-    }
-
     cargarReportes();
 });
+
+function logout() {
+    localStorage.clear();
+    window.location.href = 'login.html';
+}

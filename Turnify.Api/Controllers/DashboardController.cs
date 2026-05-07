@@ -33,7 +33,7 @@ namespace Turnify.Api.Controllers
             // 🛡️ CORRECCIÓN CRÍTICA: Usamos NameIdentifier para rescatar el ID del token
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             
-            if (usuarioIdClaim == null) return Unauthorized(new { message = "Sesión no válida" });
+            if (string.IsNullOrEmpty(usuarioIdClaim)) return Unauthorized(new { message = "Sesión no válida" });
 
             // 🛡️ RESCATE DE IDENTIDAD: Buscamos el perfil de proveedor amarrado al usuario
             var proveedor = await _context.proveedores
@@ -55,12 +55,12 @@ namespace Turnify.Api.Controllers
             else
             {
                 // 🚩 Pasamos mes y anio para que el Service limpie los datos de otros meses
-                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha, periodo, mes, anio);
+                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha ?? DateTime.Today, periodo, mes, anio);
             }
 
             if (resumen == null)
             {
-                return NotFound("No se encontraron datos para este proveedor.");
+                return NotFound(new { message = "No se encontraron datos para este proveedor." });
             }
 
             return Ok(resumen);
@@ -75,7 +75,7 @@ namespace Turnify.Api.Controllers
             [FromQuery] int? mes = null,    
             [FromQuery] int? anio = null)   
         {
-            if (proveedorId == Guid.Empty) return BadRequest("El ID del proveedor no es válido.");
+            if (proveedorId == Guid.Empty) return BadRequest(new { message = "El ID del proveedor no es válido." });
 
             // 🛡️ PUENTE DE IDENTIDAD: Sincronización de IDs
             var proveedorEncontrado = await _context.proveedores
@@ -92,10 +92,10 @@ namespace Turnify.Api.Controllers
             else
             {
                 // 🚩 Ahora el servicio recibe mes y año. Esto mata el bug de ver Abril en Junio.
-                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha, periodo, mes, anio);
+                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha ?? DateTime.Today, periodo, mes, anio);
             }
 
-            if (resumen == null) return NotFound("No hay datos para este periodo.");
+            if (resumen == null) return NotFound(new { message = "No hay datos para este periodo." });
 
             return Ok(resumen);
         }

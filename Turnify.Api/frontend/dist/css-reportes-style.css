@@ -8,6 +8,11 @@
     --lava-orange: #ff4500;        
     --danger-red: #ff5e5e;
     --glass-border: rgba(72, 193, 181, 0.15);
+    /* 🛡️ Variables integradas de Reportes */
+    --primary: #48c1b5;
+    --bg-dark: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --border-glass: rgba(255, 255, 255, 0.1);
 }
 
 /* =========================================
@@ -190,6 +195,7 @@ body {
     text-transform: uppercase;
     font-size: 11px;
     border-bottom: 1px solid var(--glass-border);
+    color: var(--primary); /* Asegura celeste en cabecera */
 }
 
 .turnify-table tbody td {
@@ -197,8 +203,72 @@ body {
     border-bottom: 1px solid rgba(72, 193, 181, 0.1);
 }
 
+.turnify-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
 /* =========================================
-   7. 🛡️ BLINDAJE PARA EXPORTACIÓN PDF (VS CODE FIX)
+   7. 🛡️ COMPONENTES DE ACCIÓN (CHECK-IN)
+   ========================================= */
+.btn-checkin-report {
+    background: var(--primary) !important;
+    color: #0f172a !important; /* Texto oscuro para contraste sobre celeste */
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s;
+    margin: 0 auto;
+}
+
+.btn-checkin-report i {
+    color: #0f172a !important;
+}
+
+.btn-checkin-report:hover {
+    background: #3aa89d !important;
+    transform: scale(1.05);
+}
+
+.btn-checkin-report:disabled {
+    background: #4a5568 !important;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* 🚩 BADGES DE ESTADO UNIFICADOS */
+.status-pill {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.status-activo { 
+    background: rgba(72, 193, 181, 0.15) !important; 
+    color: #48c1b5 !important; 
+    border: 1px solid #48c1b5; 
+}
+.status-bloqueado { 
+    background: rgba(255, 94, 94, 0.1) !important; 
+    color: #ff5e5e !important; 
+    border: 1px solid #ff5e5e; 
+}
+.status-pendiente { 
+    background: rgba(246, 173, 85, 0.1) !important; 
+    color: #f6ad55 !important; 
+    border: 1px solid #f6ad55; 
+}
+
+/* =========================================
+   8. 🛡️ BLINDAJE PARA EXPORTACIÓN PDF
    ========================================= */
 @media print {
     body { 
@@ -237,3 +307,7 @@ canvas {
     margin-top: 10px; 
     width: 100% !important; 
 }
+
+/* Animación de carga */
+.fa-spin { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }

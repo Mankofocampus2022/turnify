@@ -35,7 +35,7 @@ namespace Turnify.Api.Controllers
             _dashboardService = dashboardService;
         }
 
-        // --- 📅 1. AGENDA DE HOY (Filtro Estricto) ---
+        // --- 📅 1. AGENDA DE HOY (Filtro Estricto Bogota Time) ---
         [HttpGet("hoy")]
         public async Task<IActionResult> GetCitasHoy()
         {
@@ -43,12 +43,15 @@ namespace Turnify.Api.Controllers
             if (string.IsNullOrEmpty(userIdClaim)) 
                 return Unauthorized(new { message = "Sesión no válida o expirada" });
 
-            var userId = Guid.Parse(userIdClaim);
+            // 🛡️ Blindaje: Guid.TryParse evita excepciones si el token viene corrupto
+            if (!Guid.TryParse(userIdClaim, out Guid userId))
+                return BadRequest(new { message = "Identificador de usuario malformado." });
+
             var agenda = await _citaService.GetAgendaHoyAsync(userId);
             return Ok(agenda);
         }
 
-        // --- 📊 2. CITAS POR RANGO (Blindado contra fechas nulas) ---
+        // --- 📊 2. CITAS POR RANGO (Blindado contra fechas nulas y desbordamiento) ---
         [HttpGet("rango")]
         public async Task<IActionResult> GetCitasRango([FromQuery] DateTime? inicio, [FromQuery] DateTime? fin)
         {
@@ -58,49 +61,60 @@ namespace Turnify.Api.Controllers
             var fechaInicio = inicio ?? DateTime.Today;
             var fechaFin = fin ?? DateTime.Today;
 
-            var userId = Guid.Parse(userIdClaim);
+            if (fechaFin < fechaInicio) 
+                return BadRequest(new { message = "La fecha final no puede ser anterior a la inicial." });
+
+            if (!Guid.TryParse(userIdClaim, out Guid userId))
+                return BadRequest(new { message = "Identidad de usuario no válida." });
+
             var agenda = await _citaService.GetCitasRangoAsync(userId, fechaInicio, fechaFin);
             return Ok(agenda);
         }
 
-        // 📈 --- 3. ANALÍTICA AVANZADA (Intacta) ---
+        // 📈 --- 3. ANALÍTICA AVANZADA (Intacta con Seguridad Reforzada) ---
         [HttpGet("analitica-avanzada")]
         public async Task<IActionResult> GetAnaliticaAvanzada([FromQuery] Guid proveedorId, [FromQuery] string periodo = "mes", [FromQuery] DateTime? fecha = null)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             
-            // 🛡️ Blindaje: Solo el proveedor o un Admin pueden ver esta analítica
-            if (proveedorId != Guid.Empty && userIdClaim != proveedorId.ToString() && !User.IsInRole("Admin"))
+            // 🛡️ Blindaje: Solo el dueño de la data o Admin pueden ver analítica sensible
+            bool esDuenio = !string.IsNullOrEmpty(userIdClaim) && userIdClaim.Equals(proveedorId.ToString(), StringComparison.OrdinalIgnoreCase);
+            if (proveedorId != Guid.Empty && !esDuenio && !User.IsInRole("Admin"))
                 return Forbid();
 
             var analitica = await _dashboardService.GetResumenDiarioAsync(proveedorId, fecha, periodo);
-            if (analitica == null) return NotFound(new { message = "No hay datos para este periodo" });
+            if (analitica == null) return NotFound(new { message = "No hay datos analíticos para este periodo" });
             return Ok(analitica);
         }
 
-        // 📥 --- 4. EXPORTAR DATA ---
+        // 📥 --- 4. EXPORTAR DATA (Control de Acceso estricto) ---
         [HttpGet("exportar/datos")]
         public async Task<IActionResult> GetDatosParaExportar([FromQuery] Guid proveedorId, [FromQuery] DateTime inicio, [FromQuery] DateTime fin)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized();
+
             if (userIdClaim != proveedorId.ToString() && !User.IsInRole("Admin")) return Forbid();
 
             var datos = await _citaService.GetCitasRangoAsync(proveedorId, inicio, fin);
             return Ok(datos);
         }
 
-        // --- 📝 5. AGENDAR CITA (CON RETORNO DE TOKEN) ---
+        // --- 📝 5. AGENDAR CITA (CON PROTECCIÓN DE IDENTIDAD) ---
         [HttpPost("agendar")]
         [AllowAnonymous] 
         public async Task<IActionResult> Agendar([FromBody] CitaCreateDto dto)
         {
+            if (dto == null) return BadRequest(new { message = "Petición nula." });
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            // 🛡️ BLINDAJE JWT: Si es un cliente logueado, protegemos que no agende para otro ID
+            // 🛡️ BLINDAJE JWT: Evitamos suplantación de ID (Identity Spoofing)
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole("Cliente"))
             {
-                dto.ClienteId = Guid.Parse(userIdClaim);
+                // Un cliente logueado solo puede agendar para sí mismo (forzamos su ID del token)
+                if (Guid.TryParse(userIdClaim, out Guid authClientId))
+                    dto.ClienteId = authClientId;
             }
 
             var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
@@ -115,14 +129,14 @@ namespace Turnify.Api.Controllers
             });
         }
 
-        // 🛡️ NUEVO: --- 🚩 5.1 VALIDAR CHECK-IN (TOKEN) ---
+        // 🛡️ --- 🚩 5.1 VALIDAR CHECK-IN (TOKEN) ---
         [HttpPost("validar-checkin")]
         public async Task<IActionResult> ValidarCheckIn([FromBody] CheckInDto dto)
         {
+            if (dto == null) return BadRequest(new { message = "Datos de check-in requeridos." });
             if (dto.CitaId == Guid.Empty || string.IsNullOrEmpty(dto.Token))
-                return BadRequest(new { message = "Cita ID y Token son obligatorios." });
+                return BadRequest(new { message = "Cita ID y Token son obligatorios para el Check-in." });
 
-            // 🚩 Conexión con el método del Service
             var result = await _citaService.ConfirmarAsistenciaAsync(dto.CitaId, dto.Token);
             if (!result.Success)
                 return BadRequest(new { message = result.Message });
@@ -130,27 +144,27 @@ namespace Turnify.Api.Controllers
             return Ok(new { message = result.Message });
         }
 
-        // --- 🔍 6. CONSULTAR AGENDA POR PROVEEDOR ---
+        // --- 🔍 6. CONSULTAR AGENDA POR PROVEEDOR (Para Front Público) ---
         [HttpGet("agenda/{proveedorId}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetAgenda(Guid proveedorId, [FromQuery] DateTime? fecha)
         {
+            if (proveedorId == Guid.Empty) return BadRequest(new { message = "ID de proveedor inválido." });
             var fechaConsulta = fecha ?? DateTime.Today;
             var agenda = await _citaService.GetAgendaDiaAsync(proveedorId, fechaConsulta);
             return Ok(agenda);
         }
 
-        // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO) ---
+        // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO CON VALIDACIÓN DINÁMICA) ---
         [HttpGet("disponibilidad")]
         [AllowAnonymous] 
         public async Task<IActionResult> GetDisponibilidad([FromQuery] Guid proveedorId, [FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
         {
-            if (!fecha.HasValue || fecha.Value == DateTime.MinValue)
-            {
-                fecha = DateTime.Today;
-            }
+            if (proveedorId == Guid.Empty || servicioId == Guid.Empty)
+                return BadRequest(new { message = "Proveedor y Servicio son requeridos para calcular el túnel de tiempo." });
 
-            var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fecha.Value);
+            var fechaConsulta = fecha ?? DateTime.Today;
+            var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fechaConsulta);
             
             if (slots == null || !slots.Any())
             {
@@ -160,49 +174,78 @@ namespace Turnify.Api.Controllers
             return Ok(slots);
         }
 
-        // --- ⚡ 8. ACTUALIZAR ESTADO ---
+        // --- ⚡ 8. ACTUALIZAR ESTADO (Auditado) ---
         [HttpPatch("{id}/estado")]
         public async Task<IActionResult> UpdateEstado(Guid id, [FromBody] EstadoUpdateDto dto)
         {
+            if (id == Guid.Empty) return BadRequest(new { message = "ID de cita no válido." });
             if (dto == null || string.IsNullOrEmpty(dto.NuevoEstado))
                 return BadRequest(new { message = "El nuevo estado es requerido." });
 
             var result = await _citaService.UpdateEstadoCitaAsync(id, dto.NuevoEstado);
             if (!result.Success) 
                 return BadRequest(new { message = result.Message });
+            
             return Ok(new { message = result.Message });
         }
 
-        // --- 📜 9. HISTORIAL (Blindaje de Privacidad) ---
+        // --- 📜 9. HISTORIAL (Blindaje Habeas Data) ---
         [HttpGet("historial/{clienteId}")]
         public async Task<IActionResult> GetHistorial(Guid clienteId)
         {
+            if (clienteId == Guid.Empty) return BadRequest(new { message = "Cliente no identificado." });
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             
-            // 🛡️ Un cliente solo puede ver SU propio historial
+            // 🛡️ Seguridad: Un cliente NO puede husmear el historial de otros IDs
             if (User.IsInRole("Cliente") && userIdClaim != clienteId.ToString())
                 return Forbid();
 
             var historial = await _citaService.GetHistorialClienteAsync(clienteId);
             if (historial == null || !historial.Any())
-                return Ok(new { message = "Este cliente aún no tiene citas en su historial." });
+                return Ok(new { message = "Sin registros previos para este perfil." });
+            
             return Ok(historial);
         }
 
-        // --- 📍 10. UBICACIÓN ---
+        // --- 📍 10. UBICACIÓN (Blindada y optimizada) ---
         [HttpGet("{id}/ubicacion")]
         public async Task<IActionResult> GetUbicacionDomicilio(Guid id)
         {
-            // Rango preventivo para búsqueda de metadata de ubicación
-            var datos = await _citaService.GetCitasRangoAsync(Guid.Empty, DateTime.Today.AddMonths(-3), DateTime.Today.AddMonths(3));
-            var cita = datos.Cast<dynamic>().FirstOrDefault(c => c.Id == id);
+            if (id == Guid.Empty) return BadRequest(new { message = "ID de cita requerido." });
             
-            if (cita == null) return NotFound(new { message = "Cita no encontrada" });
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
+                return Unauthorized();
+
+            // 🛡️ Refactor: Solo buscamos en la agenda del profesional logueado por seguridad
+            var agenda = await _citaService.GetAgendaHoyAsync(userId);
+            var cita = agenda.FirstOrDefault(c => c.Id == id);
             
+            if (cita == null) return NotFound(new { message = "Cita no encontrada o acceso denegado." });
+            
+            // 🚩 Para que compile: Asegúrate que CitaResponseDto tenga estas propiedades
             return Ok(new {
                 direccion = cita.Direccion,
-                modalidad = cita.Modalidad
+                modalidad = cita.Modalidad,
+                token = cita.CodigoVerificacion
             });
+        }
+
+        // --- 💎 11. [NUEVO] DETALLE DE CITA (Blindado) ---
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetDetalleCita(Guid id)
+        {
+            if (id == Guid.Empty) return BadRequest(new { message = "ID de cita requerido." });
+            
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
+                return Unauthorized();
+
+            var agenda = await _citaService.GetAgendaHoyAsync(userId);
+            var cita = agenda.FirstOrDefault(c => c.Id == id);
+            
+            if (cita == null) return NotFound(new { message = "No se pudo recuperar la información de la cita." });
+            return Ok(cita);
         }
     }
 }

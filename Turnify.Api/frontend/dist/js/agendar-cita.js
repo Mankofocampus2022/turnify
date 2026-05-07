@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    // 🛡️ Blindaje de sesión
+    // 🛡️ Blindaje de sesión: Soporta múltiples llaves de token por compatibilidad
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
     const userStr = localStorage.getItem('user');
     
@@ -12,9 +12,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
     const esCliente = rol.includes("CLIENTE");
 
+    // 🚩 URL Dinámica: Blindada para Docker y entornos productivos
+    const API_BASE = window.location.origin + '/api';
+
     console.log("🚀 [Turnify Log] Rol Detectado:", rol);
 
-    // 🚩 LÓGICA DE INTERFAZ POR ROL
+    // 🚩 LÓGICA DE INTERFAZ POR ROL (Mantenemos tu estructura intacta)
     const sectionCliente = document.getElementById('sectionSeleccionarCliente');
     const sectionProveedor = document.getElementById('sectionSeleccionarProveedor');
     const subtitulo = document.getElementById('subtituloAgendar');
@@ -23,18 +26,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (sectionCliente) sectionCliente.style.display = 'none';
         if (sectionProveedor) sectionProveedor.style.display = 'block';
         if (subtitulo) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
-        cargarProveedores(token); 
-        // 🛡️ [NUEVO] Cargamos historial para clientes
-        cargarMisCitas(user.id, token, "cliente");
+        cargarProveedores(token, API_BASE); 
+        // 🛡️ [NUEVO] Cargamos historial para clientes con el ID correcto
+        cargarMisCitas(user.clienteId || user.id, token, "cliente", API_BASE);
     } else {
         if (sectionCliente) sectionCliente.style.display = 'block';
         if (sectionProveedor) sectionProveedor.style.display = 'none';
         if (subtitulo) subtitulo.innerText = "Registro manual de servicios (Local / Domicilio)";
-        cargarClientes(token);
+        cargarClientes(token, API_BASE);
         const proveedorId = user.proveedorId || user.id;
-        cargarServicios(proveedorId, token);
-        // 🛡️ [NUEVO] Cargamos agenda para barberos
-        cargarMisCitas(proveedorId, token, "proveedor");
+        cargarServicios(proveedorId, token, API_BASE);
+        // 🛡️ [NUEVO] Cargamos agenda para profesionales
+        cargarMisCitas(proveedorId, token, "proveedor", API_BASE);
     }
 
     // 🔥 [KILLER FIX] - VINCULACIÓN DE EVENTOS DE DISPONIBILIDAD
@@ -42,31 +45,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectServicio = document.getElementById('citaServicioId');
     const selectModalidad = document.getElementById('citaModalidad');
 
-    if (inputFecha) inputFecha.addEventListener('change', cargarDisponibilidad);
-    if (selectServicio) selectServicio.addEventListener('change', cargarDisponibilidad);
+    if (inputFecha) inputFecha.addEventListener('change', () => cargarDisponibilidad(API_BASE));
+    if (selectServicio) selectServicio.addEventListener('change', () => cargarDisponibilidad(API_BASE));
     
     if (selectModalidad) {
         selectModalidad.addEventListener('change', () => {
             toggleDireccionCita();
-            cargarDisponibilidad();
+            cargarDisponibilidad(API_BASE);
         });
     }
 
     const formCita = document.getElementById('formNuevaCita');
     if (formCita) {
-        formCita.addEventListener('submit', (e) => guardarCita(e, token, user, rol));
+        formCita.addEventListener('submit', (e) => guardarCita(e, token, user, rol, API_BASE));
     }
 });
 
 // --- [NUEVO] 📜 GESTIÓN DE MIS CITAS (VER, CANCELAR, CAMBIAR) ---
-async function cargarMisCitas(id, token, tipo) {
+async function cargarMisCitas(id, token, tipo, API_BASE) {
     const container = document.getElementById('listaMisCitas'); 
     if (!container) return;
 
     console.log(`📡 [Fetch] Obteniendo agenda para ${tipo}...`);
+    // 🚩 Blindamos la ruta según el endpoint del CitasController
     const url = tipo === "cliente" ? 
-        `http://localhost:5000/api/Citas/historial/${id}` : 
-        `http://localhost:5000/api/Citas/hoy`; 
+        `${API_BASE}/Citas/historial/${id}` : 
+        `${API_BASE}/Citas/hoy`; 
 
     try {
         const resp = await fetch(url, {
@@ -74,7 +78,7 @@ async function cargarMisCitas(id, token, tipo) {
         });
         if (resp.ok) {
             const citas = await resp.json();
-            renderizarCitas(citas, container, token);
+            renderizarCitas(citas, container, token, API_BASE);
         }
     } catch (e) { 
         console.error("🔥 Error cargando mis citas:", e);
@@ -82,46 +86,45 @@ async function cargarMisCitas(id, token, tipo) {
     }
 }
 
-// 🛡️ REPARACIÓN DE RENDERIZADO: Mata el "asco" visual y aplica el estilo Glass
-function renderizarCitas(citas, container, token) {
+// 🛡️ REPARACIÓN DE RENDERIZADO: Estilo Glass y Token de Seguridad
+function renderizarCitas(citas, container, token, API_BASE) {
     if (!citas || citas.length === 0) {
         container.innerHTML = "<p style='color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 10px;'>No tienes citas registradas.</p>";
         return;
     }
 
-    // 🚩 Inyectamos la estructura limpia que el CSS "Blindado" espera
     container.innerHTML = citas.map(c => `
         <div class="card-cita-sidebar ${c.estado.toLowerCase()}">
             ${c.estado === 'pendiente' ? `
-                <button class="btn-cancelar-mini" onclick="cancelarCita('${c.id}', '${token}')" title="Cancelar Cita">
+                <button class="btn-cancelar-mini" onclick="cancelarCita('${c.id}', '${token}', '${API_BASE}')" title="Cancelar Cita">
                     <i class="fas fa-times-circle"></i>
                 </button>
             ` : ''}
-            <h6>${c.servicioNombre || c.servicio || "Servicio"}</h6>
+            <h6>${c.servicioNombre || "Servicio"}</h6>
             <div class="cita-info">
-                <i class="far fa-calendar-alt"></i> ${c.fecha.split('T')[0]}
+                <i class="far fa-calendar-alt"></i> ${c.fecha ? c.fecha.split('T')[0] : 'Hoy'}
             </div>
             <div class="cita-info">
-                <i class="far fa-clock"></i> ${c.hora.slice(0, 5)}
+                <i class="far fa-clock"></i> ${c.hora.toString().slice(0, 5)}
             </div>
             <div class="cita-info">
                 <i class="fas fa-info-circle"></i> ${c.estado.toUpperCase()}
             </div>
-            ${c.tokenValidacion ? `
+            ${c.codigoVerificacion ? `
                 <div class="token-tag">
-                    <i class="fas fa-key"></i> TOKEN: ${c.tokenValidacion}
+                    <i class="fas fa-key"></i> TOKEN: ${c.codigoVerificacion}
                 </div>
             ` : ''}
         </div>
     `).join('');
 }
 
-// 🛡️ CANCELACIÓN BLINDADA
-async function cancelarCita(id, token) {
+// 🛡️ CANCELACIÓN BLINDADA (PATCH al endpoint correcto)
+async function cancelarCita(id, token, API_BASE) {
     if (!confirm("⚠️ ¿Estás seguro de que deseas cancelar esta cita?")) return;
 
     try {
-        const resp = await fetch(`http://localhost:5000/api/Citas/${id}/estado`, {
+        const resp = await fetch(`${API_BASE}/Citas/${id}/estado`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -143,10 +146,9 @@ async function cancelarCita(id, token) {
 /**
  * 🚩 CARGA DE PROVEEDORES
  */
-async function cargarProveedores(token) {
-    console.log("📡 [Fetch] Cargando lista de Proveedores...");
+async function cargarProveedores(token, API_BASE) {
     try {
-        const resp = await fetch(`http://localhost:5000/api/Proveedores`, {
+        const resp = await fetch(`${API_BASE}/Proveedores`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) {
@@ -157,8 +159,7 @@ async function cargarProveedores(token) {
                     proveedores.map(p => `<option value="${p.id}">${p.nombreComercial || p.nombre}</option>`).join('');
                 
                 selectProv.onchange = () => {
-                    console.log("🖱️ [Event] Cambio detectado en Profesional");
-                    cargarServiciosPorProveedor();
+                    cargarServiciosPorProveedor(API_BASE);
                     const container = document.getElementById('containerSlots');
                     if (container) container.innerHTML = "";
                 };
@@ -167,23 +168,23 @@ async function cargarProveedores(token) {
     } catch (e) { console.error("🔥 Error proveedores:", e); }
 }
 
-async function cargarServiciosPorProveedor() {
+async function cargarServiciosPorProveedor(API_BASE) {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
     const selectProv = document.getElementById('citaProveedorId');
     if (!selectProv) return;
     
     const proveedorId = selectProv.value;
     if (proveedorId) {
-        cargarServicios(proveedorId, token);
+        cargarServicios(proveedorId, token, API_BASE);
     } else {
         const selectServicio = document.getElementById('citaServicioId');
         if (selectServicio) selectServicio.innerHTML = '<option value="">¿Qué servicio realizaremos?</option>';
     }
 }
 
-async function cargarServicios(proveedorId, token) {
+async function cargarServicios(proveedorId, token, API_BASE) {
     try {
-        const resp = await fetch(`http://localhost:5000/api/Servicios/proveedor/${proveedorId}`, {
+        const resp = await fetch(`${API_BASE}/Servicios/proveedor/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -191,20 +192,16 @@ async function cargarServicios(proveedorId, token) {
             const servicios = await resp.json();
             const selectServicio = document.getElementById('citaServicioId');
             if (selectServicio) {
-                if (servicios.length === 0) {
-                    selectServicio.innerHTML = '<option value="">Sin servicios disponibles</option>';
-                } else {
-                    selectServicio.innerHTML = '<option value="">Selecciona un servicio</option>' + 
-                        servicios.map(s => `<option value="${s.id}">${s.nombre} ($${s.precio})</option>`).join('');
-                }
+                selectServicio.innerHTML = '<option value="">Selecciona un servicio</option>' + 
+                    servicios.map(s => `<option value="${s.id}">${s.nombre} ($${s.precio})</option>`).join('');
             }
         }
     } catch (e) { console.error("🔥 Error servicios:", e); }
 }
 
-async function cargarClientes(token) {
+async function cargarClientes(token, API_BASE) {
     try {
-        const resp = await fetch(`http://localhost:5000/api/Clientes`, {
+        const resp = await fetch(`${API_BASE}/Clientes`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resp.ok) {
@@ -235,7 +232,8 @@ function toggleDireccionCita() {
     }
 }
 
-async function cargarDisponibilidad() {
+// 🛡️ MOTOR DE DISPONIBILIDAD PRO: Blindado con servicioId
+async function cargarDisponibilidad(API_BASE) {
     const fecha = document.getElementById('citaFecha').value;
     const servicioId = document.getElementById('citaServicioId').value;
     const userStr = localStorage.getItem('user');
@@ -255,15 +253,16 @@ async function cargarDisponibilidad() {
         return;
     }
 
-    if (container) container.innerHTML = "<p><i class='fas fa-spinner fa-spin'></i> Consultando...</p>";
+    if (container) container.innerHTML = "<p><i class='fas fa-spinner fa-spin'></i> Calculando túnel de tiempo...</p>";
 
     try {
-        const resp = await fetch(`http://localhost:5000/api/Citas/disponibilidad?proveedorId=${proveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
+        // 🚩 MANDATORIO: Enviamos servicioId para validar duraciones dinámicas
+        const resp = await fetch(`${API_BASE}/Citas/disponibilidad?proveedorId=${proveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
         if (resp.ok) {
             const slots = await resp.json();
             if (container) {
                 if(!slots || slots.length === 0) {
-                    container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad.</p>";
+                    container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad para esta duración.</p>";
                     return;
                 }
                 container.innerHTML = slots.map(h => 
@@ -281,8 +280,8 @@ function seleccionarHora(hora, elemento) {
     if (inputHora) inputHora.value = hora;
 }
 
-// 🛡️ REPARACIÓN DE GUARDAR CITA: Captura de Token y Observaciones
-async function guardarCita(e, token, user, rol) {
+// 🛡️ GUARDAR CITA: Blindaje de Token y Manejo de Errores de Negocio
+async function guardarCita(e, token, user, rol, API_BASE) {
     e.preventDefault();
     
     const inputHora = document.getElementById('citaHoraSeleccionada');
@@ -292,23 +291,21 @@ async function guardarCita(e, token, user, rol) {
     const selectCliente = document.getElementById('citaClienteId');
     const selectProv = document.getElementById('citaProveedorId');
     
-    const clienteIdFinal = esCliente ? user.id : (selectCliente ? selectCliente.value : null);
+    const clienteIdFinal = esCliente ? (user.clienteId || user.id) : (selectCliente ? selectCliente.value : null);
     const proveedorIdFinal = esCliente ? (selectProv ? selectProv.value : null) : (user.proveedorId || user.id);
 
-    if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("Completa todos los campos y selecciona hora.");
+    if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("⚠️ Completa todos los campos y selecciona una hora.");
 
     const btn = e.target.querySelector('button');
     const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Agendando...';
 
-    // 🚩 CAPTURA DE OBSERVACIONES (Si el input existe en el HTML)
     const inputObs = document.getElementById('citaObservaciones');
     const observaciones = inputObs ? inputObs.value.trim() : "";
 
     const dto = {
         clienteId: clienteIdFinal,
-        proveedorId: proveedorIdFinal,
         servicioId: document.getElementById('citaServicioId').value,
         fecha: document.getElementById('citaFecha').value,
         hora: hora,
@@ -319,7 +316,7 @@ async function guardarCita(e, token, user, rol) {
     };
 
     try {
-        const resp = await fetch(`http://localhost:5000/api/Citas/agendar`, {
+        const resp = await fetch(`${API_BASE}/Citas/agendar`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json', 
@@ -331,21 +328,21 @@ async function guardarCita(e, token, user, rol) {
         const data = await resp.json();
 
         if (resp.ok) {
-            // El mensaje del servidor ahora incluye el token V9MJ8U
-            alert(`✅ ${data.message}`); 
+            // 🛡️ El mensaje incluye el token de seguridad para el cliente
+            alert(`✅ ¡Cita Confirmada!\n\n${data.message}`); 
             window.location.reload(); 
         } else {
-            alert("❌ Error: " + (data.message || "No se pudo agendar."));
+            alert("❌ No se pudo agendar: " + (data.message || "Conflicto de horario."));
             btn.disabled = false;
             btn.innerHTML = originalHTML;
         }
     } catch (e) { 
-        alert("🔌 Error de conexión.");
+        alert("🔌 Error de conexión con el servidor.");
         btn.disabled = false;
         btn.innerHTML = originalHTML;
     }
 }
 
-// PUENTE GLOBAL PARA HTML
+// PUENTE GLOBAL PARA HTML (Imprescindible para el onclick de los slots)
 window.seleccionarHora = seleccionarHora;
 window.cancelarCita = cancelarCita;

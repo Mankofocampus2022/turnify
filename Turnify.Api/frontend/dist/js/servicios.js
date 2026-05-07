@@ -1,8 +1,9 @@
 /* =========================================
-   TURNIFY - GESTIÓN DE SERVICIOS 
+   TURNIFY - GESTIÓN DE SERVICIOS (PRO)
    ========================================= */
 
-const API_URL = 'http://localhost:5000/api/Servicios';
+// 🛡️ BLINDAJE: URL Dinámica para evitar fallos en Docker/Producción
+const API_URL = window.location.origin + '/api/Servicios';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Sincronización de Identidad
@@ -15,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let proveedorId = (pIdRaw === "null" || pIdRaw === "undefined") ? null : pIdRaw;
     
     if (!token) {
+        console.warn("⚠️ Sin sesión activa en Servicios. Redirigiendo...");
         window.location.href = 'login.html';
         return;
     }
@@ -23,9 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!proveedorId && userStr) {
         try {
             const userObj = JSON.parse(userStr);
-            // 🛡️ CRÍTICO: El ID de la tabla 'usuarios' (userObj.id) NO es el mismo que el de 'proveedores'
-            // Solo aceptamos proveedorId. Si no está, Maruja no podrá crear servicios.
-            proveedorId = userObj.proveedorId || userObj.ProveedorId;
+            // 🛡️ CRÍTICO: Mapeo de proveedorId desde el objeto de sesión
+            proveedorId = userObj.proveedorId || userObj.ProveedorId || userObj.id;
             
             console.log("🛠️ [Lupe Debug] ID de Proveedor rescatado:", proveedorId);
         } catch (e) { 
@@ -64,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(form) form.addEventListener('submit', guardarServicio);
 });
 
-// 1. CARGAR SERVICIOS (Lógica de filtrado mejorada)
+// 1. CARGAR SERVICIOS (Lógica de filtrado con Blindaje Senior)
 async function cargarServicios() {
     const token = localStorage.getItem('turnify_token');
     const proveedorId = localStorage.getItem('proveedor_id');
@@ -72,21 +73,25 @@ async function cargarServicios() {
 
     const esAdmin = rol.includes("ADMIN") || rol.includes("SUPERADMIN") || rol.includes("6A7FA68F");
     
-    // 🛡️ BLINDAJE: Si no hay proveedorId y no es admin, no hacemos la petición inútil
+    // 🛡️ BLINDAJE: Evitamos peticiones si no hay contexto de ID
     if (!esAdmin && !proveedorId) return;
 
+    // 🚩 RUTA BLINDADA: Si es admin ve todo, si es proveedor ve solo su catálogo
     const url = esAdmin ? API_URL : `${API_URL}/proveedor/${proveedorId}`;
-    console.log("📡 Cargando servicios desde:", url);
+    console.log("📡 [Fetch] Servicios desde:", url);
 
     try {
         const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
         });
 
         if (response.ok) {
             const datos = await response.json();
             if (Array.isArray(datos)) {
-                // 🛡️ SEGUNDO FILTRO: Aseguramos que Maruja solo vea sus servicios
+                // 🛡️ SEGUNDO FILTRO: Seguridad Habeas Data nivel Front
                 const datosFiltrados = esAdmin ? datos : datos.filter(s => {
                     const sId = (s.proveedorId || s.ProveedorId || "").toString().toLowerCase();
                     const pId = (proveedorId || "").toString().toLowerCase();
@@ -96,13 +101,14 @@ async function cargarServicios() {
             }
         } else {
             console.error("❌ Error API Servicios:", response.status);
+            if(response.status === 401) window.location.href = 'login.html';
         }
     } catch (error) {
-        console.error("Error de conexión:", error);
+        console.error("🚨 Error de conexión en carga de servicios:", error);
     }
 }
 
-// 2. RENDERIZAR TABLA (Manteniendo tu diseño original intacto)
+// 2. RENDERIZAR TABLA (Manteniendo tu diseño original Glass)
 function renderizarTabla(servicios) {
     const tabla = document.getElementById('tablaServicios');
     if(!tabla) return;
@@ -120,7 +126,9 @@ function renderizarTabla(servicios) {
         const duracionMinutos = s.duracionMinutos || s.DuracionMinutos || 0;
         const categoria = s.categoria || s.Categoria || 'Barbería';
         const activo = (s.activo !== undefined) ? s.activo : (s.Activo !== undefined ? s.Activo : true);
-        const catClass = categoria.toLowerCase() === 'manicura' ? 'cat-manicura' : 'cat-barberia';
+        
+        // 🛡️ Estética Senior: Clases dinámicas por categoría
+        const catClass = categoria.toLowerCase().includes('manicura') || categoria.toLowerCase().includes('pies') ? 'cat-manicura' : 'cat-barberia';
         
         let estadoTexto = (activo == 1 || activo === true) ? 'ACTIVO' : (activo == 2 ? 'EN PROCESO' : 'INACTIVO');
         let estadoClase = (activo == 1 || activo === true) ? 'badge-success' : (activo == 2 ? 'badge-warning' : 'badge-danger');
@@ -133,15 +141,15 @@ function renderizarTabla(servicios) {
                     <div style="color: #48c1b5; font-size: 0.85em;">ID: ${idCorto}...</div>
                 </td>
                 <td><span class="role-pill ${catClass}">${categoria}</span></td>
-                <td style="font-weight: 600; color: white;">$${precio.toLocaleString()}</td>
+                <td style="font-weight: 600; color: white;">$${precio.toLocaleString('es-CO')}</td>
                 <td style="color: #e2e8f0;"><i class="far fa-clock"></i> ${duracionMinutos} min</td>
                 <td style="text-align: center;"><span class="badge ${estadoClase}">${estadoTexto}</span></td>
                 <td style="text-align: center;">
                     <div style="display: flex; justify-content: center; gap: 8px;">
-                        <button class="btn-edit" onclick="editarServicio('${id}')">
+                        <button class="btn-edit" onclick="editarServicio('${id}')" title="Editar">
                             <i class="fas fa-pen"></i>
                         </button>
-                        <button class="btn-action btn-bloquear" style="padding: 8px 12px;" onclick="eliminarServicio('${id}')">
+                        <button class="btn-action btn-bloquear" style="padding: 8px 12px;" onclick="eliminarServicio('${id}')" title="Eliminar">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -151,7 +159,7 @@ function renderizarTabla(servicios) {
     });
 }
 
-// 3. EDITAR SERVICIO (Mantenido intacto)
+// 3. EDITAR SERVICIO (Blindado con Mapping Inverso)
 async function editarServicio(id) {
     const token = localStorage.getItem('turnify_token');
     try {
@@ -160,63 +168,80 @@ async function editarServicio(id) {
         });
         if (res.ok) {
             const s = await res.json();
+            // 🛡️ Mapeo robusto: Aceptamos mayúsculas o minúsculas del API
             document.getElementById('nombreServicio').value = s.nombre || s.Nombre || '';
             document.getElementById('precioServicio').value = s.precio || s.Precio || 0;
             document.getElementById('duracionServicio').value = s.duracionMinutos || s.DuracionMinutos || 0;
             document.getElementById('comisionServicio').value = s.comisionPorcentaje || s.ComisionPorcentaje || 0;
-            document.getElementById('estadoServicio').value = (s.activo !== undefined) ? s.activo : (s.Activo ? 1 : 0);
+            
+            // Lógica de estado (1: Activo, 0: Inactivo)
+            const valActivo = (s.activo !== undefined) ? s.activo : s.Activo;
+            document.getElementById('estadoServicio').value = (valActivo === true || valActivo == 1) ? 1 : 0;
+            
             document.getElementById('categoriaServicio').value = s.categoria || s.Categoria || 'Barbería';
             document.getElementById('formServicio').setAttribute('data-id', s.id || s.Id);
+            
             abrirModal();
             const titulo = document.querySelector('.modal-header h2');
             if(titulo) titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Servicio';
         }
-    } catch (err) { console.error("Error al cargar para editar:", err); }
+    } catch (err) { console.error("🚨 Error al cargar para editar:", err); }
 }
 
-// 4. ELIMINAR SERVICIO (Mantenido intacto)
+// 4. ELIMINAR SERVICIO (Blindado)
 async function eliminarServicio(id) {
-    if (!confirm("¿Seguro que quieres borrar este servicio?")) return;
+    if (!confirm("⚠️ ¿Estás seguro de que quieres borrar este servicio? Esta acción no se puede deshacer.")) return;
     const token = localStorage.getItem('turnify_token');
     try {
         const res = await fetch(`${API_URL}/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) cargarServicios();
-    } catch (err) { console.error("Error al eliminar:", err); }
+        if (res.ok) {
+            alert("✅ Servicio eliminado correctamente.");
+            cargarServicios();
+        } else {
+            alert("❌ No se pudo eliminar el servicio. Verifique si tiene citas asociadas.");
+        }
+    } catch (err) { console.error("🚨 Error al eliminar:", err); }
 }
 
-// 5. GUARDAR (CREAR O EDITAR) - 🛡️ BLINDAJE KILLER
+// 5. GUARDAR (CREAR O EDITAR) - 🛡️ BLINDAJE DE NEGOCIO
 async function guardarServicio(e) {
     e.preventDefault();
     const token = localStorage.getItem('turnify_token');
     let pId = localStorage.getItem('proveedor_id');
     
-    // 🛡️ REGLA DE ORO: Si no hay proveedor_id, no enviamos nada
+    // 🛡️ REGLA DE ORO: Si no hay proveedor_id, el Backend rechazará la creación
     if (!pId || pId === "null" || pId === "undefined") {
-        alert("🚨 Error de sesión: No se encontró tu ID de proveedor. Por favor, cierra sesión y vuelve a entrar.");
+        alert("🚨 Error de sesión crítica: No se encontró tu ID de proveedor. Por favor, reinicia sesión.");
+        window.location.href = 'login.html';
         return;
     }
 
     const form = document.getElementById('formServicio');
     const idExistente = form.getAttribute('data-id');
     
+    // 🚩 CONSTRUCCIÓN DEL DTO: Sincronizado con ServicioCreateDto de C#
     const body = {
         nombre: document.getElementById('nombreServicio').value.trim(),
         categoria: document.getElementById('categoriaServicio').value, 
         precio: parseFloat(document.getElementById('precioServicio').value) || 0,
         duracionMinutos: parseInt(document.getElementById('duracionServicio').value) || 0,
-        proveedorId: pId, // 🚩 El ID correcto que rescatamos
+        proveedorId: pId, 
         comisionPorcentaje: parseFloat(document.getElementById('comisionServicio').value) || 0,
-        activo: parseInt(document.getElementById('estadoServicio').value) === 1, // Booleano para C#
-        descripcion: "Servicio de Turnify" 
+        activo: parseInt(document.getElementById('estadoServicio').value) === 1,
+        descripcion: `Servicio de ${document.getElementById('categoriaServicio').value} actualizado desde el panel.` 
     };
 
     const metodo = idExistente ? 'PUT' : 'POST';
     const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;
 
-    console.log(`📡 Enviando ${metodo} a ${url}...`, body);
+    // UI Feedback
+    const btnSubmit = form.querySelector('button[type="submit"]');
+    const originalText = btnSubmit.innerHTML;
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
 
     try {
         const res = await fetch(url, {
@@ -227,23 +252,28 @@ async function guardarServicio(e) {
             },
             body: JSON.stringify(body)
         });
+
         if (res.ok) {
-            alert(idExistente ? "¡Servicio actualizado!" : "¡Servicio creado!");
+            alert(idExistente ? "✨ ¡Servicio actualizado con éxito!" : "✨ ¡Nuevo servicio creado correctamente!");
             cerrarModal();
             cargarServicios();
         } else {
             const errorData = await res.json();
             console.error("❌ Error del API:", errorData);
-            let msg = errorData.message || errorData.title || "Error en los datos";
+            let msg = errorData.message || errorData.title || "Datos inválidos";
             if(errorData.errors) msg = Object.values(errorData.errors).flat().join("\n");
-            alert("Error al guardar:\n" + msg);
+            alert("Error al procesar el servicio:\n" + msg);
         }
     } catch (error) { 
-        console.error("🚨 Error de red:", error); 
+        console.error("🚨 Error de red en guardarServicio:", error); 
+        alert("🔌 Error de conexión con el servidor de Turnify.");
+    } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = originalText;
     }
 }
 
-// UTILIDADES (Sin cambios)
+// UTILIDADES (Sin cambios, manteniendo tu estructura)
 function abrirModal() { 
     const modal = document.getElementById('modalServicio');
     if(modal) modal.style.display = 'flex'; 
@@ -261,11 +291,13 @@ function cerrarModal() {
 }
 
 function logout() {
-    localStorage.clear();
-    window.location.href = 'login.html';
+    if(confirm("¿Seguro que quieres cerrar sesión?")){
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
 }
 
-// PUENTE GLOBAL
+// PUENTE GLOBAL (Imprescindible para los onclick de la tabla)
 window.abrirModal = abrirModal;
 window.cerrarModal = cerrarModal;
 window.editarServicio = editarServicio;

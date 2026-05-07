@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // 🚩 [BLINDAJE] URL Base Dinámica para evitar fallos de puerto/dominio
+    const API_BASE = window.location.origin + '/api';
+
     // 2. Recuperar el nombre real (Blindaje contra el texto "PRUEBA")
     const userStr = localStorage.getItem('user');
     let nombreFinal = "Darwin"; // Fallback por defecto
@@ -34,17 +37,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. Carga Inicial Automática: Por defecto cargamos 'Hoy'
     const btnHoy = document.querySelector(".btn-filter");
     if (btnHoy) {
-        cambiarPeriodo('hoy', btnHoy);
+        cambiarPeriodo('hoy', btnHoy, API_BASE);
     }
     
     // Carga de estadísticas globales (Clientes nuevos, etc.)
-    cargarResumenDashboard(token);
+    cargarResumenDashboard(token, API_BASE);
+
+    // 🛡️ [NUEVO] - Auto-refresh cada 5 minutos para mantener la agenda fresca
+    setInterval(() => {
+        const activeBtn = document.querySelector('.btn-filter.active');
+        if (activeBtn) {
+            const texto = activeBtn.innerText.toLowerCase();
+            const periodo = texto.includes('hoy') ? 'hoy' : 
+                            texto.includes('mañana') ? 'mañana' : 
+                            texto.includes('semana') ? 'semana' : 'mes';
+            cambiarPeriodo(periodo, activeBtn, API_BASE);
+        }
+    }, 300000);
 });
 
 /**
  * 🔄 FUNCIÓN MAESTRA: Cambia el periodo de la agenda y actualiza la UI
  */
-async function cambiarPeriodo(periodo, boton) {
+async function cambiarPeriodo(periodo, boton, API_BASE) {
+    // 🛡️ REGLA DE ORO: Si API_BASE no viene del HTML, la calculamos aquí
+    if (!API_BASE || typeof API_BASE !== 'string') {
+        API_BASE = window.location.origin + '/api';
+    }
+    
     if (!boton) return;
 
     // A. Estética: Marcar el botón como activo
@@ -61,7 +81,7 @@ async function cambiarPeriodo(periodo, boton) {
     const sectionTitle = document.getElementById('sectionTitle');
     if (sectionTitle) sectionTitle.innerText = titulos[periodo];
 
-    // C. Cálculo de Fechas para el Backend (🚩 MEJORADO SIN BORRAR)
+    // C. Cálculo de Fechas para el Backend
     let inicio = new Date();
     let fin = new Date();
 
@@ -80,58 +100,76 @@ async function cambiarPeriodo(periodo, boton) {
     }
 
     if (periodo === 'hoy') {
-        // 🚩 CORRECCIÓN CRÍTICA: Eliminamos el -2 para que busque HOY realmente
         inicio = new Date(); 
     }
 
-    // 🛡️ Ajuste para que ISO no nos cambie la fecha por la diferencia horaria de Colombia (UTC-5)
-    const startStr = inicio.toLocaleDateString('en-CA'); // Formato YYYY-MM-DD local
-    const endStr = fin.toLocaleDateString('en-CA');
+    const startStr = inicio.toLocaleDateString('en-CA'); 
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
 
     const tablaBody = document.getElementById('turnosTable');
     if (tablaBody) {
-        tablaBody.innerHTML = '<tr><td colspan="5" style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> Cargando agenda...</td></tr>';
+        tablaBody.innerHTML = '<tr><td colspan="6" style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> Cargando agenda...</td></tr>';
     }
 
     try {
-        const user = JSON.parse(localStorage.getItem('user'));
+        const userStr = localStorage.getItem('user');
+        if (!userStr) throw new Error("Sesión de usuario perdida.");
+        
+        const user = JSON.parse(userStr);
         const provId = user?.proveedorId || user?.id;
 
-        const response = await fetch(`http://localhost:5000/api/Dashboard/resumen/${provId}?periodo=${periodo}&fecha=${startStr}`, {
+        if (!provId) return;
+
+        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=${periodo}&fecha=${startStr}`, {
             headers: { 
                 'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             }
         });
 
-        if (response.ok) {
-            const data = await response.json();
-            console.log("📅 [DEBUG] Data Recibida:", data);
-            
-            renderizarTablaDashboard(data.proximasCitas || []);
-            actualizarContadoresDashboard(data); 
+        const contentType = response.headers.get("content-type");
+        if (!response.ok || !contentType || !contentType.includes("application/json")) {
+            throw new Error("Respuesta inválida del servidor");
         }
+
+        const data = await response.json();
+        renderizarTablaDashboard(data.proximasCitas || [], token, API_BASE);
+        actualizarContadoresDashboard(data); 
+
     } catch (error) { 
         console.error("🔥 Error al filtrar agenda:", error);
+        if (tablaBody) {
+            tablaBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ff5e5e;">Error al conectar con el servicio.</td></tr>`;
+        }
     }
 }
 
 /**
- * 📝 Renderiza las filas en la tabla
+ * 📝 Renderiza las filas (🛡️ BLINDAJE DE ESTADOS EN ACCIONES)
  */
-function renderizarTablaDashboard(citas) {
+function renderizarTablaDashboard(citas, token, API_BASE) {
     const tabla = document.getElementById('turnosTable');
     if (!tabla) return;
 
     if (!citas || citas.length === 0) {
-        tabla.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #ccc;">No hay citas agendadas para este periodo.</td></tr>';
+        tabla.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ccc;">No hay citas agendadas para este periodo.</td></tr>';
         return;
     }
 
     tabla.innerHTML = citas.map(c => {
         const estado = (c.estado || c.Estado || "pendiente").toLowerCase();
         const badgeClass = getEstadoClass(estado);
+        
+        // 🚩 LÓGICA DE ACCIONES SEGÚN EL ESTADO REAL
+        let celdaAccion = "";
+        if (estado === 'completada' || estado === 'confirmada') {
+            celdaAccion = `<span style="color: #48c1b5; font-size: 0.8rem;"><i class="fas fa-check-circle"></i> Validado</span>`;
+        } else if (estado === 'cancelada') {
+            celdaAccion = `<span style="color: #ff5e5e; font-size: 0.8rem;"><i class="fas fa-exclamation-triangle"></i> Anulada</span>`;
+        } else {
+            celdaAccion = `<span style="color: #888; font-size: 0.8rem;"><i class="fas fa-clock"></i> Pendiente</span>`;
+        }
         
         return `
             <tr>
@@ -140,61 +178,42 @@ function renderizarTablaDashboard(citas) {
                 <td><strong>${c.cliente || c.Cliente || 'Sin nombre'}</strong></td>
                 <td>${c.servicio || c.Servicio || 'Servicio'}</td>
                 <td><span class="status-pill ${badgeClass}">${estado}</span></td>
+                <td>${celdaAccion}</td>
             </tr>
         `;
     }).join('');
 }
 
 /**
- * 🔢 ACTUALIZACIÓN SENIOR: Ahora suma ingresos si el Backend no lo hace
+ * 🔢 ACTUALIZACIÓN DE CONTADORES
  */
 function actualizarContadoresDashboard(data) {
     const totalCitasEl = document.getElementById('totalCitas') || document.getElementById('total-citas');
-    const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos') || document.getElementById('ingresosProyectados') || document.getElementById('txtIngresosTotales');
+    const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos');
     const clientesEl = document.getElementById('nuevosClientes') || document.getElementById('nuevos-clientes');
 
     const listaCitas = data.proximasCitas || data.citas || [];
 
-    // 1. Citas Totales
-    if (totalCitasEl) {
-        // Usamos la longitud de la lista filtrada para que no cuente citas de otros
-        totalCitasEl.innerText = listaCitas.length;
-    }
+    if (totalCitasEl) totalCitasEl.innerText = listaCitas.length;
 
-    // 2. Clientes Nuevos (🚩 CORRECCIÓN PARA DARWIN)
     if (clientesEl) {
-        // En lugar de usar data.nuevosClientes (que trae el global de 3),
-        // contamos los clientes únicos en la lista de citas de este barbero.
         const clientesUnicos = new Set(listaCitas.map(c => c.clienteId || c.ClienteId || c.cliente || c.Cliente));
         clientesEl.innerText = listaCitas.length > 0 ? clientesUnicos.size : 0;
     }
 
-    // 3. Ingresos Totales (Suma Manual Blindada)
     if (ingresosEl) {
         let montoCalculado = 0;
-
         if (listaCitas.length > 0) {
-            console.log("📡 Sumando ingresos de", listaCitas.length, "citas...");
             montoCalculado = listaCitas.reduce((acc, c) => {
-                const valor = c.precioPactado || c.PrecioPactado || c.precio || c.Precio || c.valor || c.monto || 0;
+                const valor = c.precioPactado || c.PrecioPactado || c.precio || c.Precio || 0;
                 const est = (c.estado || c.Estado || "").toLowerCase().trim();
-                
-                // SUMAMOS TODO: Completadas + Pendientes (Para la Proyección de $105.000)
-                if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente") || est.includes("pago")) {
+                if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente")) {
                     return acc + parseFloat(valor);
                 }
                 return acc;
             }, 0);
         }
 
-        // Respaldo por si la lista falla
-        if (montoCalculado === 0 && listaCitas.length === 0) {
-            montoCalculado = data.gananciaReal || data.ingresosReales || 0;
-        }
-
-        console.log("💵 [Lupe Debug] Resultado Proyectado:", montoCalculado);
-
-        // Formateo elegante: COP $ 105.000
         ingresosEl.innerText = new Intl.NumberFormat('es-CO', {
             style: 'currency',
             currency: 'COP',
@@ -203,37 +222,35 @@ function actualizarContadoresDashboard(data) {
     }
 }
 
-/**
- * 📊 Carga resumen de clientes
- */
-async function cargarResumenDashboard(token) {
+async function cargarResumenDashboard(token, API_BASE) {
+    if (!API_BASE) API_BASE = window.location.origin + '/api';
     try {
-        const user = JSON.parse(localStorage.getItem('user'));
+        const userStr = localStorage.getItem('user');
+        if (!userStr) return;
+        const user = JSON.parse(userStr);
         const provId = user?.proveedorId || user?.id;
-
-        const response = await fetch(`http://localhost:5000/api/Dashboard/resumen/${provId}`, {
+        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-
         if (response.ok) {
             const data = await response.json();
             actualizarContadoresDashboard(data);
         }
-    } catch (error) { 
-        console.error("🔥 Error cargando resumen global:", error); 
-    }
+    } catch (e) { console.error(e); }
 }
 
 function getEstadoClass(estado) {
     const est = estado.toLowerCase();
     if (est.includes('completado') || est.includes('confirmada')) return 'status-activo';
-    if (est.includes('cancelada') || est.includes('suspendido')) return 'status-bloqueado';
+    if (est.includes('cancelada')) return 'status-bloqueado';
     return 'status-pendiente'; 
 }
 
 function logout() {
-    if (confirm("¿te vas a ir, mijito? Guarde todo antes de salir o si no , perdimos el tiempo.")) {
+    if (confirm("¿Seguro que quieres salir?")) {
         localStorage.clear();
         window.location.href = 'login.html';
     }
 }
+
+window.cambiarPeriodo = cambiarPeriodo;
