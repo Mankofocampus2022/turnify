@@ -55,16 +55,24 @@ namespace Turnify.Api.Models
         [JsonPropertyName("ultima_conexion")]
         public DateTime? ultima_conexion { get; set; }
 
-        // --- CAMPOS DE RECUPERACIÓN (Asegúrate que coincidan con SQL) ---
+        // --- CAMPOS DE RECUPERACIÓN ---
         [JsonPropertyName("reset_token")]
         public string? ResetToken { get; set; }
 
         [JsonPropertyName("reset_token_expires")]
         public DateTime? ResetTokenExpires { get; set; }
 
-        // --- RELACIONES ---
+        // --- 🚩 RELACIONES DE IDENTIDAD (El Blindaje Maestro) ---
+        
         [ForeignKey("rol_id")]
         [JsonIgnore] 
         public virtual Roles? Rol { get; set; }
+
+        // 🛡️ Estas relaciones permiten que el AuthController encuentre el ClienteId o ProveedorId de golpe
+        [JsonIgnore]
+        public virtual Clientes? Cliente { get; set; }
+
+        [JsonIgnore]
+        public virtual Proveedores? Proveedor { get; set; }
     }
 }

@@ -9,12 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const proveedorId = user ? (user.proveedorId || user.id) : 'F34FE619-8F7D-4EEE-8473-22979451EBC0'; 
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
-    // Elementos UI
+    // Elementos UI Principales
     const txtTotalCitas = document.getElementById('total-citas');
     const txtTotalIngresos = document.getElementById('total-ingresos');
     const txtNuevosClientes = document.getElementById('nuevos-clientes');
     const tablaCuerpo = document.getElementById('lista-reportes');
     const txtAdminName = document.getElementById('admin-name'); 
+    
+    // 📈 [NUEVO] Elementos de Métricas BI (Porcentajes y Tasas)
+    // Nota: Asegúrate de que estos IDs existan en tu HTML (o se crearán dinámicamente)
+    const elTendenciaCitas = document.getElementById('trend-citas');
+    const elCrecimientoIngresos = document.getElementById('trend-ingresos');
+    const elClientesRiesgo = document.getElementById('clientes-riesgo') || document.getElementById('nuevos-clientes'); // Fallback
     
     // 📊 Referencias para Gráficas
     let chartServicios = null;
@@ -49,22 +55,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📡 Función Maestra de Carga (Blindada con Parámetros UTC)
+     * 📡 FUNCIÓN MAESTRA DE CARGA (🚩 CORREGIDA PARA FILTROS REALES)
      */
     async function cargarReportes() {
         try {
-            const periodo = document.getElementById('filtro-periodo')?.value || 'mes';
-            const mesSeleccionado = document.getElementById('filtro-mes')?.value || '';
-            const anioSeleccionado = document.getElementById('filtro-anio')?.value || '';
+            const selectPeriodo = document.getElementById('filtro-periodo');
+            const periodo = selectPeriodo?.value || 'mes';
+            const mesSeleccionado = document.getElementById('filtro-mes')?.value;
+            const anioSeleccionado = document.getElementById('filtro-anio')?.value;
 
-            // 🚩 REFUERZO ANTIBUGS: Aseguramos que los parámetros viajen limpios al backend
+            // 🛡️ BLINDAJE DE FILTROS: 
+            // Solo usamos mes/año si el periodo es "especifico" o "mes"
             let url = `${API_BASE_URL}/Dashboard/resumen/${proveedorId}?periodo=${periodo}`;
             
-            if (mesSeleccionado && anioSeleccionado) {
-                url = `${API_BASE_URL}/Dashboard/resumen/${proveedorId}?periodo=mes&mes=${mesSeleccionado}&anio=${anioSeleccionado}`;
+            if (periodo === 'especifico' || periodo === 'mes') {
+                if (mesSeleccionado && anioSeleccionado) {
+                    url = `${API_BASE_URL}/Dashboard/resumen/${proveedorId}?periodo=mes&mes=${mesSeleccionado}&anio=${anioSeleccionado}`;
+                }
             }
             
-            console.log("🚀 Consultando Analítica en:", url);
+            console.log("🚀 Modo de Consulta:", periodo, "URL:", url);
             
             const response = await fetch(url, {
                 method: 'GET',
@@ -77,13 +87,34 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error(`Error API: ${response.status}`);
 
             const data = await response.json();
-            console.log("📊 Analítica Recibida:", data);
+            console.log("📊 Analítica Senior Recibida:", data);
 
-            // A. Actualizar Stats Cards
+            // A. Actualizar Stats Cards con Lógica BI
             txtTotalCitas.innerText = data.totalCitas || 0;
+            
+            // 📈 Inyectar tendencia de citas
+            if (elTendenciaCitas) {
+                const valor = data.tendenciaCitas || 0;
+                const color = valor >= 0 ? '#48c1b5' : '#ff5e5e';
+                const icono = valor >= 0 ? '↑' : '↓';
+                elTendenciaCitas.innerHTML = `<small style="color: ${color}; font-weight: bold;">${icono} ${Math.abs(valor)}% vs ant.</small>`;
+            }
+
             const ingresos = data.gananciaReal || 0;
             txtTotalIngresos.innerText = formatter.format(ingresos);
+
+            // 💰 Inyectar crecimiento de ingresos
+            if (elCrecimientoIngresos) {
+                const valorInc = data.crecimientoIngresos || 0;
+                const colorInc = valorInc >= 0 ? '#48c1b5' : '#ff5e5e';
+                elCrecimientoIngresos.innerHTML = `<small style="color: ${colorInc}; font-weight: bold;">${valorInc >= 0 ? '+' : ''}${valorInc}% hoy</small>`;
+            }
+
+            // 👥 Clientes Nuevos vs En Riesgo
             txtNuevosClientes.innerText = data.nuevosClientesTotales || 0;
+            if (data.clientesEnRiesgo > 0) {
+                console.warn(`⚠️ Tienes ${data.clientesEnRiesgo} clientes que no han vuelto hace 1 mes.`);
+            }
 
             // B. Pintar Tabla
             const detalles = data.proximasCitas || data.detalles || [];
@@ -98,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('❌ Error:', error);
             if(tablaCuerpo) {
-                tablaCuerpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color: #ff5e5e;">Error al cargar datos</td></tr>`;
+                tablaCuerpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color: #ff5e5e;">Error al conectar con el servidor</td></tr>`;
             }
         }
     }
@@ -110,7 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('chartServicios');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-
         if (chartServicios) chartServicios.destroy();
         
         chartServicios = new Chart(ctx, {
@@ -126,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: '#ccc' } }
+                    legend: { position: 'bottom', labels: { color: '#48c1b5', font: { weight: 'bold' } } }
                 }
             }
         });
@@ -139,7 +169,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('chartClientes');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-
         if (chartClientes) chartClientes.destroy();
 
         chartClientes = new Chart(ctx, {
@@ -147,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
             data: {
                 labels: puntos.map(p => p.fecha),
                 datasets: [{
-                    label: 'Clientes Nuevos',
+                    label: 'Crecimiento de Clientes',
                     data: puntos.map(p => p.cantidad),
                     borderColor: '#48c1b5',
                     backgroundColor: 'rgba(72, 193, 181, 0.1)',
@@ -158,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 scales: {
-                    y: { beginAtZero: true, grid: { color: '#2a3b4c' }, ticks: { color: '#ccc' } },
+                    y: { beginAtZero: true, grid: { color: 'rgba(72, 193, 181, 0.1)' }, ticks: { color: '#ccc' } },
                     x: { grid: { display: false }, ticks: { color: '#ccc' } }
                 }
             }
@@ -166,14 +195,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📝 Renderizado de Tabla (CON SOPORTE DE REVERSIÓN PARA ERRORES)
+     * 📝 Renderizado de Tabla (CON SOPORTE DE REVERSIÓN Y ESTADOS REALES)
      */
     function renderizarTabla(lista) {
         if(!tablaCuerpo) return;
         tablaCuerpo.innerHTML = '';
         
         if (lista.length === 0) {
-            tablaCuerpo.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">No hay registros para este periodo.</td></tr>';
+            tablaCuerpo.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">No se encontraron registros para este filtro.</td></tr>';
             return;
         }
 
@@ -187,11 +216,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const tr = document.createElement('tr');
             
-            // 🛡️ Lógica de visualización de estados
             let badgeClass = 'status-pendiente';
             let textoEstado = estadoRaw;
 
-            if (estadoRaw.includes('completada')) {
+            if (estadoRaw.includes('completada') || estadoRaw.includes('confirmada')) {
                 badgeClass = 'status-activo';
                 textoEstado = 'Finalizada';
             } else if (estadoRaw.includes('cancelada')) {
@@ -199,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 textoEstado = 'Anulada / No asistió';
             }
 
-            // 🚩 LÓGICA DE BOTONES DINÁMICOS (CON BOTÓN DE CORRECCIÓN)
             let btnAccion = "";
             if (estadoRaw === "pendiente") {
                 btnAccion = `
@@ -207,16 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         <i class="fas fa-user-check"></i> CHECK-IN
                     </button>
                     <button onclick="finalizarCita('${item.id}', 'cancelada')" style="background: transparent; color: #ff5e5e; border: 1px solid #ff5e5e; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; margin-top: 5px; width: 100%;">
-                        <i class="fas fa-times"></i> ANULAR CITA
+                        <i class="fas fa-times"></i> ANULAR
                     </button>
                 `;
             } else {
-                // 🛡️ BOTÓN DE DESHACER: En caso de error del administrador
                 btnAccion = `
                     <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;">
                         <span style="font-size: 0.7rem; color: #888;"><i class="fas fa-lock"></i> Procesada</span>
                         <button onclick="finalizarCita('${item.id}', 'pendiente')" style="background: rgba(72, 193, 181, 0.1); color: #48c1b5; border: 1px solid #48c1b5; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.65rem; width: 100%;">
-                            <i class="fas fa-undo"></i> CORREGIR / DESHACER
+                            <i class="fas fa-undo"></i> CORREGIR
                         </button>
                     </div>
                 `;
@@ -238,59 +264,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 🛡️ MOTOR DE VALIDACIÓN (CHECK-IN DE 6 DÍGITOS)
+     * 🛡️ MOTOR DE VALIDACIÓN (CHECK-IN)
      */
     async function lanzarCheckIn(citaId, tokenSugerido) {
-        const userInput = prompt(`⚠️ VALIDACIÓN DE PRESENCIA\nIngrese el código de 6 dígitos del cliente para cerrar la cita:\n(Código: ${tokenSugerido})`);
-        
+        const userInput = prompt(`⚠️ VALIDACIÓN\nIngrese el código de 6 dígitos del cliente:\n(Sugerido: ${tokenSugerido})`);
         if (!userInput) return;
 
         try {
             const response = await fetch(`${API_BASE_URL}/Citas/validar-checkin`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ citaId: citaId, token: userInput })
             });
 
             if (response.ok) {
-                alert("✅ Check-in exitoso. La cita se ha cobrado y cerrado.");
+                alert("✅ Check-in exitoso.");
                 cargarReportes(); 
             } else {
-                const error = await response.json();
-                alert("❌ Código incorrecto. No se puede cerrar la cita.");
+                alert("❌ Código incorrecto.");
             }
-        } catch (e) { alert("🔌 Error de red al validar."); }
+        } catch (e) { alert("🔌 Error de conexión."); }
     }
 
     /**
-     * ⚡ FUNCIÓN PARA ACTUALIZAR ESTADO (PATCH) CON REVERSIÓN
+     * ⚡ CAMBIO DE ESTADO
      */
     async function finalizarCita(id, nuevoEstado) {
-        let confirmMsg = `¿Seguro que deseas marcar como ${nuevoEstado.toUpperCase()}?`;
-        if (nuevoEstado === 'pendiente') {
-            confirmMsg = "⚠️ ¿Deseas DESHACER el estado de esta cita y volverla a poner como PENDIENTE?\n(Esto reactivará el botón de Check-in)";
-        }
-
-        if (!confirm(confirmMsg)) return;
+        let msg = `¿Marcar como ${nuevoEstado.toUpperCase()}?`;
+        if (nuevoEstado === 'pendiente') msg = "⚠️ ¿Deseas DESHACER esta cita?";
+        if (!confirm(msg)) return;
 
         try {
             const response = await fetch(`${API_BASE_URL}/Citas/${id}/estado`, {
                 method: 'PATCH', 
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ nuevoEstado: nuevoEstado }) 
             });
 
             if (response.ok) {
-                alert(`✅ Estado actualizado.`);
                 cargarReportes(); 
-            } else {
-                alert("❌ No se pudo actualizar el estado.");
             }
         } catch (e) { console.error(e); }
     }
@@ -303,8 +315,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.datosActuales) return;
         const worksheet = XLSX.utils.json_to_sheet(window.datosActuales);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Analitica_Turnify");
-        XLSX.writeFile(workbook, "Reporte_Auditoria_Turnify.xlsx");
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Turnify_Report");
+        XLSX.writeFile(workbook, "Reporte_Turnify.xlsx");
     });
 
     document.getElementById('btn-pdf')?.addEventListener('click', () => {
@@ -312,12 +324,13 @@ document.addEventListener('DOMContentLoaded', () => {
         elemento.classList.add('pdf-export-mode');
         html2pdf().set({
             margin: 10,
-            filename: 'Reporte_Mensual_Turnify.pdf',
+            filename: 'Reporte_Turnify.pdf',
             html2canvas: { scale: 2, backgroundColor: '#0a101e' },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         }).from(elemento).save().then(() => elemento.classList.remove('pdf-export-mode'));
     });
 
+    // 🔄 Event Listeners de Filtros
     document.getElementById('filtro-periodo')?.addEventListener('change', cargarReportes);
     document.getElementById('filtro-mes')?.addEventListener('change', cargarReportes);
     document.getElementById('filtro-anio')?.addEventListener('change', cargarReportes);

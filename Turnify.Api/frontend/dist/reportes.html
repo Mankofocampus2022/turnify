@@ -88,20 +88,35 @@
                 </div>
             </div>
 
-            <div class="stats-grid">
+            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px;">
                 <div class="stat-card">
                     <span class="stat-title">Citas Totales</span>
                     <p id="total-citas" class="stat-value">0</p>
+                    <div id="trend-citas" class="trend-label">--</div>
                 </div>
                 
                 <div class="stat-card income"> 
-                    <span class="stat-title">Ingresos Totales</span>
+                    <span class="stat-title">Ingresos Proyectados</span>
                     <p id="total-ingresos" class="stat-value">$0</p>
+                    <div id="trend-ingresos" class="trend-label">--</div>
                 </div>
 
                 <div class="stat-card">
                     <span class="stat-title">Nuevos Clientes</span>
                     <p id="nuevos-clientes" class="stat-value">0</p>
+                    <span style="font-size: 0.7rem; color: #48c1b5;">Captación del periodo</span>
+                </div>
+
+                <div class="stat-card" style="border-top: 4px solid #f6ad55;">
+                    <span class="stat-title">Tasa de Asistencia</span>
+                    <p id="tasa-asistencia" class="stat-value">0%</p>
+                    <span style="font-size: 0.7rem; color: #888;">Citas completadas vs total</span>
+                </div>
+
+                <div class="stat-card" style="border-top: 4px solid #ff5e5e;">
+                    <span class="stat-title">Fidelización</span>
+                    <p id="clientes-riesgo" class="stat-value">0</p>
+                    <span style="font-size: 0.7rem; color: #ff5e5e;">Clientes que no han vuelto</span>
                 </div>
             </div>
 

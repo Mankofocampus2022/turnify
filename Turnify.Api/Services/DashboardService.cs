@@ -21,111 +21,134 @@ namespace Turnify.Api.Services
         // 🚩 MOTOR PRINCIPAL: Cálculo de métricas y agenda dinámica (Standard UTC Global)
         public async Task<object> GetResumenDiarioAsync(Guid proveedorId, DateTime? fecha, string periodo, int? mes = null, int? anio = null)
         {
-            // 🛡️ BLINDAJE MUNDIAL: Cambiamos Today por UtcNow para escala global
-            var fechaBase = fecha ?? DateTime.UtcNow.Date;
-            var inicio = fechaBase.Date;
-            var fin = inicio.AddDays(1);
-
-            // 🕒 AJUSTE DE RANGOS SEGÚN PERIODO (Preservando lógica de bloques)
+            // 🛡️ BLINDAJE DE PRIORIDAD: Si vienen Mes y Año, el periodo es OBLIGATORIAMENTE "mes"
+            if (mes.HasValue && anio.HasValue) periodo = "mes";
+            
             periodo = periodo?.ToLower() ?? "hoy";
+            var fechaBase = fecha ?? DateTime.UtcNow.Date;
+            
+            DateTime inicio, fin, inicioPrev, finPrev;
 
-            if (periodo == "mañana")
+            // 🕒 1. CÁLCULO DE RANGOS (Actual vs Anterior para Porcentajes BI)
+            if (periodo == "hoy")
+            {
+                inicio = DateTime.UtcNow.Date;
+                fin = inicio.AddDays(1);
+                inicioPrev = inicio.AddDays(-1);
+                finPrev = inicio;
+            }
+            else if (periodo == "mañana")
             {
                 inicio = DateTime.UtcNow.Date.AddDays(1);
                 fin = inicio.AddDays(1);
+                inicioPrev = DateTime.UtcNow.Date;
+                finPrev = inicio;
             }
             else if (periodo == "semana")
             {
-                // Cálculo de inicio de semana (Lunes) bajo estándar ISO
-                int diff = (7 + (inicio.DayOfWeek - DayOfWeek.Monday)) % 7;
+                int diff = (7 + (inicio = fechaBase.Date).DayOfWeek - DayOfWeek.Monday) % 7;
                 inicio = inicio.AddDays(-1 * diff).Date;
                 fin = inicio.AddDays(7);
+                inicioPrev = inicio.AddDays(-7);
+                finPrev = inicio;
             }
-            else if (periodo == "mes" || periodo == "mensual")
+            else // "mes" o "especifico"
             {
-                // 🚩 FIX GLOBAL: Extendemos el fin para capturar citas en todos los husos horarios
-                int mesConsulta = mes ?? inicio.Month;
-                int anioConsulta = anio ?? inicio.Year;
+                int mesConsulta = mes ?? fechaBase.Month;
+                int anioConsulta = anio ?? fechaBase.Year;
                 inicio = new DateTime(anioConsulta, mesConsulta, 1, 0, 0, 0, DateTimeKind.Utc);
-                fin = inicio.AddMonths(1).AddDays(1); 
+                fin = inicio.AddMonths(1).AddDays(1);
+                inicioPrev = inicio.AddMonths(-1);
+                finPrev = inicio;
             }
 
             try
             {
-                // 📊 1. CONSULTA MAESTRA (🚩 AHORA INCLUYE CANCELADAS PARA REPORTES)
-                var citas = await _context.citas
+                // 🚩 RESOLUCIÓN DE IDENTIDAD (Negocio vs Usuario)
+                var prov = await _context.proveedores.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == proveedorId || p.UsuarioId == proveedorId);
+                
+                if (prov == null) return new { message = "Negocio no encontrado", totalCitas = 0 };
+                var idReal = prov.Id;
+
+                // 📊 2. CONSULTA MAESTRA CON PROYECCIÓN (Blindada contra Nulls de raíz)
+                var rawCitas = await _context.citas
                     .AsNoTracking()
-                    .Include(c => c.Cliente)
-                    .Include(c => c.Servicio)
-                    .Where(c => c.ProveedorId == proveedorId && 
-                                c.Fecha >= inicio && 
-                                c.Fecha < fin) // 🛡️ Quitamos el filtro de estado para ver TODO
-                    .OrderBy(c => c.Fecha)
-                    .ThenBy(c => c.Hora)
+                    .Where(c => c.ProveedorId == idReal && c.Fecha >= inicio && c.Fecha < fin)
+                    .Select(c => new {
+                        c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado, c.ClienteId, c.CodigoVerificacion,
+                        ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
+                        ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido"
+                    })
+                    .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
                     .ToListAsync();
 
-                // 💰 2. CÁLCULO DE MÉTRICAS (Blindaje: Las canceladas no suman a la ganancia)
-                var totalCitas = citas.Count(c => c.Estado != "cancelada");
-                var gananciaEstimada = citas.Where(c => c.Estado != "cancelada").Sum(c => c.PrecioPactado);
-                var gananciaReal = citas.Where(c => c.Estado == "completada" || c.Estado == "confirmada")
-                                        .Sum(c => c.PrecioPactado);
+                // 📉 3. CONSULTA DE COMPARATIVA (BI)
+                var statsPrev = await _context.citas
+                    .AsNoTracking()
+                    .Where(c => c.ProveedorId == idReal && c.Fecha >= inicioPrev && c.Fecha < finPrev && c.Estado != "cancelada")
+                    .Select(c => new { c.PrecioPactado, c.ClienteId })
+                    .ToListAsync();
+
+                // 💰 4. CÁLCULO DE MÉTRICAS ACTUALES
+                var totalCitas = rawCitas.Count(c => c.Estado != "cancelada");
+                decimal gananciaEstimada = rawCitas.Where(c => c.Estado != "cancelada").Sum(c => c.PrecioPactado);
+                decimal gananciaReal = rawCitas.Where(c => c.Estado == "completada" || c.Estado == "confirmada").Sum(c => c.PrecioPactado);
+                var nuevosClientes = rawCitas.Where(c => c.Estado != "cancelada").Select(c => c.ClienteId).Distinct().Count();
                 
-                // Clientes únicos (Solo citas válidas)
-                var nuevosClientes = citas.Where(c => c.Estado != "cancelada").Select(c => c.ClienteId).Distinct().Count();
+                var completadas = rawCitas.Count(c => c.Estado == "completada" || c.Estado == "confirmada");
+                var inasistencias = rawCitas.Count(c => c.Estado == "no_asistio" || (c.Estado == "pendiente" && c.Fecha < DateTime.UtcNow));
+                var canceladasCount = rawCitas.Count(c => c.Estado == "cancelada");
 
-                // Cálculo de Tasa de Cancelación (Blindaje Senior)
-                var canceladasCount = citas.Count(c => c.Estado == "cancelada");
-                var totalConCanceladas = citas.Count;
-                var tasaCancelacion = totalConCanceladas > 0 ? Math.Round((double)canceladasCount / totalConCanceladas * 100, 2) : 0;
+                // 📈 5. LÓGICA DE PORCENTAJES
+                decimal sumaPrev = statsPrev.Sum(s => s.PrecioPactado);
+                double percGanancia = sumaPrev > 0 ? Math.Round((double)((gananciaEstimada - sumaPrev) / sumaPrev) * 100, 1) : 0;
+                
+                int clientesPrevCount = statsPrev.Select(s => s.ClienteId).Distinct().Count();
+                double percClientes = clientesPrevCount > 0 ? Math.Round((double)(nuevosClientes - clientesPrevCount) / clientesPrevCount * 100, 1) : 0;
 
-                // 🚩 MAPEO DE RESPUESTA (Sincronización exacta con dashboard.js y reportes.js)
-                return new
-                {
+                // 👥 6. ANÁLISIS DE RETENCIÓN
+                var fechaCorteRetencion = DateTime.UtcNow.AddMonths(-1);
+                var clientesEnRiesgo = await _context.citas
+                    .AsNoTracking()
+                    .Where(c => c.ProveedorId == idReal && c.Estado == "completada")
+                    .GroupBy(c => c.ClienteId)
+                    .Where(g => g.Max(c => c.Fecha) < fechaCorteRetencion)
+                    .CountAsync();
+
+                // 🚩 7. MAPEO DE RESPUESTA FINAL
+                return new {
                     tipoResumen = periodo,
                     rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (UTC)",
-                    totalCitas = totalCitas,
-                    nuevosClientesTotales = nuevosClientes,
-                    gananciaReal = gananciaReal,
-                    gananciaEstimada = gananciaEstimada,
-                    tasaCancelacion = tasaCancelacion,
+                    totalCitas, tendenciaCitas = percClientes,
+                    nuevosClientesTotales = nuevosClientes, clientesEnRiesgo,
+                    gananciaReal, gananciaEstimada, crecimientoIngresos = percGanancia,
+                    tasaAsistencia = totalCitas > 0 ? Math.Round((double)completadas / totalCitas * 100, 1) : 0,
+                    tasaInasistencia = totalCitas > 0 ? Math.Round((double)inasistencias / totalCitas * 100, 1) : 0,
+                    tasaCancelacion = (totalCitas + canceladasCount) > 0 ? Math.Round((double)canceladasCount / (totalCitas + canceladasCount) * 100, 1) : 0,
                     ticketPromedio = totalCitas > 0 ? Math.Round(gananciaEstimada / totalCitas, 0) : 0,
-                    
-                    // 🛡️ LISTA COMPLETA (Mapeo de DTO con soporte para estados)
-                    proximasCitas = citas.Select(c => new {
-                        id = c.Id,
-                        hora = c.Hora.ToString(@"hh\:mm"),
-                        fecha = c.Fecha,
-                        cliente = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
-                        servicio = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
-                        precioPactado = c.PrecioPactado,
-                        estado = c.Estado,
-                        codigoVerificacion = c.CodigoVerificacion
+                    proximasCitas = rawCitas.Select(c => new {
+                        id = c.Id, hora = c.Hora.ToString(@"hh\:mm"), fecha = c.Fecha,
+                        cliente = c.ClienteNombre, servicio = c.ServicioNombre,
+                        precioPactado = c.PrecioPactado, estado = c.Estado, codigoVerificacion = c.CodigoVerificacion
                     }).ToList(),
-
-                    // Metadata para gráficas de servicios populares
-                    chartServiciosPopulares = citas.Where(c => c.Estado != "cancelada")
-                                                  .GroupBy(c => c.Servicio != null ? c.Servicio.Nombre : "Otros")
+                    chartServiciosPopulares = rawCitas.Where(c => c.Estado != "cancelada")
+                                                  .GroupBy(c => c.ServicioNombre)
                                                   .Select(g => new { nombre = g.Key, cantidad = g.Count() })
                                                   .ToList()
                 };
             }
             catch (Exception ex)
             {
-                // 🚨 LOGGER DE EMERGENCIA
                 Console.WriteLine($"❌ [Error Critical DashboardService]: {ex.Message}");
-                return new { 
-                    message = "Error al procesar métricas globales", 
-                    totalCitas = 0, 
-                    proximasCitas = new List<object>() 
-                };
+                return new { message = "Error al procesar métricas", totalCitas = 0, proximasCitas = new List<object>() };
             }
         }
 
-        // 🚩 RESUMEN MENSUAL: Puente simplificado bajo estándar UtcNow
         public async Task<object> GetResumenMensualAsync(Guid proveedorId)
         {
             var hoy = DateTime.UtcNow.Date;
             return await GetResumenDiarioAsync(proveedorId, hoy, "mes", hoy.Month, hoy.Year);
         }
     }
-} 
+}

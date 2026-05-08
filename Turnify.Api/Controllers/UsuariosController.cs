@@ -60,16 +60,13 @@ namespace Turnify.Api.Controllers
 
                 if (proveedor != null)
                 {
-                    var clienteIds = await _context.citas
-                        .AsNoTracking()
-                        .Where(c => c.ProveedorId == proveedor.Id)
-                        .Select(c => c.ClienteId)
+                    var userIds = await _context.clientes.AsNoTracking()
+                        .Where(c => _context.citas.Any(cita => cita.ProveedorId == proveedor.Id && cita.ClienteId == c.id))
+                        .Select(c => c.usuario_id)
                         .Distinct()
                         .ToListAsync();
 
-                    // 🛡️ AJUSTE KILLER: Eliminamos 'u.id == userId' para que el barbero 
-                    // no se vea a sí mismo en la gestión de sus clientes.
-                    query = query.Where(u => clienteIds.Contains(u.id));
+                    query = query.Where(u => userIds.Contains(u.id));
                 }
                 else
                 {
@@ -92,7 +89,7 @@ namespace Turnify.Api.Controllers
             return Ok(usuarios);
         }
 
-        // 2. LOGIN - 🚩 CORREGIDO: Namespace explícito para evitar error CS1061 y CS1503
+        // 2. LOGIN - 🚩 REPARACIÓN DE IDENTIDAD PARA CLIENTES
         [HttpPost("login")]
         [AllowAnonymous] 
         public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginDto dto)
@@ -119,19 +116,41 @@ namespace Turnify.Api.Controllers
 
                     if (usuarioConRol == null) return Unauthorized(new { message = "Error al recuperar perfil." });
 
+                    // 🚩 [NUEVO] AUTO-VINCULACIÓN DE CLIENTE (Alexandra Fix)
+                    var cliente = await _context.clientes.FirstOrDefaultAsync(c => c.usuario_id == usuarioConRol.id);
+                    
+                    if (cliente == null && (usuarioConRol.Rol?.nombre ?? "").Contains("Cliente", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cliente = new Clientes {
+                            id = Guid.NewGuid(),
+                            usuario_id = usuarioConRol.id,
+                            nombre = usuarioConRol.nombre,
+                            email = usuarioConRol.email,
+                            telefono = "3110000000",
+                            activo = true,
+                            fecha_creacion = DateTime.UtcNow
+                        };
+                        _context.clientes.Add(cliente);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("✅ [Turnify] Cliente creado automáticamente para: {Email}", usuarioConRol.email);
+                    }
+
                     var proveedor = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuarioConRol.id);
-                    var token = GenerarTokenJWT(usuarioConRol);
+                    
+                    // 🚩 [NUEVO] Generamos token pasando todos los IDs para que viajen en los Claims
+                    var token = GenerarTokenJWT(usuarioConRol, cliente?.id, proveedor?.Id);
 
                     _logger.LogInformation("--- ✅ Login Exitoso: {Email} ---", usuarioConRol.email);
 
                     return Ok(new { 
                         token = token, 
                         user = new { 
-                            id = usuarioConRol.id, 
+                            id = usuarioConRol.id,
+                            clienteId = cliente?.id, // 🔑 AHORA SÍ LLEGA EL ID AL FRONTEND
+                            proveedorId = proveedor?.Id,
                             nombre = usuarioConRol.nombre, 
                             email = usuarioConRol.email, 
-                            rol = usuarioConRol.Rol?.nombre ?? "Usuario",
-                            proveedorId = proveedor?.Id 
+                            rol = usuarioConRol.Rol?.nombre ?? "Usuario"
                         } 
                     });
                 }
@@ -169,7 +188,7 @@ namespace Turnify.Api.Controllers
             }
         }
 
-        // 4. RECUPERACIÓN DE CONTRASEÑA
+        // 4. RECUPERACIÓN DE CONTRASEÑA... (Lógica de Forgot/Reset Intacta)
         [HttpPost("forgot-password")]
         [AllowAnonymous]
         public async Task<IActionResult> ForgotPassword([FromBody] Turnify.Api.Models.DTOs.ForgotPasswordDto dto)
@@ -194,73 +213,55 @@ namespace Turnify.Api.Controllers
 
             _logger.LogInformation("--- 🔑 Intento de Reset para: {Email} ---", emailInput);
 
-            // 🛡️ Blindaje 1: Validación por Token primero
             var usuario = await _context.usuarios.FirstOrDefaultAsync(u => 
                 u.ResetToken == tokenInput && !string.IsNullOrEmpty(tokenInput) && u.ResetTokenExpires > DateTime.UtcNow);
 
             if (usuario == null)
             {
                 _logger.LogWarning("Token inválido para {Email}. Iniciando Validación Dual...", emailInput);
-                
                 usuario = await _context.usuarios.FirstOrDefaultAsync(u => u.email != null && u.email.ToLower() == emailInput);
                 
                 if (usuario != null)
                 {
-                    // 🛡️ Blindaje 2: Validación Dual usando la nueva simetría de tablas
                     var esClienteValido = await _context.clientes
                         .AnyAsync(c => c.usuario_id == usuario.id && 
                                        c.email != null && c.email.ToLower() == emailInput &&
                                        c.telefono != null && 
                                        EF.Functions.Like(c.telefono, $"%{telefonoInput}%"));
                     
-                    var matchCliente = esClienteValido;
-
                     bool matchProveedor = false;
                     try 
                     {
-                        // 🚩 AJUSTE KILLER: Ahora usamos la columna p.Email que creamos
                         matchProveedor = await _context.proveedores
                             .AnyAsync(p => p.UsuarioId == usuario.id && 
                                            p.Email != null && p.Email.ToLower() == emailInput &&
                                            p.Telefono != null && 
                                            EF.Functions.Like(p.Telefono, $"%{telefonoInput}%"));
                     }
-                    catch (Exception ex) 
-                    { 
-                        _logger.LogError("Error en validación dual proveedor: {Msg}", ex.Message); 
-                    }
+                    catch (Exception ex) { _logger.LogError("Error en validación dual: {Msg}", ex.Message); }
 
-                    if (!matchCliente && !matchProveedor)
-                    {
-                        _logger.LogWarning("❌ Validación Dual Fallida: Teléfono o Email no coinciden para {Email}", emailInput);
-                        usuario = null; 
-                    }
+                    if (!esClienteValido && !matchProveedor) usuario = null; 
                 }
             }
 
-            if (usuario == null) 
-            {
-                return BadRequest(new { message = "Los datos de validación son incorrectos o el enlace ha expirado." });
-            }
+            if (usuario == null) return BadRequest(new { message = "Datos de validación incorrectos." });
 
             try 
             {
                 usuario.password_hash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
                 usuario.ResetToken = null;
                 usuario.ResetTokenExpires = null;
-
                 await _context.SaveChangesAsync();
-                _logger.LogInformation("✅ Éxito: Password actualizado para {Email}", usuario.email);
                 return Ok(new { message = "Contraseña actualizada correctamente." });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "--- 🚨 ERROR CRÍTICO AL GUARDAR PASS ---");
-                return StatusCode(500, new { message = "Error al procesar el cambio de contraseña." });
+                return StatusCode(500, new { message = "Error al procesar el cambio." });
             }
         }
 
-        // 5. GESTIÓN Y ESTADÍSTICAS
+        // 5. GESTIÓN Y ESTADÍSTICAS (Intactas)
         [HttpPut("cambiar-estado/{id:guid}")]
         [Authorize]
         public async Task<IActionResult> CambiarEstado(Guid id, [FromQuery] bool bloquear)
@@ -279,11 +280,7 @@ namespace Turnify.Api.Controllers
                 var proveedoresCount = await _context.proveedores.CountAsync(); 
                 return Ok(new { usuariosCount, proveedoresCount, ingresosMensuales = 0 });
             }
-            catch (Exception ex) 
-            { 
-                _logger.LogError(ex, "Error al obtener estadísticas");
-                return StatusCode(500, new { message = "Error al obtener estadísticas" }); 
-            }
+            catch (Exception ex) { return StatusCode(500, new { message = "Error" }); }
         }
 
         [HttpPut("renovar/{id:guid}")]
@@ -294,15 +291,14 @@ namespace Turnify.Api.Controllers
             if (usuario == null) return NotFound();
 
             var fechaBase = (usuario.suscripcion_fin.HasValue && usuario.suscripcion_fin.Value > DateTime.UtcNow) 
-                                ? usuario.suscripcion_fin.Value 
-                                : DateTime.UtcNow;
+                                ? usuario.suscripcion_fin.Value : DateTime.UtcNow;
 
             usuario.suscripcion_fin = fechaBase.AddMonths(meses);
             await _context.SaveChangesAsync();
             return Ok(new { message = "Suscripción extendida", nuevaFecha = usuario.suscripcion_fin });
         }
 
-        // 6. CRUD BÁSICO
+        // 6. CRUD BÁSICO...
         [HttpPut("{id:guid}")] 
         public async Task<IActionResult> Update(Guid id, [FromBody] Usuarios u) 
         { 
@@ -323,16 +319,21 @@ namespace Turnify.Api.Controllers
             return u == null ? NotFound() : Ok(u); 
         }
 
-        private string GenerarTokenJWT(Usuarios usuario)
+        // 🚩 GENERAR TOKEN - AJUSTE KILLER: Añadimos ClienteId y ProveedorId a los Claims
+        private string GenerarTokenJWT(Usuarios usuario, Guid? clienteId = null, Guid? proveedorId = null)
         {
             var jwtKey = _config["Jwt:Key"] ?? "Clave_Super_Secreta_2026_Turnify_Darwin";
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             
-            var claims = new[] { 
+            var claims = new List<Claim> { 
                 new Claim(ClaimTypes.NameIdentifier, usuario.id.ToString()), 
                 new Claim(ClaimTypes.Name, usuario.nombre ?? ""), 
                 new Claim(ClaimTypes.Role, usuario.Rol?.nombre ?? "Usuario") 
             };
+
+            // 🛡️ Inyectamos los IDs reales en el Token
+            if (clienteId.HasValue) claims.Add(new Claim("ClienteId", clienteId.Value.ToString()));
+            if (proveedorId.HasValue) claims.Add(new Claim("ProveedorId", proveedorId.Value.ToString()));
 
             var tokenDescriptor = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"] ?? "Turnify.Api",

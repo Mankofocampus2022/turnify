@@ -22,13 +22,13 @@ namespace Turnify.Api.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // 1. Configuración de Precisión Decimal (TU LÓGICA INTACTA)
+            // 1. Configuración de Precisión Decimal (INTACTA)
             modelBuilder.Entity<Citas>().Property(c => c.PrecioPactado).HasPrecision(18, 2);
             modelBuilder.Entity<Servicios>().Property(s => s.Precio).HasPrecision(18, 2);
             modelBuilder.Entity<Servicios>().Property(s => s.ComisionPorcentaje).HasPrecision(5, 2); 
             modelBuilder.Entity<PlanSuscripcion>().Property(p => p.PrecioMensual).HasPrecision(18, 2);
 
-            // 2. Mapeo de nombres de tablas (ASEGURAMOS TODAS EN MINÚSCULAS)
+            // 2. Mapeo de nombres de tablas (MINÚSCULAS)
             modelBuilder.Entity<Roles>().ToTable("roles");
             modelBuilder.Entity<Usuarios>().ToTable("usuarios"); 
             modelBuilder.Entity<Proveedores>().ToTable("proveedores");
@@ -41,31 +41,44 @@ namespace Turnify.Api.Data
 
             // 🚩 MAPEO DE COLUMNAS PARA USUARIOS
             modelBuilder.Entity<Usuarios>(entity => {
-                entity.ToTable("usuarios");
-                entity.Property(u => u.esta_bloqueado).HasColumnName("esta_bloqueado");
-                entity.Property(u => u.suscripcion_fin).HasColumnName("suscripcion_fin");
-                entity.Property(u => u.ultima_conexion).HasColumnName("ultima_conexion");
+                entity.Property(u => u.id).HasColumnName("id");
+                entity.Property(u => u.email).HasColumnName("email");
+                entity.Property(u => u.password_hash).HasColumnName("password_hash");
+                entity.Property(u => u.rol_id).HasColumnName("rol_id");
+
+                // 🛡️ RELACIÓN MAESTRA: Usuario -> Cliente (Minúsculas)
+                entity.HasOne(u => u.Cliente)
+                      .WithOne(c => c.Usuario)
+                      .HasForeignKey<Clientes>(c => c.usuario_id);
+
+                // 🛡️ RELACIÓN MAESTRA: Usuario -> Proveedor (PascalCase en Proveedores)
+                // 🚩 FIX: Cambiamos p.usuario_id por p.UsuarioId
+                entity.HasOne(u => u.Proveedor)
+                      .WithOne(p => p.Usuario)
+                      .HasForeignKey<Proveedores>(p => p.UsuarioId);
             });
 
-            // 🛡️ BLINDAJE EXTRA PARA CLIENTES
+            // 🛡️ BLINDAJE PARA CLIENTES (Minúsculas)
             modelBuilder.Entity<Clientes>(entity => {
-                entity.ToTable("clientes");
-                entity.Property(c => c.telefono).HasColumnName("telefono").IsRequired(false);
-                entity.Property(c => c.email).HasColumnName("email").IsRequired(false); 
+                entity.Property(c => c.id).HasColumnName("id");
+                entity.Property(c => c.usuario_id).HasColumnName("usuario_id");
             });
 
-            // 🛡️ BLINDAJE EXTRA PARA PROVEEDORES (Sincronizado con el nuevo campo)
+            // 🛡️ BLINDAJE PARA PROVEEDORES (Mapeo de PascalCase a minúsculas)
             modelBuilder.Entity<Proveedores>(entity => {
                 entity.ToTable("proveedores");
+                // 🚩 FIX: Mapeamos la propiedad 'Id' a la columna 'id'
+                entity.Property(p => p.Id).HasColumnName("id");
+                // 🚩 FIX: Mapeamos la propiedad 'UsuarioId' a la columna 'usuario_id'
+                entity.Property(p => p.UsuarioId).HasColumnName("usuario_id");
                 entity.Property(p => p.Telefono).HasColumnName("telefono").IsRequired(false);
-                // 🚩 NUEVO: Mapeo del email en proveedores para Validación Dual
                 entity.Property(p => p.Email).HasColumnName("email").IsRequired(false); 
             });
 
-            // 3. Relaciones de Citas (TU LÓGICA ORIGINAL INTACTA)
+            // 3. Relaciones de Citas (🚩 FIX MAESTRO PARA ELIMINAR 'ProveedoresId')
             modelBuilder.Entity<Citas>()
                 .HasOne(c => c.Proveedor)
-                .WithMany()
+                .WithMany(p => p.Citas) // 🛡️ Mapeo explícito a la colección en Proveedores
                 .HasForeignKey(c => c.ProveedorId)
                 .OnDelete(DeleteBehavior.Restrict);
 
@@ -74,15 +87,21 @@ namespace Turnify.Api.Data
                 .WithMany()
                 .HasForeignKey(c => c.ServicioId)
                 .OnDelete(DeleteBehavior.Restrict);
+            
+            modelBuilder.Entity<Citas>()
+                .HasOne(c => c.Cliente)
+                .WithMany(cl => cl.Citas)
+                .HasForeignKey(c => c.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
 
-            // --- 🚀 CONFIGURACIÓN DE HORARIOS (INTACTO) ---
+            // 🚀 CONFIGURACIÓN DE HORARIOS
             modelBuilder.Entity<HorariosAtencion>()
                 .HasOne(h => h.Proveedor)
                 .WithMany(p => p.Horarios)
                 .HasForeignKey(h => h.ProveedorId)
                 .OnDelete(DeleteBehavior.NoAction);
 
-            // 4. DATOS SEMILLA - ROLES (TUS GUIDS SAGRADOS)
+            // 4. DATOS SEMILLA (TUS GUIDS SAGRADOS)
             modelBuilder.Entity<Roles>().HasData(
                 new Roles { id = Guid.Parse("6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43"), nombre = "Administrador" },
                 new Roles { id = Guid.Parse("56992F75-6420-4D55-A5F9-9223248C50D7"), nombre = "Cliente" },
@@ -90,21 +109,15 @@ namespace Turnify.Api.Data
                 new Roles { id = Guid.Parse("6DE2A606-416E-4588-B4EB-CC20856CD80A"), nombre = "SuperAdministrador" }
             );
 
-            // 5. DATOS SEMILLA - PLANES (TUS PLANES ORIGINALES)
+            // 5. DATOS SEMILLA - PLANES
             modelBuilder.Entity<PlanSuscripcion>().HasData(
                 new PlanSuscripcion { 
                     Id = Guid.Parse("D1A2B3C4-E5F6-4789-90AB-C1D2E3F40001"), 
-                    Nombre = "Gratis", 
-                    PrecioMensual = 0, 
-                    LimiteCitasMes = 15, 
-                    Activo = true 
+                    Nombre = "Gratis", PrecioMensual = 0, LimiteCitasMes = 15, Activo = true 
                 },
                 new PlanSuscripcion { 
                     Id = Guid.Parse("E2F3A4B5-C6D7-4890-A1B2-C3D4E5F60002"), 
-                    Nombre = "Premium", 
-                    PrecioMensual = 19.99m, 
-                    LimiteCitasMes = 9999, 
-                    Activo = true 
+                    Nombre = "Premium", PrecioMensual = 19.99m, LimiteCitasMes = 9999, Activo = true 
                 }
             );
         } 

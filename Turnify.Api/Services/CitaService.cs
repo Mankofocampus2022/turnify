@@ -66,7 +66,8 @@ namespace Turnify.Api.Services
                 .AsNoTracking()
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
-                .Where(c => c.ProveedorId == userId && 
+                // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ProveedorId o ClienteId (validando contra usuario_id también)
+                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id == userId)) && 
                             c.Fecha >= fechaInicioStr && 
                             c.Fecha < fechaFinLimite && 
                             c.Estado != "cancelada")
@@ -130,7 +131,10 @@ namespace Turnify.Api.Services
             if (dto.ClienteId == Guid.Empty || dto.ServicioId == Guid.Empty)
                 return (false, "Los identificadores de cliente o servicio no pueden estar vacíos.", (Guid?)null);
 
-            var cliente = await _context.clientes.FindAsync(dto.ClienteId);
+            // 🚩 FIX MAESTRO: Buscamos al cliente por su ID primario O por su UsuarioId (Alexandra Fix)
+            var cliente = await _context.clientes
+                .FirstOrDefaultAsync(c => c.id == dto.ClienteId || c.usuario_id == dto.ClienteId);
+
             if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
 
             // 🛡️ REGLA DE NEGOCIO: Expiración de 3 meses (90 días)
@@ -193,7 +197,7 @@ namespace Turnify.Api.Services
                     var nuevaCita = new Citas
                     {
                         Id = Guid.NewGuid(),
-                        ClienteId = cliente.id,
+                        ClienteId = cliente.id, // 🛡️ Usamos el ID real de la tabla clientes obtenido arriba
                         ProveedorId = proveedorId,    
                         ServicioId = servicio.Id,
                         Fecha = dto.Fecha.Date,
@@ -337,7 +341,9 @@ namespace Turnify.Api.Services
 
             return await _context.citas.AsNoTracking()
                 .Include(c => c.Servicio)
-                .Where(c => c.ClienteId == clienteId)
+                .Include(c => c.Cliente) // Incluimos para la validación de usuario_id
+                // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ClienteId o por el usuario_id vinculado
+                .Where(c => c.ClienteId == clienteId || (c.Cliente != null && c.Cliente.usuario_id == clienteId))
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
                 .Select(c => new CitaResponseDto {
                     Id = c.Id,
@@ -347,7 +353,9 @@ namespace Turnify.Api.Services
                     Estado = c.Estado,
                     PrecioPactado = c.PrecioPactado,
                     Observaciones = c.Observaciones,
-                    Modalidad = c.Modalidad 
+                    Modalidad = c.Modalidad,
+                    // 🛡️ REFUERZO: Mapeamos el token para que el cliente lo vea en su pestaña de "Mis Citas"
+                    CodigoVerificacion = c.CodigoVerificacion 
                 }).ToListAsync();
         }
     }

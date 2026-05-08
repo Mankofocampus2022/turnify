@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -30,18 +31,14 @@ namespace Turnify.Api.Models
         [Column("hora")]
         public TimeSpan Hora { get; set; } 
 
-        // 🚩 "local" o "domicilio"
-        [Required]
-        [StringLength(20)]
+        // 🚩 MODIFICADO: Permitimos null para evitar el crash de SqlDataReader
         [Column("modalidad")]
-        [RegularExpression("local|domicilio", ErrorMessage = "La modalidad debe ser 'local' o 'domicilio'")]
-        public string Modalidad { get; set; } = "local";
+        public string? Modalidad { get; set; } = "local";
 
         [StringLength(200)]
         [Column("direccion")]
         public string? Direccion { get; set; }
 
-        // 🚩 BLINDAJE GEOGRÁFICO: Precisión para Google Maps
         [Column("latitud", TypeName = "decimal(18, 10)")]
         [Range(-90, 90, ErrorMessage = "Latitud fuera de rango")]
         public decimal? Latitud { get; set; }
@@ -50,17 +47,13 @@ namespace Turnify.Api.Models
         [Range(-180, 180, ErrorMessage = "Longitud fuera de rango")]
         public decimal? Longitud { get; set; }
 
-        // 🚩 TRACKING: (QR, Web, Manual)
-        [Required]
-        [StringLength(20)]
+        // 🚩 MODIFICADO: Blindaje contra nulos en DB
         [Column("metodo_registro")]
-        public string MetodoRegistro { get; set; } = "Web";
+        public string? MetodoRegistro { get; set; } = "Web";
 
-        // 🚩 ESTADOS: pendiente, confirmada, completada, cancelada, ausente
-        [Required]
-        [StringLength(20)]
+        // 🚩 MODIFICADO: El estado es el principal sospechoso del crash
         [Column("estado")]
-        public string Estado { get; set; } = "pendiente";
+        public string? Estado { get; set; } = "pendiente";
 
         [StringLength(255)]
         [Column("observaciones")]
@@ -74,19 +67,15 @@ namespace Turnify.Api.Models
         [Range(0, 9999999.99)]
         public decimal PrecioPactado { get; set; } 
 
-        // 🚩 COSTO EXTRA: Blindamos para que no sea negativo
         [Column("costo_domicilio", TypeName = "decimal(18, 2)")]
         [Range(0, 999999.99)]
         public decimal CostoDomicilio { get; set; } = 0;
 
-        // 🛡️ ANCLA OVERBOOKING PRO: Duración real al momento de agendar
         [Required]
         [Column("duracion_pactada_min")]
         [Range(1, 480)]
         public int DuracionPactadaMin { get; set; }
 
-        // 🛡️ BLINDAJE DE SEGURIDAD: Token de Check-in (6 dígitos)
-        // Este campo asegura que el cliente llegó al local o recibió el domicilio.
         [Column("codigo_verificacion")]
         [StringLength(10)]
         public string? CodigoVerificacion { get; set; }
@@ -96,6 +85,7 @@ namespace Turnify.Api.Models
         public virtual Clientes? Cliente { get; set; }
         
         [ForeignKey("ProveedorId")]
+        [InverseProperty("Citas")] 
         public virtual Proveedores? Proveedor { get; set; }
         
         [ForeignKey("ServicioId")]

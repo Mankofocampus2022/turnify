@@ -19,7 +19,7 @@ namespace Turnify.Api.Models.DTOs
         public string ServicioNombre { get; set; } = "Sin Servicio";
         public string Estado { get; set; } = "pendiente";
 
-        // 💰 Propiedades de compatibilidad (Nombres Cortos)
+        // 💰 Propiedades de compatibilidad (Nombres Cortos para Frontend)
         public decimal Precio { get; set; } 
         public int Duracion { get; set; } 
 
@@ -30,7 +30,15 @@ namespace Turnify.Api.Models.DTOs
         public string? Observaciones { get; set; }
         public string Modalidad { get; set; } = "local";
         public string? MetodoRegistro { get; set; }
+        
+        // 📍 Ubicación y Domicilio (Añadido para completitud 100%)
         public string? Direccion { get; set; }
+        public double? Latitud { get; set; }
+        public double? Longitud { get; set; }
+        public decimal? CostoDomicilio { get; set; }
+
+        // 🔑 Seguridad Física (Check-in Token)
+        // Este campo es el que permite al cliente ver su código en "Mis Citas"
         public string? CodigoVerificacion { get; set; }
     }
 }

@@ -56,7 +56,10 @@
 
     <main class="main-content">
         <div class="header-section">
-            <h1>Panel de Agendamiento</h1>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>Panel de Agendamiento</h1>
+                <span style="font-size: 0.8rem; color: #48c1b5;">Sesión: <strong id="user-display-name">...</strong></span>
+            </div>
             <p id="subtituloAgendar">Gestiona tus servicios en el local o a domicilio.</p>
         </div>
 
@@ -75,8 +78,8 @@
                 <div id="sectionSeleccionarProveedor" style="display: none;">
                     <div class="step-title"><i class="fas fa-user-tie"></i> 1. Seleccionar Profesional</div>
                     <div class="form-group full-width">
-                        <select id="citaProveedorId" class="input-style" onchange="cargarServiciosPorProveedor()">
-                            <option value="">-- Cargando profesionales... --</option>
+                        <select id="citaProveedorId" class="input-style">
+                            <option value="">-- Selecciona Profesional --</option>
                         </select>
                     </div>
                 </div>
@@ -84,7 +87,7 @@
                 <div class="step-title"><i class="fas fa-cut"></i> 2. Selecciona el Servicio</div>
                 <div class="form-grid">
                     <div class="form-group full-width">
-                        <select id="citaServicioId" class="input-style" required onchange="cargarDisponibilidad()">
+                        <select id="citaServicioId" class="input-style" required>
                             <option value="">¿Qué servicio realizaremos?</option>
                         </select>
                     </div>
@@ -94,7 +97,7 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Tipo de atención</label>
-                        <select id="citaModalidad" class="input-style" onchange="toggleDireccionCita()">
+                        <select id="citaModalidad" class="input-style">
                             <option value="local">Atención en el local</option>
                             <option value="domicilio">Servicio a Domicilio</option>
                         </select>
@@ -109,7 +112,7 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Fecha programada</label>
-                        <input type="date" id="citaFecha" class="input-style" required onchange="cargarDisponibilidad()">
+                        <input type="date" id="citaFecha" class="input-style" required>
                     </div>
                 </div>
                 
@@ -118,8 +121,13 @@
                 </div>
                 <input type="hidden" id="citaHoraSeleccionada">
 
+                <div class="step-title"><i class="fas fa-comment-dots"></i> 5. Notas Adicionales</div>
+                <div class="form-group full-width">
+                    <textarea id="citaObservaciones" class="input-style" placeholder="¿Alguna instrucción especial?" rows="2"></textarea>
+                </div>
+
                 <div class="booking-footer">
-                    <button type="submit" class="btn-save">
+                    <button type="submit" class="btn-save" id="btnConfirmarCita">
                         <i class="fas fa-check-circle"></i> Confirmar Cita
                     </button>
                 </div>

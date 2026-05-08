@@ -108,13 +108,24 @@ namespace Turnify.Api.Controllers
             if (dto == null) return BadRequest(new { message = "Petición nula." });
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            // 🛡️ BLINDAJE JWT: Evitamos suplantación de ID (Identity Spoofing)
+            // 🛡️ BLINDAJE JWT: Mapeo inteligente de ClienteID vs UsuarioID
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var clienteIdClaim = User.FindFirst("ClienteId")?.Value; // 🚩 Nueva claim inyectada en el login
+
             if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole("Cliente"))
             {
-                // Un cliente logueado solo puede agendar para sí mismo (forzamos su ID del token)
-                if (Guid.TryParse(userIdClaim, out Guid authClientId))
-                    dto.ClienteId = authClientId;
+                // 🚩 FIX MAESTRO: Priorizamos el ID de la tabla Clientes si está en el token
+                if (!string.IsNullOrEmpty(clienteIdClaim) && Guid.TryParse(clienteIdClaim, out Guid realClientId))
+                {
+                    dto.ClienteId = realClientId;
+                    Console.WriteLine($"🔍 [Turnify Auth] Usando ClienteID real: {realClientId}");
+                }
+                else if (Guid.TryParse(userIdClaim, out Guid authUserId))
+                {
+                    // Si no está el ClienteID, usamos el UsuarioID (pero esto puede fallar si el service no lo mapea)
+                    dto.ClienteId = authUserId;
+                    Console.WriteLine($"⚠️ [Turnify Auth] Advertencia: Usando UsuarioID como ClienteID: {authUserId}");
+                }
             }
 
             var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
@@ -194,11 +205,17 @@ namespace Turnify.Api.Controllers
         public async Task<IActionResult> GetHistorial(Guid clienteId)
         {
             if (clienteId == Guid.Empty) return BadRequest(new { message = "Cliente no identificado." });
+            
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var clienteIdClaim = User.FindFirst("ClienteId")?.Value;
             
             // 🛡️ Seguridad: Un cliente NO puede husmear el historial de otros IDs
-            if (User.IsInRole("Cliente") && userIdClaim != clienteId.ToString())
-                return Forbid();
+            // Validamos contra ambos IDs por si el frontend manda el del usuario o el del cliente
+            if (User.IsInRole("Cliente"))
+            {
+                bool esPropio = userIdClaim == clienteId.ToString() || clienteIdClaim == clienteId.ToString();
+                if (!esPropio) return Forbid();
+            }
 
             var historial = await _citaService.GetHistorialClienteAsync(clienteId);
             if (historial == null || !historial.Any())

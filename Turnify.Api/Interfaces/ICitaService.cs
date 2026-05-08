@@ -15,6 +15,7 @@ namespace Turnify.Api.Interfaces
         
         /// <summary>
         /// Ageda una cita validando bloques de tiempo (Fix Overbooking PRO) y generando Token de seguridad.
+        /// 🛡️ Ahora soporta mapeo automático de UsuarioId a ClienteId.
         /// </summary>
         Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto);
 
@@ -48,11 +49,13 @@ namespace Turnify.Api.Interfaces
         
         /// <summary>
         /// Obtiene la agenda del día actual para el dashboard del profesional.
+        /// 🛡️ Soporta consulta por UsuarioId para negocios multi-perfil.
         /// </summary>
         Task<IEnumerable<CitaResponseDto>> GetAgendaHoyAsync(Guid userId);
         
         /// <summary>
         /// Obtiene citas en un rango de fechas para reportes semanales, mensuales o analítica avanzada.
+        /// 🛡️ Mapea identidades de Proveedor y Cliente automáticamente.
         /// </summary>
         Task<IEnumerable<CitaResponseDto>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin);
 
@@ -60,5 +63,13 @@ namespace Turnify.Api.Interfaces
         /// Recupera el historial completo de citas de un cliente (Blindado para Privacidad).
         /// </summary>
         Task<IEnumerable<CitaResponseDto>> GetHistorialClienteAsync(Guid clienteId);
+
+        // --- 📈 4. ANALÍTICA (MÉTODOS DE SOPORTE) ---
+
+        /// <summary>
+        /// 🚩 [NUEVO] Obtiene datos para gráficas de torta (Completadas vs Pendientes vs Canceladas).
+        /// Necesario para el dashboard administrativo y de barbero.
+        /// </summary>
+        Task<object> GetEstadisticasTortaAsync(Guid proveedorId);
     }
 }

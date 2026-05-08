@@ -27,7 +27,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (sectionProveedor) sectionProveedor.style.display = 'block';
         if (subtitulo) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
         cargarProveedores(token, API_BASE); 
-        // 🛡️ [NUEVO] Cargamos historial para clientes con el ID correcto
+        // 🛡️ [NUEVO] Cargamos historial para clientes con el ID correcto de la tabla Clientes
+        // 🚩 FIX: Prioridad absoluta al clienteId para evitar el 400 Bad Request
         cargarMisCitas(user.clienteId || user.id, token, "cliente", API_BASE);
     } else {
         if (sectionCliente) sectionCliente.style.display = 'block';
@@ -76,9 +77,22 @@ async function cargarMisCitas(id, token, tipo, API_BASE) {
         const resp = await fetch(url, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        
+        // 🛡️ BLINDAJE ANTI-CRASH: Validamos si la respuesta es JSON antes de tratar de mapear
         if (resp.ok) {
-            const citas = await resp.json();
-            renderizarCitas(citas, container, token, API_BASE);
+            const contentType = resp.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                const citas = await resp.json();
+                if (Array.isArray(citas)) {
+                    renderizarCitas(citas, container, token, API_BASE);
+                } else {
+                    renderizarCitas([], container, token, API_BASE);
+                }
+            } else {
+                renderizarCitas([], container, token, API_BASE);
+            }
+        } else {
+            renderizarCitas([], container, token, API_BASE);
         }
     } catch (e) { 
         console.error("🔥 Error cargando mis citas:", e);
@@ -88,7 +102,7 @@ async function cargarMisCitas(id, token, tipo, API_BASE) {
 
 // 🛡️ REPARACIÓN DE RENDERIZADO: Estilo Glass y Token de Seguridad
 function renderizarCitas(citas, container, token, API_BASE) {
-    if (!citas || citas.length === 0) {
+    if (!Array.isArray(citas) || citas.length === 0) {
         container.innerHTML = "<p style='color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 10px;'>No tienes citas registradas.</p>";
         return;
     }
@@ -105,10 +119,10 @@ function renderizarCitas(citas, container, token, API_BASE) {
                 <i class="far fa-calendar-alt"></i> ${c.fecha ? c.fecha.split('T')[0] : 'Hoy'}
             </div>
             <div class="cita-info">
-                <i class="far fa-clock"></i> ${c.hora.toString().slice(0, 5)}
+                <i class="far fa-clock"></i> ${c.hora ? c.hora.toString().slice(0, 5) : '--:--'}
             </div>
             <div class="cita-info">
-                <i class="fas fa-info-circle"></i> ${c.estado.toUpperCase()}
+                <i class="fas fa-info-circle"></i> ${c.estado ? c.estado.toUpperCase() : 'PENDIENTE'}
             </div>
             ${c.codigoVerificacion ? `
                 <div class="token-tag">
@@ -137,8 +151,8 @@ async function cancelarCita(id, token, API_BASE) {
             alert("✅ Cita cancelada correctamente.");
             location.reload(); 
         } else {
-            const err = await resp.json();
-            alert("❌ Error: " + (err.message || "No se pudo cancelar."));
+            const errText = await resp.text();
+            alert("❌ Error: " + errText);
         }
     } catch (e) { console.error("🔥 Error conexión cancelación:", e); }
 }
@@ -237,7 +251,7 @@ async function cargarDisponibilidad(API_BASE) {
     const fecha = document.getElementById('citaFecha').value;
     const servicioId = document.getElementById('citaServicioId').value;
     const userStr = localStorage.getItem('user');
-    if (!userStr) return;
+    if (!userStr || !fecha || !servicioId) return;
 
     const user = JSON.parse(userStr);
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
@@ -248,29 +262,34 @@ async function cargarDisponibilidad(API_BASE) {
         (user.proveedorId || user.id);
 
     const container = document.getElementById('containerSlots');
-    if (!fecha || !servicioId || !proveedorId) {
-        if (container) container.innerHTML = "<p style='color: #48c1b5;'>Selecciona fecha y servicio.</p>";
-        return;
-    }
+    if (!proveedorId) return;
 
     if (container) container.innerHTML = "<p><i class='fas fa-spinner fa-spin'></i> Calculando túnel de tiempo...</p>";
 
     try {
-        // 🚩 MANDATORIO: Enviamos servicioId para validar duraciones dinámicas
         const resp = await fetch(`${API_BASE}/Citas/disponibilidad?proveedorId=${proveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
-        if (resp.ok) {
+        
+        // 🛡️ BLINDAJE ANTI-JSON-ERROR: No intentamos parsear si no es un JSON válido (ej. Error 400 texto)
+        const contentType = resp.headers.get("content-type");
+        if (resp.ok && contentType && contentType.includes("application/json")) {
             const slots = await resp.json();
             if (container) {
                 if(!slots || slots.length === 0) {
-                    container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad para esta duración.</p>";
+                    container.innerHTML = "<p style='color: #e94560;'>Sin disponibilidad.</p>";
                     return;
                 }
                 container.innerHTML = slots.map(h => 
                     `<div class="slot" onclick="seleccionarHora('${h}', this)">${h.slice(0, 5)}</div>`
                 ).join('');
             }
+        } else {
+            const msgError = await resp.text();
+            if (container) container.innerHTML = `<p style='color: #ff5e5e;'>${msgError || "Error de horario"}</p>`;
         }
-    } catch (e) { console.error("🔥 Error disponibilidad:", e); }
+    } catch (e) { 
+        console.error("🔥 Error disponibilidad:", e); 
+        if (container) container.innerHTML = "<p style='color: #ff5e5e;'>Error de red.</p>";
+    }
 }
 
 function seleccionarHora(hora, elemento) {
@@ -280,7 +299,7 @@ function seleccionarHora(hora, elemento) {
     if (inputHora) inputHora.value = hora;
 }
 
-// 🛡️ GUARDAR CITA: Blindaje de Token y Manejo de Errores de Negocio
+// 🛡️ GUARDAR CITA: Blindaje de Token e Identidad (Fix "El cliente no existe")
 async function guardarCita(e, token, user, rol, API_BASE) {
     e.preventDefault();
     
@@ -291,18 +310,21 @@ async function guardarCita(e, token, user, rol, API_BASE) {
     const selectCliente = document.getElementById('citaClienteId');
     const selectProv = document.getElementById('citaProveedorId');
     
-    const clienteIdFinal = esCliente ? (user.clienteId || user.id) : (selectCliente ? selectCliente.value : null);
+    // 🚩 FIX MAESTRO: Si es cliente, usamos estrictamente user.clienteId. 
+    // Si no existe, enviamos una alerta para que re-inicie sesión y obtenga el ID correcto del AuthController.
+    const clienteIdFinal = esCliente ? user.clienteId : (selectCliente ? selectCliente.value : null);
     const proveedorIdFinal = esCliente ? (selectProv ? selectProv.value : null) : (user.proveedorId || user.id);
 
-    if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("⚠️ Completa todos los campos y selecciona una hora.");
+    if (esCliente && !user.clienteId) {
+        return alert("❌ Error de Identidad: No se detectó tu ID de Cliente. Por favor, cierra sesión y vuelve a entrar.");
+    }
+
+    if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("⚠️ Completa todos los campos.");
 
     const btn = e.target.querySelector('button');
     const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Agendando...';
-
-    const inputObs = document.getElementById('citaObservaciones');
-    const observaciones = inputObs ? inputObs.value.trim() : "";
 
     const dto = {
         clienteId: clienteIdFinal,
@@ -311,7 +333,7 @@ async function guardarCita(e, token, user, rol, API_BASE) {
         hora: hora,
         modalidad: document.getElementById('citaModalidad').value,
         direccion: document.getElementById('citaDireccion').value.trim(),
-        observaciones: observaciones,
+        observaciones: document.getElementById('citaObservaciones').value.trim(),
         metodoRegistro: esCliente ? "Panel_Cliente" : "Barbero_Manual" 
     };
 
@@ -325,24 +347,31 @@ async function guardarCita(e, token, user, rol, API_BASE) {
             body: JSON.stringify(dto)
         });
 
-        const data = await resp.json();
-
-        if (resp.ok) {
-            // 🛡️ El mensaje incluye el token de seguridad para el cliente
-            alert(`✅ ¡Cita Confirmada!\n\n${data.message}`); 
-            window.location.reload(); 
+        // 🛡️ BLINDAJE DE RESPUESTA: Captura errores de texto del servidor
+        const contentType = resp.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            const data = await resp.json();
+            if (resp.ok) {
+                alert(`✅ ¡Cita Confirmada!\n\n${data.message}`); 
+                window.location.reload(); 
+            } else {
+                alert("❌ No se pudo agendar: " + (data.message || "Error desconocido."));
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
         } else {
-            alert("❌ No se pudo agendar: " + (data.message || "Conflicto de horario."));
+            const errorTexto = await resp.text();
+            alert("❌ Error del Servidor: " + errorTexto);
             btn.disabled = false;
             btn.innerHTML = originalHTML;
         }
     } catch (e) { 
-        alert("🔌 Error de conexión con el servidor.");
+        alert("🔌 Error de conexión.");
         btn.disabled = false;
         btn.innerHTML = originalHTML;
     }
 }
 
-// PUENTE GLOBAL PARA HTML (Imprescindible para el onclick de los slots)
+// PUENTE GLOBAL PARA HTML
 window.seleccionarHora = seleccionarHora;
 window.cancelarCita = cancelarCita;
