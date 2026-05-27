@@ -14,3 +14,5 @@ node_modules/
 sql_data/
 *.mdf
 *.ldf
+Turnify.Api/dataprotection-keys/
+Turnify.Api/import openpyxl.txt
