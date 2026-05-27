@@ -80,6 +80,12 @@ namespace Turnify.Api.Models
         [StringLength(10)]
         public string? CodigoVerificacion { get; set; }
 
+        // 🛡️ SELLO DE CONCURRENCIA SENIOR (Bloqueo Optimista)
+        // SQL Server administrará e incrementará este token binario automáticamente en cada UPDATE.
+        [Timestamp]
+        [Column("row_version")]
+        public byte[] RowVersion { get; set; }
+
         // --- RELACIONES ---
         [ForeignKey("ClienteId")]
         public virtual Clientes? Cliente { get; set; }

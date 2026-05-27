@@ -34,6 +34,8 @@ services:
       # 🛡️ CORRECCIÓN CRÍTICA: Mapeamos el CONTENIDO de dist directamente a /app/frontend
       # Antes tenías /app/frontend/dist y eso creaba una subcarpeta innecesaria
       - ./frontend/dist:/app/frontend
+      # 🛡️ PERSISTENCIA DE INFRAESTRUCTURA: Mapeamos las llaves de Data Protection para limpiar los warnings en producción
+      - ./dataprotection-keys:/app/dataprotection-keys
     environment:
       - ConnectionStrings__DefaultConnection=Server=turnify-db,1433;Database=TurnifyDb;User Id=sa;Password=Turnify.Master.2026!*;TrustServerCertificate=True;Encrypt=True;
       - ASPNETCORE_ENVIRONMENT=Production

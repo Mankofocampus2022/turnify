@@ -1,0 +1,36 @@
+import openpyxl
+
+def remove_columns_without_data(file_path, output_path):
+    try:
+        # Cargar el archivo de Excel
+        workbook = openpyxl.load_workbook(file_path)
+        
+        # Seleccionar la hoja activa
+        sheet = workbook.active
+        
+        # Determinar el rango máximo de filas y columnas
+        max_row = sheet.max_row
+        max_column = sheet.max_column
+        
+        # Eliminar columnas sin datos (incluyendo las que solo tienen encabezado)
+        for col in range(max_column, 0, -1):  # Itera de derecha a izquierda
+            # Verifica si todas las celdas en la columna (incluyendo el encabezado) están vacías o contienen solo espacios
+            if all((sheet.cell(row=row, column=col).value is None or str(sheet.cell(row=row, column=col).value).strip() == '') 
+                   for row in range(1, max_row + 1)):
+                sheet.delete_cols(col)
+        
+        # Guardar los cambios en un nuevo archivo
+        workbook.save(output_path)
+        print(f"Archivo guardado en: {output_path}")
+    
+    except FileNotFoundError:
+        print(f"El archivo {file_path} no fue encontrado.")
+    except PermissionError:
+        print(f"Permiso denegado al intentar acceder o guardar el archivo {file_path} o {output_path}.")
+    except Exception as e:
+        print(f"Ocurrió un error inesperado: {e}")
+
+# Usar la función con tu archivo de Excel
+input_path = r"I:\proesa\prueba.xlsx"
+output_path = r"I:\proesa\prueba_1.xlsx"
+remove_columns_without_data(input_path, output_path)

@@ -3,12 +3,14 @@ using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
 using Turnify.Api.Services;
 using Turnify.Api.Middleware;
+using Turnify.Api.Workers; // 🔄 NUEVO: Namespace inyectado para reconocer el Worker automático
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.DataProtection; // 🛡️ NUEVO: Namespace para solucionar advertencias de llaves efímeras
 
 // --- ALIAS DE SWAGGER ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
@@ -102,11 +104,25 @@ builder.Services.AddDbContext<TurnifyDbContext>(options =>
         }
     ));
 
+// --- 🛡️ CONFIGURACIÓN DE DATA PROTECTION PARA PRODUCCIÓN ---
+// Forzamos una ruta física persistente dentro del contenedor para que las llaves JWT y de Tokens no se destruyan al reiniciar Docker
+var keysFolder = Path.Combine(builder.Environment.ContentRootPath, "dataprotection-keys");
+if (!Directory.Exists(keysFolder))
+{
+    Directory.CreateDirectory(keysFolder);
+}
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysFolder));
+
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IClienteService, ClienteService>();
 builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// 🔄 Inyección del Worker Automático en segundo plano (Sistemas Reactivos - Frente 2)
+// Este servicio se encarga de monitorear y cancelar las citas no asistidas automáticamente.
+builder.Services.AddHostedService<CitaCancellationWorker>();
 
 var app = builder.Build();
 

@@ -3,9 +3,13 @@ using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
 using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Turnify.Api.Services
 {
@@ -228,6 +232,13 @@ namespace Turnify.Api.Services
 
                     return (true, $"¡Cita agendada! Código de Check-in: {nuevaCita.CodigoVerificacion}", (Guid?)nuevaCita.Id);
                 }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    // 🛡️ ¡CAPTURAMOS EL DOBLE AGENDAMIENTO EN EL ACTO!
+                    await transaction.RollbackAsync();
+                    Console.WriteLine($"🛡️ [Concurrencia Senior] Choque de escritura detectado al agendar: {ex.Message}");
+                    return (false, "Lo sentimos, este cupo de tiempo exacto acaba de ser tomado por otro usuario hace un instante. Por favor, selecciona otro horario.", (Guid?)null);
+                }
                 catch (Exception ex)
                 {
                     await transaction.RollbackAsync(); 
@@ -237,7 +248,7 @@ namespace Turnify.Api.Services
             });
         }
 
-        // --- 🕒 4. DISPONIBILIDAD (MOTOR DE BÚSQUEDA BLINDADO - FIX OVERBOOKING PRO) ---
+        // --- 🛡️ 4. DISPONIBILIDAD (MOTOR DE BÚSQUEDA BLINDADO - FIX OVERBOOKING PRO) ---
         public async Task<IEnumerable<TimeSpan>> GetDisponibilidadAsync(Guid proveedorId, Guid servicioId, DateTime fecha)
         {
             var ahoraBogota = GetBogotaTime();
@@ -305,15 +316,27 @@ namespace Turnify.Api.Services
         // 🛡️ NUEVO: Confirmar Asistencia vía Token (Check-in)
         public async Task<(bool Success, string Message)> ConfirmarAsistenciaAsync(Guid citaId, string token)
         {
-            var cita = await _context.citas.FindAsync(citaId);
-            if (cita == null) return (false, "Cita no encontrada.");
+            try
+            {
+                var cita = await _context.citas.FindAsync(citaId);
+                if (cita == null) return (false, "Cita no encontrada.");
 
-            if (cita.CodigoVerificacion != token.ToUpper())
-                return (false, "Token de validación incorrecto.");
+                // 🛑 CANDADO DE ESTADO SENIOR: Si el Worker ya la canceló por inasistencia, el barbero no la puede procesar
+                if (cita.Estado == "cancelada")
+                    return (false, "No se puede confirmar asistencia. Esta cita ya fue cancelada automáticamente por el sistema debido a inasistencia (pasó el tiempo de gracia).");
 
-            cita.Estado = "completada"; // O "confirmada" según tu flujo
-            await _context.SaveChangesAsync();
-            return (true, "Asistencia confirmada exitosamente.");
+                if (cita.CodigoVerificacion != token.ToUpper())
+                    return (false, "Token de validación incorrecto.");
+
+                cita.Estado = "completada"; // O "confirmada" según tu flujo
+                await _context.SaveChangesAsync();
+                return (true, "Asistencia confirmada exitosamente.");
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                Console.WriteLine($"🛡️ [Concurrencia Senior] Choque al confirmar asistencia: {ex.Message}");
+                return (false, "La cita está siendo modificada por otro usuario o proceso en este momento. Por favor, refresca la página.");
+            }
         }
 
         public async Task<IEnumerable<CitaResponseDto>> GetAgendaDiaAsync(Guid proveedorId, DateTime fecha)
@@ -327,12 +350,20 @@ namespace Turnify.Api.Services
             nuevoEstado = nuevoEstado.ToLower();
             if (!estadosValidos.Contains(nuevoEstado)) return (false, "Estado no válido.");
 
-            var cita = await _context.citas.FindAsync(id);
-            if (cita == null) return (false, "La cita no existe.");
+            try
+            {
+                var cita = await _context.citas.FindAsync(id);
+                if (cita == null) return (false, "La cita no existe.");
 
-            cita.Estado = nuevoEstado;
-            await _context.SaveChangesAsync();
-            return (true, $"Cita actualizada a: {nuevoEstado}");
+                cita.Estado = nuevoEstado;
+                await _context.SaveChangesAsync();
+                return (true, $"Cita actualizada a: {nuevoEstado}");
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                Console.WriteLine($"🛡️ [Concurrencia Senior] Choque al actualizar estado de la cita: {ex.Message}");
+                return (false, "No se pudo cambiar el estado porque la cita fue modificada en paralelo desde otra sesión. Por favor, refresca.");
+            }
         }
 
         public async Task<IEnumerable<CitaResponseDto>> GetHistorialClienteAsync(Guid clienteId)

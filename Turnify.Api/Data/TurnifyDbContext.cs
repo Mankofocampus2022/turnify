@@ -94,6 +94,13 @@ namespace Turnify.Api.Data
                 .HasForeignKey(c => c.ClienteId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // 🛡️ MAPEO DE CONCURRENCIA SENIOR (RowVersion)
+            // Vincula la propiedad binaria con la columna física y activa el rastreo de tokens de EF Core
+            modelBuilder.Entity<Citas>()
+                .Property(c => c.RowVersion)
+                .HasColumnName("row_version")
+                .IsRowVersion();
+
             // 🚀 CONFIGURACIÓN DE HORARIOS
             modelBuilder.Entity<HorariosAtencion>()
                 .HasOne(h => h.Proveedor)
