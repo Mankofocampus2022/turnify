@@ -1,6 +1,19 @@
-/* =========================================
+/* ============================================================
    TURNIFY - LÓGICA DEL DASHBOARD (PRO)
-   ========================================= */
+   ============================================================ */
+
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta la procedencia de red en tiempo de ejecución. 
+// Si corre en localhost o por IP local (celular/tablet), rutea al puerto 5000 de .NET. En la nube mapea al origen limpio.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
+        ? `${window.location.protocol}//${window.location.hostname}:5000`
+        : window.location.origin);
+
+const API_BASE_GLOBAL = `${API_HOST}/api`;
+
+// 🧠 CONTROL DE CONCURRENCIA QA SENIOR: Evita que consultas viejas o el auto-refresh sobreescriban los datos actuales
+let dashboardAbortController = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Puente de Seguridad
@@ -12,8 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // 🚩 [BLINDAJE] URL Base Dinámica para evitar fallos de puerto/dominio
-    const API_BASE = window.location.origin + '/api';
+    // 🚩 [BLINDAJE] URL Base Dinámica para evitar fallos de puerto/dominio (Sincronizada globalmente)
+    const API_BASE = API_BASE_GLOBAL;
 
     // 2. Recuperar el nombre real (Blindaje contra el texto "PRUEBA")
     const userStr = localStorage.getItem('user');
@@ -62,10 +75,17 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cambiarPeriodo(periodo, boton, API_BASE) {
     // 🛡️ REGLA DE ORO: Si API_BASE no viene del HTML, la calculamos aquí
     if (!API_BASE || typeof API_BASE !== 'string') {
-        API_BASE = window.location.origin + '/api';
+        API_BASE = API_BASE_GLOBAL;
     }
     
     if (!boton) return;
+
+    // 🧠 CONTROL DE RÁFAGAS: Cancelamos cualquier petición HTTP previa que siga colgada en la red
+    if (dashboardAbortController) {
+        dashboardAbortController.abort();
+    }
+    dashboardAbortController = new AbortController();
+    const signal = dashboardAbortController.signal;
 
     // A. Estética: Marcar el botón como activo
     document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
@@ -81,7 +101,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
     const sectionTitle = document.getElementById('sectionTitle');
     if (sectionTitle) sectionTitle.innerText = titulos[periodo];
 
-    // C. Cálculo de Fechas para el Backend
+    // C. Calculation de Fechas para el Backend
     let inicio = new Date();
     let fin = new Date();
 
@@ -121,6 +141,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         if (!provId) return;
 
         const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=${periodo}&fecha=${startStr}`, {
+            signal: signal, // Asignamos el token de aborto seguro
             headers: { 
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
@@ -138,6 +159,10 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         actualizarContadoresDashboard(data); 
 
     } catch (error) { 
+        if (error.name === 'AbortError') {
+            console.log("📥 Petición duplicada de dashboard cancelada exitosamente.");
+            return;
+        }
         console.error("🔥 Error al filtrar agenda:", error);
         if (tablaBody) {
             tablaBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ff5e5e;">Error al conectar con el servicio.</td></tr>`;
@@ -223,7 +248,7 @@ function actualizarContadoresDashboard(data) {
 }
 
 async function cargarResumenDashboard(token, API_BASE) {
-    if (!API_BASE) API_BASE = window.location.origin + '/api';
+    if (!API_BASE) API_BASE = API_BASE_GLOBAL;
     try {
         const userStr = localStorage.getItem('user');
         if (!userStr) return;
@@ -247,7 +272,7 @@ function getEstadoClass(estado) {
 }
 
 function logout() {
-    if (confirm("¿Seguro que quieres salir?")) {
+    if (confirm("¿Seguro que quieres salir? te vamos a extrañar mucho hasta que vuelvas.")) {
         localStorage.clear();
         window.location.href = 'login.html';
     }

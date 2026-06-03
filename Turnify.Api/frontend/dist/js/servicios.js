@@ -1,9 +1,17 @@
-/* =========================================
+/* ============================================================
    TURNIFY - GESTIÓN DE SERVICIOS (PRO)
-   ========================================= */
+   ============================================================ */
 
-// 🛡️ BLINDAJE: URL Dinámica para evitar fallos en Docker/Producción
-const API_URL = window.location.origin + '/api/Servicios';
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el origen de red en caliente. Si corre localmente usa el puerto 5000 de .NET,
+// si entran desde una IP local (ej: pruebas desde celulares) o dominio, reconfigura el host de inmediato para el catálogo de servicios.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
+        ? `${window.location.protocol}//${window.location.hostname}:5000`
+        : window.location.origin);
+
+// 🛡️ BLINDAJE: URL Dinámica centralizada para evitar fallos en Docker/Producción
+const API_URL = `${API_HOST}/api/Servicios`;
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Sincronización de Identidad
@@ -220,7 +228,7 @@ async function guardarServicio(e) {
     }
 
     const form = document.getElementById('formServicio');
-    const idExistente = form.getAttribute('data-id');
+    const idExisting = form.getAttribute('data-id');
     
     // 🚩 CONSTRUCCIÓN DEL DTO: Sincronizado con ServicioCreateDto de C#
     const body = {
@@ -234,8 +242,8 @@ async function guardarServicio(e) {
         descripcion: `Servicio de ${document.getElementById('categoriaServicio').value} actualizado desde el panel.` 
     };
 
-    const metodo = idExistente ? 'PUT' : 'POST';
-    const url = idExistente ? `${API_URL}/${idExistente}` : API_URL;
+    const metodo = idExisting ? 'PUT' : 'POST';
+    const url = idExisting ? `${API_URL}/${idExisting}` : API_URL;
 
     // UI Feedback
     const btnSubmit = form.querySelector('button[type="submit"]');
@@ -254,11 +262,20 @@ async function guardarServicio(e) {
         });
 
         if (res.ok) {
-            alert(idExistente ? "✨ ¡Servicio actualizado con éxito!" : "✨ ¡Nuevo servicio creado correctamente!");
+            alert(idExisting ? "✨ ¡Servicio actualizado con éxito!" : "✨ ¡Nuevo servicio creado correctamente!");
             cerrarModal();
             cargarServicios();
         } else {
-            const errorData = await res.json();
+            // 🛡️ BLINDAJE ANTI-CRASH DE QA SENIOR: Validamos si la respuesta es JSON antes de parsear
+            let errorData = { message: "Datos inválidos" };
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                errorData = await res.json();
+            } else {
+                const textFallback = await res.text();
+                errorData.message = textFallback || errorData.message;
+            }
+
             console.error("❌ Error del API:", errorData);
             let msg = errorData.message || errorData.title || "Datos inválidos";
             if(errorData.errors) msg = Object.values(errorData.errors).flat().join("\n");

@@ -4,20 +4,28 @@
 
 function validarSesionYMenu() {
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
-    const currentPath = window.location.pathname.split('/').pop();
+    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
+    
+    // 🧠 FIX DE SEGURIDAD QA SENIOR: Separamos el nombre del archivo de los parámetros "?" (Query Strings)
+    // Esto evita que un usuario salte el bloqueo usando "admin-dashboard.html?id=1"
+    const currentPath = window.location.pathname.split('/').pop().split('?')[0];
 
     // 1. SI NO HAY TOKEN: Patitas a la calle (al login)
-    if (!token || token === "null") {
-        if (currentPath !== 'login.html' && currentPath !== 'registro.html') {
+    if (!token || token === "null" || token === "undefined") {
+        if (currentPath !== 'login.html' && currentPath !== 'registro.html' && currentPath !== '') {
             window.location.href = 'login.html';
         }
         return;
     }
 
-    const esCliente = rol.includes("CLIENTE");
+    // GUIDs transaccionales de control de la base de datos SQL Server
+    const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";
+    const ADMIN_GUID = "6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43";
+
+    // 🧠 AJUSTE ADAPTATIVO: Soporta tanto el texto plano como los identificadores GUID reales de la BD
+    const esCliente = rol.includes("CLIENTE") && rol !== SUPER_ADMIN_GUID && rol !== ADMIN_GUID;
     // 🚩 NUEVO: Detectamos si es un profesional (Barbero/Admin/Proveedor)
-    const esProfesional = rol.includes("BARBERO") || rol.includes("PROVEEDOR") || rol.includes("ADMIN");
+    const esProfesional = rol.includes("BARBERO") || rol.includes("PROVEEDOR") || rol.includes("ADMIN") || rol === SUPER_ADMIN_GUID || rol === ADMIN_GUID;
 
     // 2. 🛡️ BLOQUEO DE ACCESO DIRECTO (URL)
     // Lista negra para clientes: No pueden ver nada administrativo
@@ -66,7 +74,7 @@ function validarSesionYMenu() {
         // 🚩 AJUSTE: El barbero/admin ve Usuarios para mirar sus clientes
         // Solo ocultamos si no tiene ninguno de los roles de gestión
         if (navUsuarios) {
-            const puedeVerUsuarios = rol.includes("SUPERADMIN") || rol.includes("BARBERO") || rol.includes("ADMIN") || rol.includes("PROVEEDOR");
+            const puedeVerUsuarios = rol.includes("SUPERADMIN") || rol.includes("BARBERO") || rol.includes("ADMIN") || rol.includes("PROVEEDOR") || rol === SUPER_ADMIN_GUID || rol === ADMIN_GUID;
             navUsuarios.style.display = puedeVerUsuarios ? 'flex' : 'none';
         }
 

@@ -1,3 +1,15 @@
+/* ============================================================
+   TURNIFY - MOTOR DE RESTABLECIMIENTO DE IDENTIDAD (AUTH FLUX)
+   ============================================================ */
+
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el origen de red en caliente. Si corre localmente usa el puerto 5000 de .NET,
+// si entran desde una IP local (ej: pruebas en celular) o dominio en producción, reconfigura el host de inmediato.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
+        ? `${window.location.protocol}//${window.location.hostname}:5000`
+        : window.location.origin);
+
 // 🔄 Esperamos a que todo el DOM (HTML) se haya cargado por completo antes de ejecutar el script
 document.addEventListener('DOMContentLoaded', () => {
     console.log("🚀 [Turnify Debug] DOM cargado. Iniciando script de restablecimiento...");
@@ -58,8 +70,11 @@ document.getElementById('form-reset').addEventListener('submit', async (e) => {
     try {
         console.log("🌐 [Turnify Debug] Enviando petición POST al backend...");
 
+        // 🚩 [BLINDAJE DOCKER PRO]: Reemplazamos el string estático por la ruta dinámica autodetectada
+        const TARGET_URL = `${API_HOST}/api/Usuarios/reset-password`;
+
         // Hacemos la petición HTTP POST al endpoint del backend
-        const response = await fetch('http://localhost:5000/api/Usuarios/reset-password', {
+        const response = await fetch(TARGET_URL, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json' 
@@ -83,8 +98,17 @@ document.getElementById('form-reset').addEventListener('submit', async (e) => {
             // Redirigimos al usuario al login
             window.location.href = 'login.html';
         } else {
-            // Si el backend responde con un error, capturamos el mensaje de error
-            const err = await response.json();
+            // 🛡️ BLINDAJE ANTI-CRASH DE QA SENIOR: Validamos si la respuesta es JSON real antes de parsear
+            let err = { message: "Datos incorrectos o token expirado." };
+            const contentType = response.headers.get("content-type");
+            
+            if (contentType && contentType.includes("application/json")) {
+                err = await response.json();
+            } else {
+                const textFallback = await response.text();
+                err.message = textFallback || err.message;
+            }
+
             console.error("⚠️ [Turnify Debug] Error devuelto por el servidor:", err);
             
             // Si el error viene del blindaje de .NET, mostramos un mensaje más amigable

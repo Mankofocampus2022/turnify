@@ -1,3 +1,7 @@
+/* ============================================================
+   TURNIFY - MOTOR DE AGENDAMIENTO Y DISPONIBILIDAD HORARIA
+   ============================================================ */
+
 document.addEventListener('DOMContentLoaded', async () => {
     // 🛡️ Blindaje de sesión: Soporta múltiples llaves de token por compatibilidad
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
@@ -12,8 +16,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
     const esCliente = rol.includes("CLIENTE");
 
-    // 🚩 URL Dinámica: Blindada para Docker y entornos productivos
-    const API_BASE = window.location.origin + '/api';
+    // 🚩 URL Dinámica: Blindada para Docker y entornos productivos (Matriz de Red Inteligente)
+    let API_BASE = window.location.origin + '/api';
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        API_BASE = 'http://localhost:5000/api';
+    } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)) {
+        // Si accedes a través de una IP de Red Local (ej. Pruebas desde el celular), mapea al puerto 5000
+        API_BASE = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    }
 
     console.log("🚀 [Turnify Log] Rol Detectado:", rol);
 

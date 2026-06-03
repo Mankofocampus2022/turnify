@@ -2,6 +2,13 @@
    TURNIFY - MOTOR DE SEGURIDAD INTERNA PARA ADMINISTRADORES
    ============================================================ */
 
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente para que el navegador no falle por IPs locales o la nube.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
+        ? `${window.location.protocol}//${window.location.hostname}:5000`
+        : window.location.origin);
+
 // 1. Token secreto requerido en la URL (?secret=...)
 const SECRET_INVITATION_KEY = "TurnifyAdminSecure2026Key"; 
 
@@ -17,8 +24,10 @@ const tokenIngresado = urlParams.get('secret');
 
 if (tokenIngresado === SECRET_INVITATION_KEY) {
     // Si la firma es correcta, destruimos el bloqueo y mostramos el panel
-    document.getElementById('lockScreen').style.display = 'none';
-    document.getElementById('adminCard').style.display = 'block';
+    const lockScreen = document.getElementById('lockScreen');
+    const adminCard = document.getElementById('adminCard');
+    if (lockScreen) lockScreen.style.display = 'none';
+    if (adminCard) adminCard.style.display = 'block';
 } else {
     console.error("🔒 Intento de acceso no autorizado al registro administrativo.");
 }
@@ -56,8 +65,11 @@ document.getElementById('formRegistroAdmin').addEventListener('submit', async (e
     };
 
     try {
+        // 🚩 [BLINDAJE DOCKER] - Reemplazamos la ruta estática local por la constante dinámica centralizada
+        const TARGET_URL = `${API_HOST}/api/Usuarios/registrar`;
+
         // Despachamos al endpoint de usuarios de tu API en .NET
-        const response = await fetch('http://localhost:5000/api/Usuarios/registrar', {
+        const response = await fetch(TARGET_URL, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -66,13 +78,22 @@ document.getElementById('formRegistroAdmin').addEventListener('submit', async (e
             body: JSON.stringify(adminPayload)
         });
 
-        const result = await response.json();
+        // 🛡️ BLINDAJE ANTI-CRASH DE QA: Validamos el tipo de contenido antes de procesar el JSON para evitar caídas
+        let result = { message: "Error interno de validación." };
+        const contentType = response.headers.get("content-type");
+        
+        if (contentType && contentType.includes("application/json")) {
+            result = await response.json();
+        } else {
+            const textFallback = await response.text();
+            result.message = textFallback || result.message;
+        }
 
         if (response.ok) {
             alert("🚀 ¡Cuenta de Administrador Turnify configurada con éxito!");
             window.location.href = 'login.html';
         } else {
-            alert("❌ Fallo en registro: " + (result.message || "Error interno de validación."));
+            alert("❌ Fallo en registro: " + (result.message || result.Message || "Error interno de validación."));
             btnSubmit.disabled = false;
             btnSubmit.innerText = "Crear Cuenta Administrativa";
         }
@@ -83,3 +104,76 @@ document.getElementById('formRegistroAdmin').addEventListener('submit', async (e
         btnSubmit.innerText = "Reintentar Configuración";
     }
 });
+
+/* ============================================================
+   🛡️ [NUEVO COMPONENTE APARTE]: CAMBIO SEGURO DE CLAVE PARA ADMINS
+   ============================================================ */
+const formCambioPassAdmin = document.getElementById('formCambioPasswordAdmin');
+if (formCambioPassAdmin) {
+    formCambioPassAdmin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // Bloqueo preventivo de seguridad perimetral si se intenta saltar la URL secreta
+        if (tokenIngresado !== SECRET_INVITATION_KEY) {
+            alert("⛔ Operación denegada: Firma criptográfica de administrador inválida o ausente.");
+            return;
+        }
+
+        const btnReset = document.getElementById('btnResetPasswordAdmin');
+        const emailAdmin = document.getElementById('changeAdminEmail').value.trim();
+        const telAdmin = document.getElementById('changeAdminTelefono').value.trim();
+        const newPassword = document.getElementById('changeAdminNewPassword').value;
+        const confirmPassword = document.getElementById('changeAdminConfirmPassword').value;
+
+        if (newPassword !== confirmPassword) {
+            alert("⚠️ Las nuevas contraseñas administrativas no coinciden.");
+            return;
+        }
+
+        btnReset.disabled = true;
+        btnReset.innerText = "Actualizando credenciales de élite...";
+
+        try {
+            const TARGET_RESET_URL = `${API_HOST}/api/Usuarios/reset-password`;
+
+            // Hit seguro al core de identidades con cabecera de verificación reforzada
+            const response = await fetch(TARGET_RESET_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Creation-Key': tokenIngresado // Doble factor de autorización por token de red
+                },
+                body: JSON.stringify({
+                    email: emailAdmin,
+                    telefono: telAdmin,
+                    token: SECRET_INVITATION_KEY, // Reutiliza la llave de invitación como firma de validación
+                    newPassword: newPassword
+                })
+            });
+
+            let resultData = { message: "Error al actualizar la contraseña de administración." };
+            const contentType = response.headers.get("content-type");
+
+            if (contentType && contentType.includes("application/json")) {
+                resultData = await response.json();
+            } else {
+                const textFallback = await response.text();
+                resultData.message = textFallback || resultData.message;
+            }
+
+            if (response.ok) {
+                alert("🔒 ¡Credenciales de Administrador actualizadas correctamente en la base de datos!");
+                window.location.href = 'login.html';
+            } else {
+                alert("❌ Fallo en cambio administrativo: " + (resultData.message || "Firma incorrecta o cuenta inexistente."));
+                btnReset.disabled = false;
+                btnReset.innerText = "Cambiar Contraseña Administrativa";
+            }
+        } catch (error) {
+            console.error("🚨 Error crítico en flujo de reseteo Admin:", error);
+            alert("🔌 Error de enlace de red con la consola de .NET Core.");
+            btnReset.disabled = false;
+            btnReset.innerText = "Reintentar Cambio Seguro";
+        }
+    });
+}

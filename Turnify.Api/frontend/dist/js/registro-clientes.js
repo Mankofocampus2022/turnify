@@ -2,6 +2,14 @@
    TURNIFY - MOTOR DE REGISTRO INTELIGENTE 
    ============================================================ */
 
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente. Si entras desde localhost usa el puerto 5000, 
+// si entras desde otra IP de la red local (ej: pruebas desde el celular) o dominio, reconfigura el endpoint automáticamente.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
+        ? `${window.location.protocol}//${window.location.hostname}:5000`
+        : window.location.origin);
+
 // 1. CONFIGURACIÓN DE ROLES (GUIDs de tu base de datos SQL Server)
 const ROLES = {
     CLIENTE: "56992f75-6420-4d55-a5f9-9223248c50d7",
@@ -82,8 +90,8 @@ async function inicializarFlujoQR() {
     if(divNegocio) divNegocio.style.display = 'block';
 
     try {
-        // Obtenemos los servicios de este barbero específico
-        const response = await fetch(`http://localhost:5000/api/Servicios/proveedor/${qrProveedorId}`);
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_HOST}/api/Servicios/proveedor/${qrProveedorId}`);
         if (response.ok) {
             const servicios = await response.json();
             const selectServicio = document.getElementById('regServicio');
@@ -92,7 +100,7 @@ async function inicializarFlujoQR() {
             }
             
             // También intentamos traer el nombre del negocio para el banner
-            const respProv = await fetch(`http://localhost:5000/api/Proveedores/${qrProveedorId}`);
+            const respProv = await fetch(`${API_HOST}/api/Proveedores/${qrProveedorId}`);
             if(respProv.ok) {
                 const prov = await respProv.json();
                 if(txtNegocio) txtNegocio.innerText = `Agendando en: ${prov.nombreComercial || prov.nombre}`;
@@ -110,7 +118,8 @@ document.getElementById('regFecha')?.addEventListener('change', async (e) => {
     if (!fecha || !servicioId) return;
 
     try {
-        const response = await fetch(`http://localhost:5000/api/Citas/disponibilidad?proveedorId=${qrProveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_HOST}/api/Citas/disponibilidad?proveedorId=${qrProveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
         if (response.ok) {
             const horas = await response.json();
             selectHora.innerHTML = horas.map(h => `<option value="${h}">${h.slice(0, 5)}</option>`).join('');
@@ -150,13 +159,22 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
 
     try {
         // PASO A: REGISTRAR EL USUARIO
-        const response = await fetch('http://localhost:5000/api/Usuarios/registrar', {
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_HOST}/api/Usuarios/registrar`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(registroData)
         });
 
-        const result = await response.json();
+        // 🛡️ BLINDAJE ANTI-CRASH DE QA: Validamos si la respuesta es JSON real antes de parsear para evitar bloqueos
+        let result = { message: "No se pudo completar el registro." };
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            result = await response.json();
+        } else {
+            const textFallback = await response.text();
+            result.message = textFallback || result.message;
+        }
 
         if (response.ok) {
             // 🚩 CORRECCIÓN CRÍTICA: El backend devuelve 'usuarioId' directamente en el objeto result
@@ -177,7 +195,8 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
                     metodoRegistro: "QR" 
                 };
 
-                const resCita = await fetch('http://localhost:5000/api/Citas/agendar', {
+                // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+                const resCita = await fetch(`${API_HOST}/api/Citas/agendar`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(citaData)

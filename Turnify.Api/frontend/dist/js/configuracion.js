@@ -1,6 +1,14 @@
-/* =========================================
+/* ============================================================
    TURNIFY - LÓGICA MAESTRA (DASHBOARD + CONFIG)
-   ========================================= */
+   ============================================================ */
+
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente. Si entras desde localhost usa el puerto 5000, 
+// si entras desde otra IP de la red local o dominio, reconfigura el endpoint automáticamente para toda la suite de funciones.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : `${window.location.protocol}//${window.location.hostname}:5000`;
+
+const API_BASE = `${API_HOST}/api`;
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- 1. PUENTE DE SEGURIDAD (Versión Blindada) ---
@@ -68,6 +76,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if(targetElement) {
                         targetElement.style.display = 'block';
                         if(targetId === 'content-horarios') cargarHorarios();
+                        // 🧠 ADICIÓN: Al dar clic en pestañas de pagos o notificaciones, disparamos su carga asíncrona
+                        if(targetId === 'content-pagos') cargarDatosPagos(proveedorId, token);
+                        if(targetId === 'content-notificaciones') cargarDatosNotificaciones(proveedorId, token);
                     }
                 }
             });
@@ -87,6 +98,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const formPerfil = document.getElementById('formConfigPerfil');
     if(formPerfil) {
         formPerfil.addEventListener('submit', (e) => guardarConfig(e, proveedorId, token));
+    }
+
+    // 🧠 ADICIÓN: Vinculación de escucha de eventos de envío para los nuevos módulos fintech y alertas
+    const formPagos = document.getElementById('formConfigPagos');
+    if(formPagos) {
+        formPagos.addEventListener('submit', (e) => guardarConfigPagos(e, proveedorId, token));
+    }
+
+    const formNotif = document.getElementById('formConfigNotificaciones');
+    if(formNotif) {
+        formNotif.addEventListener('submit', (e) => guardarConfigNotificaciones(e, proveedorId, token));
     }
 });
 
@@ -114,7 +136,8 @@ async function cambiarPeriodo(periodo, boton) {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
     try {
-        const response = await fetch(`http://localhost:5000/api/Citas/rango?inicio=${startStr}&fin=${endStr}`, {
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_BASE}/Citas/rango?inicio=${startStr}&fin=${endStr}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -193,7 +216,8 @@ async function descargarQR(url) {
 
 async function cargarDatosConfig(proveedorId, token) {
     try {
-        const response = await fetch(`http://localhost:5000/api/Proveedores/${proveedorId}`, {
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -222,7 +246,8 @@ async function guardarConfig(e, proveedorId, token) {
     };
 
     try {
-        const response = await fetch(`http://localhost:5000/api/Proveedores/${proveedorId}`, {
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
             method: 'PUT', 
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(body)
@@ -239,7 +264,8 @@ async function cargarHorarios() {
     if(!contenedor) return;
     
     try {
-        const response = await fetch('http://localhost:5000/api/Horarios/mi-semana', {
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_BASE}/Horarios/mi-semana`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         let horariosGuardados = [];
@@ -278,7 +304,8 @@ async function guardarTodosLosHorarios() {
         }
     }
     try {
-        const response = await fetch('http://localhost:5000/api/Horarios/configurar-semana', {
+        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        const response = await fetch(`${API_BASE}/Horarios/configurar-semana`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(horarios)
@@ -287,6 +314,94 @@ async function guardarTodosLosHorarios() {
     } catch (error) { console.error(error); }
 }
 
+/* ============================================================
+   🧠 NUEVAS SECCIONES FINTECH (NEQUI, DAVIPLATA) Y NOTIFICACIONES
+   ============================================================ */
+
+async function cargarDatosPagos(proveedorId, token) {
+    try {
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/pagos`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if(document.getElementById('pagoNequi')) document.getElementById('pagoNequi').value = data.nequiCelular || '';
+            if(document.getElementById('pagoDaviplata')) document.getElementById('pagoDaviplata').value = data.daviplataCelular || '';
+            if(document.getElementById('pagoBancoNombre')) document.getElementById('pagoBancoNombre').value = data.bancoNombre || '';
+            if(document.getElementById('pagoTipoCuenta')) document.getElementById('pagoTipoCuenta').value = data.bancoTipo || 'Ahorros';
+            if(document.getElementById('pagoNumeroCuenta')) document.getElementById('pagoNumeroCuenta').value = data.bancoNumero || '';
+        }
+    } catch (error) { console.error("Error leyendo datos de recaudo digital:", error); }
+}
+
+async function guardarConfigPagos(e, proveedorId, token) {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando cuentas...';
+
+    const body = {
+        ProveedorId: proveedorId,
+        NequiCelular: document.getElementById('pagoNequi').value.trim(),
+        DaviplataCelular: document.getElementById('pagoDaviplata').value.trim(),
+        BancoNombre: document.getElementById('pagoBancoNombre').value.trim(),
+        BancoTipo: document.getElementById('pagoTipoCuenta').value,
+        BancoNumero: document.getElementById('pagoNumeroCuenta').value.trim()
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/pagos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(body)
+        });
+        if (response.ok) alert("✅ ¡Pasarela digital vinculada, mi perro!");
+    } catch (error) { alert("🚀 Error al inyectar datos de recaudo."); }
+    finally { btn.disabled = false; btn.innerHTML = originalHTML; }
+}
+
+async function cargarDatosNotificaciones(proveedorId, token) {
+    try {
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/notificaciones`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if(document.getElementById('notifWhatsApp')) document.getElementById('notifWhatsApp').checked = data.permitirWhatsApp ?? true;
+            if(document.getElementById('notifEmail')) document.getElementById('notifEmail').checked = data.permitirEmail ?? true;
+        }
+    } catch (error) { console.error("Error leyendo configuración de alertas:", error); }
+}
+
+async function guardarConfigNotificaciones(e, proveedorId, token) {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando alertas...';
+
+    const body = {
+        ProveedorId: proveedorId,
+        PermitirWhatsApp: document.getElementById('notifWhatsApp').checked,
+        PermitirEmail: document.getElementById('notifEmail').checked
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/notificaciones`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(body)
+        });
+        if (response.ok) alert("✅ ¡Preferencias de alertas configuradas con éxito!");
+    } catch (error) { alert("🚀 Error al guardar canales de comunicación."); }
+    finally { btn.disabled = false; btn.innerHTML = originalHTML; }
+}
+
+/* ============================================================
+   SECCIÓN: UTILIDADES GENERALES
+   ============================================================ */
+
 function getEstadoClass(estado) {
     if (estado.includes('completado') || estado.includes('confirmada')) return 'status-activo';
     if (estado.includes('cancelada') || estado.includes('suspendido')) return 'status-bloqueado';
@@ -294,7 +409,7 @@ function getEstadoClass(estado) {
 }
 
 function logout() {
-    if (confirm("¿Se va a abrir, mi perro? Guarde todo antes de salir.")) {
+    if (confirm("¿Seguro que te vas a salir? te extrañaremos mucho hasta que vuelvas.")) {
         localStorage.clear();
         window.location.href = 'login.html';
     }

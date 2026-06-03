@@ -1,0 +1,237 @@
+/* =========================================
+   TURNIFY REGISTRO - VERSIÓN SENIOR PRO
+   ========================================= */
+
+/* 1. RESET GLOBAL: Blindaje contra márgenes fantasma */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --t-dark: #1b3d5f;
+    --t-cyan: #48c1b5;
+    --t-green: #70e0a3;
+    --t-white: #ffffff;
+    --t-gray: #f4f7f6;
+    --t-danger: #e94560; /* 🚩 Nuevo: Para alertas */
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--t-dark);
+}
+
+/* 2. EL WRAPPER (Fondo degradado Turnify) */
+.register-wrapper {
+    background: linear-gradient(135deg, var(--t-dark) 0%, #0a1929 100%) !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    width: 100%;
+    padding: 20px;
+}
+
+/* 3. LA TARJETA BLANCA (Diseño Pro) */
+.register-card {
+    background: var(--t-white) !important;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+    width: 100%;
+    max-width: 550px; /* 🚩 Ajustado: Un poco más ancho para el flujo de reserva */
+    text-align: center;
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.register-header h2 {
+    color: var(--t-dark);
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 10px;
+}
+
+/* 🚩 NUEVO: Badge de negocio detectado (QR) */
+#negocioDetected {
+    margin-bottom: 15px;
+}
+
+.status-pill {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-activo {
+    background: rgba(72, 193, 181, 0.2);
+    color: var(--t-cyan);
+    border: 1px solid var(--t-cyan);
+}
+
+/* 4. FORMULARIO Y CAMPOS (Mejorados) */
+.form-grid {
+    display: flex;
+    flex-wrap: wrap; /* 🚩 Permitir dos columnas en pantallas anchas */
+    gap: 15px;
+    text-align: left;
+}
+
+.input-group {
+    flex: 1 1 calc(50% - 15px); /* Dos columnas */
+    min-width: 200px;
+}
+
+.full-width {
+    flex: 1 1 100%;
+}
+
+.input-group label {
+    display: block;
+    color: var(--t-dark);
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+/* 🚩 Iconos en labels */
+.input-group label i {
+    color: var(--t-cyan);
+    margin-right: 5px;
+    width: 15px;
+}
+
+/* 🚩 Sincronización: Input y Select con el mismo estilo */
+.input-group input, 
+.input-group select {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #edf2f7;
+    border-radius: 10px;
+    background: var(--t-gray);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    color: var(--t-dark);
+}
+
+.input-group input:focus,
+.input-group select:focus {
+    border-color: var(--t-cyan);
+    outline: none;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(72, 193, 181, 0.1);
+}
+
+/* 🚩 Estilo para los divisores de sección (Cita / Seguridad) */
+.divider-text {
+    width: 100%;
+    text-align: center;
+    border-bottom: 1px solid #eee;
+    line-height: 0.1em;
+    margin: 25px 0 15px;
+    color: var(--t-cyan);
+    font-weight: bold;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.divider-text span {
+    background: #fff;
+    padding: 0 15px;
+}
+
+/* 5. BOTÓN DE ACCIÓN */
+.btn-register {
+    background: var(--t-cyan);
+    color: var(--t-dark);
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.btn-register:hover {
+    background: var(--t-green);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(112, 224, 163, 0.4);
+}
+
+.btn-register:disabled {
+    background: #cbd5e0;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* 6. FOOTER */
+.register-footer {
+    margin-top: 25px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.register-footer a {
+    color: var(--t-cyan);
+    font-weight: bold;
+    text-decoration: none;
+}
+
+/* 7. ROLE SELECTOR */
+.role-selector {
+    display: flex;
+    background: var(--t-gray);
+    padding: 5px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    border: 1px solid #edf2f7;
+}
+
+.role-selector button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: transparent;
+    color: #718096;
+}
+
+.role-selector button.active {
+    background: var(--t-white);
+    color: var(--t-dark);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 📱 RESPONSIVE SENIOR */
+@media (max-width: 480px) {
+    .register-card {
+        padding: 25px 20px;
+    }
+    .input-group {
+        flex: 1 1 100%;
+    }
+}

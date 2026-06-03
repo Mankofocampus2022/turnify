@@ -1,7 +1,16 @@
-/* =========================================
+/* ============================================================
    TURNIFY - GESTIÓN DE USUARIOS (PRO)
-   ========================================= */
-const API_URL = 'http://localhost:5000/api/Usuarios';
+   ============================================================ */
+
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el origen de red en caliente. Si corre localmente usa el puerto 5000 de .NET,
+// si entran desde una IP local o dominio en producción, reconfigura el host de inmediato para la gestión de usuarios.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
+        ? `${window.location.protocol}//${window.location.hostname}:5000`
+        : window.location.origin);
+
+const API_URL = `${API_HOST}/api/Usuarios`;
 let listaUsuariosGlobal = []; 
 
 // 1. EL GUARDIÁN (Blindado)
@@ -90,14 +99,14 @@ function renderizarTabla(usuarios) {
 
         if (rol.toLowerCase().includes('barbero') || rol.toLowerCase().includes('proveedor')) {
             botonesExtra += `
-                <button class="btn-action" style="background-color: #ffc107; color: #000;" onclick="gestionarTarjeta('${id}')">
+                <button class="btn-action" style="background-color: #ffc107; color: #000;" onclick="gestionarTarjeta('${id}')" title="Ver Tarjeta Digital">
                     <i class="fas fa-id-card"></i>
                 </button>`;
         }
 
         if (userRoleActual.includes('ADMIN')) {
             botonesExtra += `
-                <button class="btn-action" style="background-color: #48c1b5; color: #1b3d5f;" onclick="renovarSuscripcion('${id}')">
+                <button class="btn-action" style="background-color: #48c1b5; color: #1b3d5f;" onclick="renovarSuscripcion('${id}')" title="Renovar Suscripción">
                     <i class="fas fa-calendar-plus"></i>
                 </button>`;
         }
@@ -113,7 +122,7 @@ function renderizarTabla(usuarios) {
                 <td><span class="status-pill ${statusClass}">${statusText}</span></td>
                 <td>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn-action ${bloqueado ? 'btn-activar' : 'btn-bloquear'}" onclick="toggleUser('${id}', ${bloqueado})">
+                        <button class="btn-action ${bloqueado ? 'btn-activar' : 'btn-bloquear'}" onclick="toggleUser('${id}', ${bloqueado})" title="${bloqueado ? 'Activar' : 'Suspender'}">
                             <i class="fas ${bloqueado ? 'fa-check' : 'fa-ban'}"></i>
                         </button>
                         ${botonesExtra}
@@ -197,8 +206,9 @@ function gestionarTarjeta(id) {
     document.getElementById('modalTarjeta').style.display = 'flex';
 
     // Generamos el código QR con el link de agendamiento
-    // 🛡️ TIP: Aquí puedes poner el link real de tu frontend para clientes
-    const linkReserva = `http://localhost:5000/agendar.html?barbero=${id}`;
+    // 🛡️ FIX DE QR COMPARTIBLE: Usamos window.location.origin en lugar de un localhost quemado, 
+    // garantizando que si se escanea desde un celular apunte al dominio real del despliegue.
+    const linkReserva = `${window.location.origin}/agendar-cita.html?id=${id}`;
 
     new QRCode(qrContainer, {
         text: linkReserva,
@@ -241,3 +251,10 @@ window.logout = function() {
     localStorage.clear(); 
     window.location.href = 'login.html'; 
 };
+
+// Puentes globales explícitos para asegurar la ejecución desde las celdas de la tabla HTML
+window.gestionarTarjeta = gestionarTarjeta;
+window.cerrarTarjeta = cerrarTarjeta;
+window.descargarQR = descargarQR;
+window.toggleUser = toggleUser;
+window.renovarSuscripcion = renovarSuscripcion;

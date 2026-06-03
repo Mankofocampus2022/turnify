@@ -1,6 +1,16 @@
+/* ============================================================
+   TURNIFY - MOTOR ANALÍTICO Y METRICAS DE BUSINESS INTELLIGENCE
+   ============================================================ */
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Configuración Validada (URL Dinámica Blindada)
-    const API_BASE_URL = window.location.origin + '/api'; 
+    // 1. Configuración Validada (URL Dinámica Blindada - Matriz de Red Inteligente para Docker)
+    let API_BASE_URL = window.location.origin + '/api'; 
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        API_BASE_URL = 'http://localhost:5000/api';
+    } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)) {
+        // Mapeo seguro si accedes desde tu celular o tablet a la IP de la laptop en la misma red Wi-Fi
+        API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    }
     
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : null;
@@ -321,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-pdf')?.addEventListener('click', () => {
         const elemento = document.getElementById('contenido-reporte');
+        if (!elemento) return;
         elemento.classList.add('pdf-export-mode');
         html2pdf().set({
             margin: 10,

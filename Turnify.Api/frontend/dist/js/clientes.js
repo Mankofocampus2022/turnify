@@ -1,12 +1,35 @@
+/* ============================================================
+   TURNIFY - MOTOR DE GESTIÓN Y SEGUIMIENTO DE CLIENTES
+   ============================================================ */
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 🚩 CONFIGURACIÓN DINÁMICA (Blindaje contra entornos fijos)
-    const API_BASE_URL = window.location.origin + '/api'; 
+    // 🚩 CONFIGURACIÓN DINÁMICA (Blindaje contra entornos fijos - Matriz de Red Inteligente)
+    let API_BASE_URL = window.location.origin + '/api';
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        API_BASE_URL = 'http://localhost:5000/api';
+    } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)) {
+        API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    }
+
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
+    
+    // GUIDs de administración centralizada de la base de datos SQL Server
+    const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";
+    const ADMIN_GUID = "6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43";
+    const BARBERO_GUID = "8854C07C-6E5E-4876-A29A-C7AD5DCFBAB7";
 
-    const rol = localStorage.getItem('usuario_rol');
-    const rolesPermitidos = ['Administrador', 'SuperAdmin', 'Cliente'];
+    // 🧠 FIX DE PRIVILEGIOS: Aseguramos compatibilidad con Strings y GUIDs de base de datos
+    const esValido = rol.includes("ADMIN") || 
+                     rol.includes("SUPERADMIN") || 
+                     rol.includes("BARBERO") || 
+                     rol.includes("PROVEEDOR") ||
+                     rol.includes("CLIENTE") ||
+                     rol === SUPER_ADMIN_GUID || 
+                     rol === ADMIN_GUID || 
+                     rol === BARBERO_GUID;
 
-    if (!rolesPermitidos.includes(rol)) {
+    if (!esValido) {
         window.location.href = 'login.html';
         return;
     }
@@ -24,9 +47,16 @@ document.addEventListener('DOMContentLoaded', () => {
 window.listadoCompletoClientes = [];
 
 async function cargarClientes() {
-    // 🚩 REDEFINICIÓN DE URL (Blindaje para Docker/Producción)
-    const API_BASE_URL = window.location.origin + '/api'; 
-    const token = localStorage.getItem('token');
+    // 🚩 REDEFINICIÓN DE URL (Blindaje para Docker/Producción - Sincronizado)
+    let API_BASE_URL = window.location.origin + '/api';
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        API_BASE_URL = 'http://localhost:5000/api';
+    } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)) {
+        API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    }
+
+    // 🧠 FIX: Doble asignación preventiva para evitar cabeceras Authorization con strings "null"
+    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
     try {
         // 🛡️ PETICIÓN SEGURA: Añadimos el Header de Authorization
@@ -115,10 +145,58 @@ function filtrarClientes(termino) {
 
 /**
  * 🔑 FUNCIÓN PARA AYUDAR AL CLIENTE (Ver sus tokens)
+ * (Versión funcional al 100% integrada al CitasController de .NET Core)
  */
-function verHistorial(clienteId) {
-    // 🚩 Redirigir o abrir modal para que el barbero vea las citas del cliente y le de su token si lo perdió
+async function verHistorial(clienteId) {
     console.log("Consultando historial del cliente:", clienteId);
-    // Podrías abrir un modal que llame a api/Citas/historial/{clienteId}
-    alert("Consultando historial... Aquí podrás ver los códigos de verificación del cliente.");
+    
+    let API_BASE_URL = window.location.origin + '/api';
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        API_BASE_URL = 'http://localhost:5000/api';
+    } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)) {
+        API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    }
+
+    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+
+    try {
+        // Disparamos la consulta directo al endpoint transaccional del historial
+        const response = await fetch(`${API_BASE_URL}/Citas/historial/${clienteId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const citas = await response.json();
+            
+            if (!citas || citas.length === 0) {
+                alert("ℹ️ Este cliente no registra agendas de citas en el sistema.");
+                return;
+            }
+
+            // Mapeamos el vector de datos con formato limpio para legibilidad del Profesional
+            const infoCitas = citas.map(c => {
+                const fechaLimpia = c.fecha ? c.fecha.split('T')[0] : 'Hoy';
+                const horaLimpia = c.hora ? c.hora.toString().slice(0, 5) : '--:--';
+                return `📅 Fecha: ${fechaLimpia} | ⏰ Hora: ${horaLimpia}\n` +
+                       `🛠️ Servicio: ${c.servicioNombre || 'Servicio'}\n` +
+                       `📌 Estado: ${c.estado.toUpperCase()}\n` +
+                       `🔑 TOKEN CHECK-IN: ${c.codigoVerificacion || 'Ninguno'}\n` +
+                       `----------------------------------------`;
+            }).join('\n');
+
+            alert(`📋 HISTORIAL DE CITAS Y TOKENS RECONOCIDOS:\n\n${infoCitas}`);
+        } else {
+            alert("❌ No se pudo recuperar el historial. Verifica la sesión del usuario.");
+        }
+    } catch (error) {
+        console.error("🔥 Error de red al traer historial:", error);
+        alert("🔌 Error de red al conectar con el servidor.");
+    }
 }
+
+// Vinculamos la función al puente global de la ventana
+window.verHistorial = verHistorial;

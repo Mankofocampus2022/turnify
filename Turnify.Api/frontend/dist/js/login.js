@@ -1,5 +1,15 @@
+/* ============================================================
+   TURNIFY - MOTOR DE AUTENTICACIÓN E IDENTIDAD
+   ============================================================ */
+
 // 🛡️ CAMBIO SENIOR: Dejamos la ruta fija "api/Usuarios" para evitar problemas.
-const API_URL = 'http://localhost:5000/api/Usuarios/login';
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente. Si entras desde localhost usa el puerto 5000, 
+// si entras desde otra IP de la red local o dominio, reconfigura el endpoint automáticamente para que el navegador no falle.
+const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : `${window.location.protocol}//${window.location.hostname}:5000`;
+
+const API_URL = `${API_HOST}/api/Usuarios/login`;
 
 async function login() {
     const btn = document.getElementById('btnEntrar');
