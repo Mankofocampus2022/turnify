@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Data;
 using Turnify.Api.Models;
-using Turnify.Api.Models.DTOs; // 🛡️ Aquí es donde .NET va a buscar los DTOs ahora
+using Turnify.Api.Models.DTOs; 
 using Turnify.Api.Interfaces;  
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
@@ -59,14 +59,28 @@ namespace Turnify.Api.Controllers
 
             _logger.LogInformation($"📥 [WhatsApp Inbound] Mensaje recibido de {payload.Telefono}: {payload.Mensaje}");
 
-            string respuestaBot = await _whatsAppService.ProcesarMensajeEntranteAsync(payload.Telefono, payload.Mensaje);
-
-            return Ok(new WhatsAppResponseDto
+            try
             {
-                TelefonoCliente = payload.Telefono,
-                Respuesta = respuestaBot,
-                FechaProcesado = DateTime.Now
-            });
+                // Enviamos el mensaje a nuestra máquina de estados conversacional en C#
+                string respuestaBot = await _whatsAppService.ProcesarMensajeEntranteAsync(payload.Telefono, payload.Mensaje);
+
+                return Ok(new WhatsAppResponseDto
+                {
+                    TelefonoCliente = payload.Telefono,
+                    Respuesta = respuestaBot,
+                    FechaProcesado = DateTime.Now
+                });
+            }
+            catch (Exception ex)
+            {
+                // 🛡️ CONTROL SENIOR DE CONTENCIÓN: Evita bucles infinitos de reintentos por parte de Meta si el servicio falla
+                _logger.LogError(ex, "🚨 [WhatsApp Controller Crash] Error crítico al procesar el flujo conversacional para el teléfono {Telefono}", payload.Telefono);
+                
+                return StatusCode(500, new { 
+                    error = "Error interno al procesar el mensaje en el Bot.",
+                    message = ex.Message 
+                });
+            }
         }
     }
 }

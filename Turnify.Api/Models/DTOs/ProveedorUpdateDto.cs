@@ -1,3 +1,5 @@
+using System;
+
 namespace Turnify.Api.Models.DTOs // 🚩 Agregamos .DTOs para mantener el orden
 {
     public class ProveedorUpdateDto
@@ -11,5 +13,9 @@ namespace Turnify.Api.Models.DTOs // 🚩 Agregamos .DTOs para mantener el orden
         public string Direccion { get; set; } = string.Empty;
         
         public string Tipo { get; set; } = string.Empty;
+
+        // 🧠 BLINDAJE MASTER SENIOR: Permite actualizar la categoría ("Barbero" o "Manicurista") 
+        // desde el panel de administración sin romper el tipado relacional.
+        public string? Categoria { get; set; }
     }
 }

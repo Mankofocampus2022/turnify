@@ -16,11 +16,13 @@ const qrProveedorId = urlParams.get('id'); // Si viene de un QR, este ID existir
 
 /**
  * Función para alternar entre Cliente y Barbero en la UI
+ * (Actualizada de forma inclusiva para soportar Barberos y Manicuristas)
  */
 function cambiarRol(rol) {
     currentRole = rol;
     
     const groupNegocio = document.getElementById('groupNegocio');
+    const groupEspecialidad = document.getElementById('groupEspecialidad'); // 🧠 ADICIÓN: Captura el contenedor de categoría
     const inputNegocio = document.getElementById('regNegocio');
     const btnText = document.getElementById('btnText');
     const btnCliente = document.getElementById('btnSoyCliente');
@@ -30,13 +32,15 @@ function cambiarRol(rol) {
 
     if (rol === 'BARBERO') {
         if(groupNegocio) groupNegocio.style.display = 'block';
+        if(groupEspecialidad) groupEspecialidad.style.display = 'block'; // 🧠 ADICIÓN: Muestra la especialidad al ser Profesional
         if(sectionReserva) sectionReserva.style.display = 'none';
         if(inputNegocio) inputNegocio.required = true;
-        btnText.innerText = "Registrarme como Barbero";
+        btnText.innerText = "Registrarme como Profesional"; // 🧠 ADICIÓN: Texto inclusivo para la UI
         btnBarbero.classList.add('active');
         btnCliente.classList.remove('active');
     } else {
         if(groupNegocio) groupNegocio.style.display = 'none';
+        if(groupEspecialidad) groupEspecialidad.style.display = 'none'; // 🧠 ADICIÓN: Oculta la especialidad si vuelve a ser Cliente
         // Si hay un QR detectado, volvemos a mostrar la reserva al ser cliente
         if(qrProveedorId && sectionReserva) sectionReserva.style.display = 'block';
         if(inputNegocio) inputNegocio.required = false;
@@ -140,7 +144,8 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
         rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.BARBERO,
         telefono: document.getElementById('regTelefono').value.trim(),
         nombreComercial: currentRole === 'BARBERO' ? document.getElementById('regNegocio').value.trim() : "",
-        tipoNegocio: currentRole === 'BARBERO' ? (document.getElementById('regTipoNegocio')?.value || "Barbería") : "Particular"
+        // 🧠 ADICIÓN DINÁMICA: Mapea la selección real de especialidad (Barbero o Manicurista) desde el id="regCategoria"
+        tipoNegocio: currentRole === 'BARBERO' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular"
     };
 
     try {
@@ -197,7 +202,7 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
             alert("❌ Error: " + errorMsg);
             
             btnSubmit.disabled = false;
-            btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Barbero";
+            btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Profesional";
         }
 
     } catch (error) {

@@ -19,7 +19,7 @@
             
             <div class="role-selector">
                 <button type="button" id="btnSoyCliente" class="active" onclick="cambiarRol('CLIENTE')">Soy Cliente</button>
-                <button type="button" id="btnSoyBarbero" onclick="cambiarRol('BARBERO')">Soy Barbero</button>
+                <button type="button" id="btnSoyBarbero" onclick="cambiarRol('BARBERO')">Soy Profesional</button>
             </div>
         </div>
 
@@ -40,9 +40,17 @@
                 <input type="tel" id="regTelefono" placeholder="3001234567" required>
             </div>
 
+            <div id="groupEspecialidad" class="input-group full-width" style="display: none;">
+                <label><i class="fas fa-magic"></i> ¿Cuál es tu especialidad?</label>
+                <select id="regCategoria">
+                    <option value="Barbero">Barbería / Corte de Cabello 💈</option>
+                    <option value="Manicurista">Manicura / Cuidado de Uñas / estetica general 💅</option>
+                </select>
+            </div>
+
             <div id="groupNegocio" class="input-group full-width" style="display: none;">
-                <label><i class="fas fa-store"></i> Nombre de tu Barbería / Negocio</label>
-                <input type="text" id="regNegocio" placeholder="Ej: Barbería El Don">
+                <label><i class="fas fa-store"></i> Nombre de tu Negocio / Establecimiento</label>
+                <input type="text" id="regNegocio" placeholder="Ej: Barbería El Don o Salón Belleza">
             </div>
 
             <div id="sectionReservaInmediata" class="full-width" style="display: none;">
@@ -73,7 +81,7 @@
                 <div class="input-group full-width">
                     <label><i class="fas fa-hand-holding-heart"></i> Modalidad del servicio</label>
                     <select id="regModalidad" onchange="toggleDireccionRegistro()">
-                        <option value="local">En el local / Barbería</option>
+                        <option value="local">En el local / Establecimiento</option>
                         <option value="domicilio">A domicilio (Servicio Premium)</option>
                     </select>
                 </div>
@@ -109,6 +117,5 @@
 </div>
 
 <script src="js/registro-clientes.js"></script>
-
 </body>
 </html>

@@ -24,6 +24,13 @@ namespace Turnify.Api.Models
         [JsonPropertyName("tipo")]
         public string Tipo { get; set; } = "negocio";
 
+        // 🧠 ARQUITECTURA MASTER SENIOR: Columna discriminadora para separar los flujos del Bot.
+        // Mapea con el ALTER TABLE de DBeaver y puede recibir "Barbero" o "Manicurista".
+        // 🧠 BLINDAJE ULTRA SENIOR: Modificado a nullable (string?) para tolerar nulos de la DB sin crashear.
+        [Column("categoria")]
+        [JsonPropertyName("categoria")]
+        public string? Categoria { get; set; } = "Barbero";
+
         [Required]
         [Column("nombre_comercial")] 
         [JsonPropertyName("nombre_comercial")]
@@ -72,6 +79,8 @@ namespace Turnify.Api.Models
         [Column("fecha_actualizacion")]
         [JsonPropertyName("fecha_actualizacion")]
         public DateTime? FechaActualizacion { get; set; }
+
+        
 
         // --- 🚩 RELACIONES DE IDENTIDAD (El Blindaje Maestro) ---
 

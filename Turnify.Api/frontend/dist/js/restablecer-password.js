@@ -5,13 +5,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // 🚩 RESCATE AUTOMÁTICO DE TOKEN DESDE LA URL
     // Obtenemos los parámetros de búsqueda de la URL (ej: ?token=mi_codigo_secreto)
     const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token');
+    
+    // 🛡️ MEJORA DE INFRAESTRUCTURA: Soporte flexible para mayúsculas/minúsculas (?token= o ?Token=)
+    let tokenFromUrl = urlParams.get('token') || urlParams.get('Token');
+
+    // 🛡️ ENLACE DE RESPALDO: Si el token viene después de un hash fragment (#token=) por ruteo SPA, lo capturamos también
+    if (!tokenFromUrl && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        tokenFromUrl = hashParams.get('token') || hashParams.get('Token');
+    }
 
     // Evaluamos si el token existe en la URL
     if (tokenFromUrl) {
         console.log("🔑 [Turnify Debug] Token encontrado en la URL:", tokenFromUrl);
         // Asignamos el valor del token al input oculto en el formulario
-        document.getElementById('reset-token').value = tokenFromUrl;
+        document.getElementById('reset-token').value = tokenFromUrl.trim(); // Sanitizado sin espacios
     } else {
         // Alerta en la consola en caso de que el enlace se abra sin token
         console.warn("⚠️ [Turnify Debug] Token de recuperación no encontrado en la URL.");
@@ -28,9 +36,10 @@ document.getElementById('form-reset').addEventListener('submit', async (e) => {
     console.log("📥 [Turnify Debug] Formulario enviado. Capturando datos del usuario...");
 
     // Capturamos los valores de los inputs del formulario
-    const email = document.getElementById('email').value;
-    const telefono = document.getElementById('telefono').value;
-    const token = document.getElementById('reset-token').value;
+    // 🛡️ BLINDAJE ANTI-BUG: Aplicamos .trim() para limpiar espacios fantasmas del Copy-Paste que arruinan la Validación Dual en DB
+    const email = document.getElementById('email').value.trim();
+    const telefono = document.getElementById('telefono').value.trim();
+    const token = document.getElementById('reset-token').value.trim();
     const password = document.getElementById('new-password').value;
 
     // Imprimimos en consola los datos capturados (Ocultando la contraseña por seguridad)

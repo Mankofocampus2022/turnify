@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic; // 🛡️ Asegura el soporte para ICollection<Citas>
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
@@ -13,10 +14,11 @@ namespace Turnify.Api.Models
         [JsonPropertyName("id")]
         public Guid id { get; set; }
 
-        [Required]
+        // 🧠 BLINDAJE MASTER SENIOR: Se remueve [Required] y se define como Guid? (Nullable)
+        // Esto permite que el cliente de WhatsApp exista de forma independiente sin un usuario web asociado.
         [Column("usuario_id")] 
         [JsonPropertyName("usuario_id")]
-        public Guid usuario_id { get; set; }
+        public Guid? usuario_id { get; set; }
 
         [Required]
         [StringLength(120)]

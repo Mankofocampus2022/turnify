@@ -120,6 +120,9 @@ builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// 🛡️ MATRÍCULA DEL BOT DE WHATSAPP: Soluciona el error fatal de activación en el controlador
+builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
+
 // 🔄 Inyección del Worker Automático en segundo plano (Sistemas Reactivos - Frente 2)
 // Este servicio se encarga de monitorear y cancelar las citas no asistidas automáticamente.
 builder.Services.AddHostedService<CitaCancellationWorker>();

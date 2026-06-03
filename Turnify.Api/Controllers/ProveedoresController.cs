@@ -38,6 +38,8 @@ namespace Turnify.Api.Controllers
                     p.NombreComercial,
                     p.Direccion,
                     p.Tipo,
+                    // 🧠 INYECTADO SENIOR: Mapeo de salida para listar la categoría en el panel web global
+                    p.Categoria,
                     p.TrabajaDomicilio,
                     p.Activo,
                     Dueno = p.Usuario != null ? p.Usuario.nombre : "Usuario no encontrado"
@@ -66,11 +68,14 @@ namespace Turnify.Api.Controllers
             proveedor.NombreComercial = dto.NombreComercial;
             proveedor.Direccion = dto.Direccion;
             proveedor.Tipo = dto.Tipo;
+            
+            // 🧠 INYECTADO SENIOR: Mapeo de actualización en caliente desde el panel administrativo
+            proveedor.Categoria = dto.Categoria ?? proveedor.Categoria;
 
             try
             {
                 await _context.SaveChangesAsync();
-                return Ok(new { message = "¡Perfil actualizado con éxito, mi perro!" });
+                return Ok(new { message = "¡Perfil actualizado con exito!" });
             }
             catch (Exception ex)
             {
@@ -92,6 +97,8 @@ namespace Turnify.Api.Controllers
                     p.NombreComercial,
                     p.Direccion,
                     p.Tipo,
+                    // 🧠 INYECTADO SENIOR: Mapeo de salida para la vista unitaria del detalle del perfil
+                    p.Categoria,
                     p.UsuarioId,
                     UsuarioNombre = p.Usuario != null ? p.Usuario.nombre : "N/A",
                     p.TrabajaDomicilio,
@@ -115,6 +122,8 @@ namespace Turnify.Api.Controllers
                 NombreComercial = dto.nombre_comercial,
                 Direccion = dto.direccion,
                 Tipo = dto.tipo,
+                // 🧠 INYECTADO SENIOR: Captura el valor exacto enviado por el JSON del frontend, si falta cae en "Barbero"
+                Categoria = dto.categoria ?? "Barbero",
                 UsuarioId = dto.usuarioId,
                 FechaCreacion = DateTime.Now,
                 TrabajaDomicilio = dto.trabaja_domicilio,

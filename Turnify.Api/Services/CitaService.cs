@@ -82,12 +82,15 @@ namespace Turnify.Api.Services
                     Hora = c.Hora,
                     ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
-                    Estado = c.Estado,
+                    
+                    // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
+                    Estado = c.Estado ?? "pendiente",
                     PrecioPactado = c.PrecioPactado,
                     DuracionPactadaMin = c.DuracionPactadaMin,
-                    Observaciones = c.Observaciones,
-                    Modalidad = c.Modalidad,
-                    MetodoRegistro = c.MetodoRegistro,
+                    Observaciones = c.Observaciones ?? "",
+                    Modalidad = c.Modalidad ?? "local",
+                    MetodoRegistro = c.MetodoRegistro ?? "Web",
+                    
                     Direccion = c.Direccion,
                     // 🛡️ Añadimos el token a la respuesta para que el barbero lo vea en su reporte
                     CodigoVerificacion = c.CodigoVerificacion 
@@ -225,11 +228,6 @@ namespace Turnify.Api.Services
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync(); 
 
-                    // 🛡️ [NOTIFICACIONES INTEGRADAS]
-                    // Aquí el token ya está en base de datos. Se puede disparar el correo/WhatsApp.
-                    // string msg = $"Turnify: Tu token es {nuevaCita.CodigoVerificacion}.";
-                    // EnviarNotificacion(cliente.telefono, msg);
-
                     return (true, $"¡Cita agendada! Código de Check-in: {nuevaCita.CodigoVerificacion}", (Guid?)nuevaCita.Id);
                 }
                 catch (DbUpdateConcurrencyException ex)
@@ -270,7 +268,6 @@ namespace Turnify.Api.Services
 
             var provIdReal = proveedorId == Guid.Empty ? servicio.ProveedorId.GetValueOrDefault() : proveedorId;
 
-            // 🛡️ Validación extra para asegurar que el proveedorId sea válido
             if (provIdReal == Guid.Empty) return Enumerable.Empty<TimeSpan>();
 
             int diaSemanaNet = (int)fecha.DayOfWeek; 
@@ -299,7 +296,6 @@ namespace Turnify.Api.Services
             {
                 if (tiempoActual > limiteHoraActual) 
                 {
-                    // 🛡️ REFINAMIENTO CRÍTICO: ¿El servicio de X minutos cabe aquí sin chocar con NADIE?
                     bool ocupado = citasOcupadas.Any(c => 
                         tiempoActual < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < tiempoActual + duracionSolicitada
                     );
@@ -328,7 +324,7 @@ namespace Turnify.Api.Services
                 if (cita.CodigoVerificacion != token.ToUpper())
                     return (false, "Token de validación incorrecto.");
 
-                cita.Estado = "completada"; // O "confirmada" según tu flujo
+                cita.Estado = "completada"; 
                 await _context.SaveChangesAsync();
                 return (true, "Asistencia confirmada exitosamente.");
             }
@@ -372,8 +368,7 @@ namespace Turnify.Api.Services
 
             return await _context.citas.AsNoTracking()
                 .Include(c => c.Servicio)
-                .Include(c => c.Cliente) // Incluimos para la validación de usuario_id
-                // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ClienteId o por el usuario_id vinculado
+                .Include(c => c.Cliente) 
                 .Where(c => c.ClienteId == clienteId || (c.Cliente != null && c.Cliente.usuario_id == clienteId))
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
                 .Select(c => new CitaResponseDto {
@@ -381,10 +376,14 @@ namespace Turnify.Api.Services
                     Fecha = c.Fecha,
                     Hora = c.Hora,
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no especificado",
-                    Estado = c.Estado,
+                    
+                    // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
+                    Estado = c.Estado ?? "pendiente",
                     PrecioPactado = c.PrecioPactado,
-                    Observaciones = c.Observaciones,
-                    Modalidad = c.Modalidad,
+                    Observaciones = c.Observaciones ?? "",
+                    Modalidad = c.Modalidad ?? "local",
+                    MetodoRegistro = c.MetodoRegistro ?? "Web",
+                    
                     // 🛡️ REFUERZO: Mapeamos el token para que el cliente lo vea en su pestaña de "Mis Citas"
                     CodigoVerificacion = c.CodigoVerificacion 
                 }).ToListAsync();
