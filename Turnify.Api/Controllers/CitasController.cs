@@ -28,11 +28,13 @@ namespace Turnify.Api.Controllers
     {
         private readonly ICitaService _citaService;
         private readonly IDashboardService _dashboardService;
+        private readonly TurnifyDbContext _context; // 🛡️ [NUEVO] Inyección de base de datos para reparaciones en caliente
         
-        public CitasController(ICitaService citaService, IDashboardService dashboardService) 
+        public CitasController(ICitaService citaService, IDashboardService dashboardService, TurnifyDbContext context) 
         {
             _citaService = citaService;
             _dashboardService = dashboardService;
+            _context = context; // 🛡️ Sincronizado
         }
 
         // --- 📅 1. AGENDA DE HOY (Filtro Estricto Bogota Time) ---
@@ -51,7 +53,7 @@ namespace Turnify.Api.Controllers
             return Ok(agenda);
         }
 
-        // --- 📊 2. CITAS POR RANGO (Blindado contra fechas nulas y desbordamiento) ---
+        // --- 📊 2. CITAS POR RANGO (Blindado contra fechas nulas and desbordamiento) ---
         [HttpGet("rango")]
         public async Task<IActionResult> GetCitasRango([FromQuery] DateTime? inicio, [FromQuery] DateTime? fin)
         {
@@ -100,7 +102,7 @@ namespace Turnify.Api.Controllers
             return Ok(datos);
         }
 
-        // --- 📝 5. AGENDAR CITA (CON PROTECCIÓN DE IDENTIDAD) ---
+        // --- 📝 5. AGENDAR CITA (CON PROTECCIÓN DE IDENTIDAD Y BLINDAJE TRY-CATCH) ---
         [HttpPost("agendar")]
         [AllowAnonymous] 
         public async Task<IActionResult> Agendar([FromBody] CitaCreateDto dto)
@@ -108,36 +110,111 @@ namespace Turnify.Api.Controllers
             if (dto == null) return BadRequest(new { message = "Petición nula." });
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            // 🛡️ BLINDAJE JWT: Mapeo inteligente de ClienteID vs UsuarioID
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var clienteIdClaim = User.FindFirst("ClienteId")?.Value; // 🚩 Nueva claim inyectada en el login
-
-            if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole("Cliente"))
+            try 
             {
-                // 🚩 FIX MAESTRO: Priorizamos el ID de la tabla Clientes si está en el token
-                if (!string.IsNullOrEmpty(clienteIdClaim) && Guid.TryParse(clienteIdClaim, out Guid realClientId))
-                {
-                    dto.ClienteId = realClientId;
-                    Console.WriteLine($"🔍 [Turnify Auth] Usando ClienteID real: {realClientId}");
-                }
-                else if (Guid.TryParse(userIdClaim, out Guid authUserId))
-                {
-                    // Si no está el ClienteID, usamos el UsuarioID (pero esto puede fallar si el service no lo mapea)
-                    dto.ClienteId = authUserId;
-                    Console.WriteLine($"⚠️ [Turnify Auth] Advertencia: Usando UsuarioID como ClienteID: {authUserId}");
-                }
-            }
+                // 🛡️ BLINDAJE JWT: Mapeo inteligente de ClienteID vs UsuarioID
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var clienteIdClaim = User.FindFirst("ClienteId")?.Value; // 🚩 Nueva claim inyectada en el login
 
-            var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
-            if (!result.Success) 
-                return BadRequest(new { message = result.Message });
-            
-            return Ok(new { 
-                message = result.Message, 
-                citaId = result.CitaId,
-                modalidad = dto.Modalidad,
-                registro = dto.MetodoRegistro ?? "Web"
-            });
+                if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole("Cliente"))
+                {
+                    // 🚩 FIX MAESTRO: Priorizamos el ID de la tabla Clientes si está en el token
+                    if (!string.IsNullOrEmpty(clienteIdClaim) && Guid.TryParse(clienteIdClaim, out Guid realClientId))
+                    {
+                        dto.ClienteId = realClientId;
+                        Console.WriteLine($"🔍 [Turnify Auth] Usando ClienteID real: {realClientId}");
+                    }
+                    else if (Guid.TryParse(userIdClaim, out Guid authUserId))
+                    {
+                        dto.ClienteId = authUserId;
+                        Console.WriteLine($"⚠️ [Turnify Auth] Advertencia: Usando UsuarioID como ClienteID: {authUserId}");
+                    }
+                }
+
+                // 🚀 [BUG 1 RESTRICTION] - UN PROVEEDOR O ADMINISTRADOR NO PUEDE PEDIR CITAS COMO CLIENTE
+                if (!string.IsNullOrEmpty(userIdClaim) && !User.IsInRole("Cliente"))
+                {
+                    if (dto.ClienteId == Guid.Empty && string.IsNullOrEmpty(dto.AnonimoNombre))
+                    {
+                        return BadRequest(new { message = "Un proveedor o administrador no puede agendar citas para sí mismo. Debe seleccionar un cliente válido de la lista." });
+                    }
+                }
+
+                // 🚀 [BUG 2 FIX] - GUEST CHECKOUT QR (PROYECTADO CON SELECT PARA EVITAR SQLNULLVALUEEXCEPTION)
+                if (dto.ClienteId == Guid.Empty && (!string.IsNullOrEmpty(dto.AnonimoNombre) || !string.IsNullOrEmpty(dto.AnonimoEmail) || !string.IsNullOrEmpty(dto.AnonimoWhatsApp)))
+                {
+                    // 🧠 SOLUCIÓN SENIOR: Consultamos y proyectamos únicamente el ID para evitar fallas de mapeo de NULLs en registros de prueba antiguos
+                    var clienteExistenteId = await _context.clientes
+                        .Where(c => (!string.IsNullOrEmpty(dto.AnonimoEmail) && c.email == dto.AnonimoEmail) || 
+                                    (!string.IsNullOrEmpty(dto.AnonimoWhatsApp) && c.telefono == dto.AnonimoWhatsApp))
+                        .Select(c => c.id)
+                        .FirstOrDefaultAsync();
+
+                    if (clienteExistenteId != Guid.Empty)
+                    {
+                        dto.ClienteId = clienteExistenteId;
+                        Console.WriteLine($"🔍 [Turnify Guest Checkout] Reutilizando registro de cliente existente: {clienteExistenteId}");
+                    }
+                    else
+                    {
+                        Guid nuevoClienteId = Guid.NewGuid();
+                        var newCliente = new Clientes
+                        {
+                            id = nuevoClienteId,
+                            nombre = !string.IsNullOrEmpty(dto.AnonimoNombre) ? dto.AnonimoNombre : "Cliente Invitado QR",
+                            telefono = !string.IsNullOrEmpty(dto.AnonimoWhatsApp) ? dto.AnonimoWhatsApp : "3000000000",
+                            email = !string.IsNullOrEmpty(dto.AnonimoEmail) ? dto.AnonimoEmail : "qr_invitado@turnify.com",
+                            activo = true,
+                            fecha_creacion = DateTime.UtcNow,
+                            usuario_id = null
+                        };
+                        _context.clientes.Add(newCliente);
+                        await _context.SaveChangesAsync();
+                        dto.ClienteId = nuevoClienteId;
+                        Console.WriteLine($"✅ [Turnify Guest Checkout] Sincronización Exitosa: Perfil creado en caliente para invitado con ID {nuevoClienteId}");
+                    }
+                }
+
+                // 🚀 [KILLER FIX QR/ADMIN] AUTO-CREACIÓN EN CALIENTE DEL PERFIL DE CLIENTE
+                if (dto.ClienteId != Guid.Empty)
+                {
+                    var clientExists = await _context.clientes.AnyAsync(c => c.id == dto.ClienteId || c.usuario_id == dto.ClienteId);
+                    if (!clientExists)
+                    {
+                        var userForClient = await _context.usuarios.FindAsync(dto.ClienteId);
+                        var newCliente = new Clientes
+                        {
+                            id = dto.ClienteId,
+                            nombre = !string.IsNullOrEmpty(userForClient?.nombre) ? userForClient.nombre : "Cliente Especial QR",
+                            telefono = "3000000000",
+                            email = !string.IsNullOrEmpty(userForClient?.email) ? userForClient.email : "qr_test@turnify.com",
+                            activo = true,
+                            fecha_creacion = DateTime.UtcNow,
+                            usuario_id = userForClient != null ? dto.ClienteId : (Guid?)null
+                        };
+                        _context.clientes.Add(newCliente);
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"✅ [Turnify QR Fix] Sincronización Exitosa: Cliente creado en caliente para ID {dto.ClienteId}");
+                    }
+                }
+
+                var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
+                if (!result.Success) 
+                    return BadRequest(new { message = result.Message });
+                
+                return Ok(new { 
+                    message = result.Message, 
+                    citaId = result.CitaId,
+                    modalidad = dto.Modalidad,
+                    registro = dto.MetodoRegistro ?? "Web"
+                });
+            }
+            catch (Exception ex)
+            {
+                // 🛡️ BLINDAJE: Si ocurre un error, nos dirá exactamente qué pasó en la BD
+                Console.WriteLine($"❌ [Turnify Critical Error] {ex.Message}");
+                return StatusCode(500, new { message = "Error interno al agendar: " + ex.Message });
+            }
         }
 
         // 🛡️ --- 🚩 5.1 VALIDAR CHECK-IN (TOKEN) ---
@@ -146,7 +223,7 @@ namespace Turnify.Api.Controllers
         {
             if (dto == null) return BadRequest(new { message = "Datos de check-in requeridos." });
             if (dto.CitaId == Guid.Empty || string.IsNullOrEmpty(dto.Token))
-                return BadRequest(new { message = "Cita ID y Token son obligatorios para el Check-in." });
+                return BadRequest(new { message = "Cita ID and Token son obligatorios para el Check-in." });
 
             var result = await _citaService.ConfirmarAsistenciaAsync(dto.CitaId, dto.Token);
             if (!result.Success)
@@ -179,10 +256,12 @@ namespace Turnify.Api.Controllers
             
             if (slots == null || !slots.Any())
             {
-                return Ok(new List<TimeSpan>()); 
+                return Ok(new List<string>()); 
             }
 
-            return Ok(slots);
+            // 🛡️ CORRECCIÓN SENIOR: Mapeamos los TimeSpan explícitamente a strings en formato "hh:mm"
+            var formattedSlots = slots.Select(s => s.ToString(@"hh\:mm")).ToList();
+            return Ok(formattedSlots);
         }
 
         // --- ⚡ 8. ACTUALIZAR ESTADO (Auditado) ---
@@ -210,7 +289,6 @@ namespace Turnify.Api.Controllers
             var clienteIdClaim = User.FindFirst("ClienteId")?.Value;
             
             // 🛡️ Seguridad: Un cliente NO puede husmear el historial de otros IDs
-            // Validamos contra ambos IDs por si el frontend manda el del usuario o el del cliente
             if (User.IsInRole("Cliente"))
             {
                 bool esPropio = userIdClaim == clienteId.ToString() || clienteIdClaim == clienteId.ToString();
@@ -224,7 +302,7 @@ namespace Turnify.Api.Controllers
             return Ok(historial);
         }
 
-        // --- 📍 10. UBICACIÓN (Blindada y optimizada) ---
+        // --- 📍 10. UBICACIÓN (Blindada and optimizada) ---
         [HttpGet("{id}/ubicacion")]
         public async Task<IActionResult> GetUbicacionDomicilio(Guid id)
         {
@@ -234,13 +312,11 @@ namespace Turnify.Api.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized();
 
-            // 🛡️ Refactor: Solo buscamos en la agenda del profesional logueado por seguridad
             var agenda = await _citaService.GetAgendaHoyAsync(userId);
             var cita = agenda.FirstOrDefault(c => c.Id == id);
             
             if (cita == null) return NotFound(new { message = "Cita no encontrada o acceso denegado." });
             
-            // 🚩 Para que compile: Asegúrate que CitaResponseDto tenga estas propiedades
             return Ok(new {
                 direccion = cita.Direccion,
                 modalidad = cita.Modalidad,

@@ -12,6 +12,14 @@ function validarSesionYMenu() {
 
     // 1. SI NO HAY TOKEN: Patitas a la calle (al login)
     if (!token || token === "null" || token === "undefined") {
+        // 🚀 EXCEPCIÓN SENIOR PARA GUEST CHECKOUT QR:
+        // Si el cliente ingresa de manera anónima a agendar-cita.html trayendo el parámetro ID del proveedor (?id=...),
+        // detenemos el bloqueo global de autenticación para permitirle el agendamiento fluido de invitado.
+        const urlParamsQR = new URLSearchParams(window.location.search);
+        if (currentPath === 'agendar-cita.html' && urlParamsQR.has('id')) {
+            return; // Concedemos luz verde inmediata y omitimos el redirect
+        }
+
         if (currentPath !== 'login.html' && currentPath !== 'registro.html' && currentPath !== '') {
             window.location.href = 'login.html';
         }

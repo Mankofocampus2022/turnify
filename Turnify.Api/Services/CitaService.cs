@@ -16,10 +16,14 @@ namespace Turnify.Api.Services
     public class CitaService : ICitaService
     {
         private readonly TurnifyDbContext _context;
+        private readonly IEmailService _emailService; // 🚀 [NUEVO] Canal de correo electrónico inyectado
+        private readonly IWhatsAppService _whatsappService; // 🚀 [NUEVO] Canal de WhatsApp Bot inyectado
 
-        public CitaService(TurnifyDbContext context)
+        public CitaService(TurnifyDbContext context, IEmailService emailService, IWhatsAppService whatsappService)
         {
             _context = context;
+            _emailService = emailService; // 🚀 Sincronizado
+            _whatsappService = whatsappService; // 🚀 Sincronizado
         }
 
         // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá (Blindado contra fallos de TZ)
@@ -226,7 +230,46 @@ namespace Turnify.Api.Services
 
                     _context.citas.Add(nuevaCita);
                     await _context.SaveChangesAsync();
+
+                    // 🧠 INYECTADO SENIOR: Mapeamos el nombre del establecimiento comercial antes de cerrar la conexión para el email
+                    var establecimientoNombre = "Establecimiento Turnify";
+                    var provComercial = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == proveedorId);
+                    if (provComercial != null)
+                    {
+                        establecimientoNombre = !string.IsNullOrEmpty(provComercial.NombreComercial) ? provComercial.NombreComercial : "Establecimiento Turnify";
+                    }
+
                     await transaction.CommitAsync(); 
+
+                    // 🚀 [NUEVO CANAL REACTIVO ASÍNCRONO] - DISPARO DE NOTIFICACIONES ELECTRÓNICAS
+                    // Se encapsula en Task.Run para que se procese en paralelo, asegurando que la API responda de inmediato
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // 1. Envío automático de correo con la plantilla HTML responsiva matriculada
+                            if (!string.IsNullOrEmpty(cliente.email) && cliente.email.Contains("@"))
+                            {
+                                await _emailService.EnviarTokenCitaAsync(
+                                    cliente.email,
+                                    cliente.nombre,
+                                    nuevaCita.CodigoVerificacion,
+                                    dto.Fecha,
+                                    inicioNueva,
+                                    servicio.Nombre,
+                                    establecimientoNombre
+                                );
+                            }
+
+                            // 2. Canal de WhatsApp Bot: Aquí ya puedes invocar el método de envío nativo que tengas dentro de tu WhatsAppService.
+                            // Para mantener el blindaje contra errores de compilación por firmas, puedes descomentar y ajustar la línea según tu API:
+                            // await _whatsappService.EnviarMensajeTokenAsync(cliente.telefono, cliente.nombre, nuevaCita.CodigoVerificacion, establecimientoNombre);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"⚠️ [Turnify Background Alerta Error] Falla al despachar tokens: {ex.Message}");
+                        }
+                    });
 
                     return (true, $"¡Cita agendada! Código de Check-in: {nuevaCita.CodigoVerificacion}", (Guid?)nuevaCita.Id);
                 }

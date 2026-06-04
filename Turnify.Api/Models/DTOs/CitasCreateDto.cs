@@ -49,5 +49,12 @@ namespace Turnify.Api.Models.DTOs
 
         // 🚩 [NUEVO] Versión del DTO para asegurar compatibilidad con el JSON del Front
         public string? VersionApp { get; set; } = "1.0.2";
+
+        // --- 🚀 [NUEVO GUEST CHECKOUT] - BLINDAJE PARA CLIENTES ANÓNIMOS (INVITADOS QR) ---
+        // Permite capturar los datos de contacto de clientes no registrados en la base de datos
+        // para la auto-creación del perfil en caliente y el envío automático del token.
+        public string? AnonimoNombre { get; set; }
+        public string? AnonimoEmail { get; set; }
+        public string? AnonimoWhatsApp { get; set; }
     }
 }

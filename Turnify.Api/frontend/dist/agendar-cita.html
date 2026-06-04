@@ -60,7 +60,7 @@
                 <h1>Panel de Agendamiento</h1>
                 <span style="font-size: 0.8rem; color: #48c1b5;">Sesión: <strong id="user-display-name">...</strong></span>
             </div>
-            <p id="subtituloAgendar">Gestiona tus servicios en el local o a domicilio.</p>
+            <p id="subtituloAgendar">Gestiona tus servicios en el local or a domicilio.</p>
         </div>
 
         <div class="table-card booking-card">
@@ -81,6 +81,24 @@
                         <select id="citaProveedorId" class="input-style">
                             <option value="">-- Selecciona Profesional --</option>
                         </select>
+                    </div>
+                </div>
+
+                <div id="sectionClienteAnonimo" style="display: none;">
+                    <div class="step-title"><i class="fas fa-id-card"></i> 1. Datos de Contacto (Invitado)</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nombre Completo</label>
+                            <input type="text" id="citaAnonimoNombre" class="input-style" placeholder="Escribe tu nombre para la cita">
+                        </div>
+                        <div class="form-group">
+                            <label>Correo Electrónico</label>
+                            <input type="email" id="citaAnonimoEmail" class="input-style" placeholder="Para enviarte el Token de seguimiento">
+                        </div>
+                        <div class="form-group">
+                            <label>WhatsApp / Teléfono</label>
+                            <input type="tel" id="citaAnonimoWhatsApp" class="input-style" placeholder="Para recordatorios automáticos">
+                        </div>
                     </div>
                 </div>
 

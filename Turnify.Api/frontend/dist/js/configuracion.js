@@ -1,5 +1,5 @@
 /* ============================================================
-   TURNIFY - LÓGICA MAESTRA (DASHBOARD + CONFIG)
+   TURNIFY - MOTOR DE AGENDAMIENTO Y DISPONIBILIDAD HORARIA
    ============================================================ */
 
 // 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente. Si entras desde localhost usa el puerto 5000, 
@@ -180,8 +180,8 @@ function renderizarTablaDashboard(citas) {
 
 // 🚩 NUEVA FUNCIÓN: Generación de QR Dinámico
 function generarQRNegocio(proveedorId) {
-    // La URL a la que irá el cliente (Debe existir reservar.html)
-    const urlReserva = `${window.location.origin}/reservar.html?id=${proveedorId}`;
+    // 🚩 FIX: Apuntando al archivo correcto agendar-cita.html
+    const urlReserva = `${window.location.origin}/agendar-cita.html?id=${proveedorId}`;
     const container = document.getElementById('qr-container');
     
     if (!container) return; // Si no existe el div en el HTML, no hace nada

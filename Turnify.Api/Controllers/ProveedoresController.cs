@@ -4,6 +4,7 @@ using Turnify.Api.Data;
 using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs; // 🚩 Importante: Usaremos los DTOs que están en tu carpeta DTOs
 using Microsoft.Extensions.Localization;
+using Microsoft.AspNetCore.Authorization; // 🧠 INYECTADO SENIOR: Namespace necesario para liberar rutas públicas
 
 namespace Turnify.Api.Controllers
 {
@@ -27,7 +28,9 @@ namespace Turnify.Api.Controllers
             return Ok(new { respuesta = mensaje.Value });
         }
 
+        // 🧠 [KILLER FIX QR] - Permitimos acceso anónimo para que clientes sin cuenta carguen la lista de locales
         [HttpGet]
+        [AllowAnonymous]
         public async Task<ActionResult<IEnumerable<object>>> GetProveedores()
         {
             return await _context.proveedores
@@ -86,7 +89,9 @@ namespace Turnify.Api.Controllers
             }
         }
 
+        // 🧠 [KILLER FIX QR] - Permitimos acceso anónimo para obtener el detalle unitario del negocio escaneado
         [HttpGet("{id:guid}")]
+        [AllowAnonymous]
         public async Task<ActionResult<object>> GetProveedor(Guid id)
         {
             var proveedor = await _context.proveedores

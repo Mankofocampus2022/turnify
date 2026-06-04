@@ -120,6 +120,10 @@ builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// 🚀 [NUEVO MOTOR DE MENSAJERÍA OUT-OF-THE-BOX]
+// Matrícula del servicio de Correo Electrónico corporativo/SMTP para Turnify QR
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 // 🛡️ MATRÍCULA DEL BOT DE WHATSAPP: Soluciona el error fatal de activación en el controlador
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 
@@ -192,3 +196,91 @@ if (Directory.Exists(frontendPath))
 app.Run();
 
 public class Messages { }
+
+// ============================================================================
+// 🚀 INFRAESTRUCTURA INYECTADA EN CALIENTE PARA GUEST CHECKOUT NOTIFICATIONS
+// ============================================================================
+
+namespace Turnify.Api.Interfaces
+{
+    public interface IEmailService
+    {
+        Task EnviarTokenCitaAsync(string emailCliente, string nombreCliente, string tokenCheckIn, DateTime fecha, TimeSpan hora, string servicioName, string localName);
+    }
+}
+
+namespace Turnify.Api.Services
+{
+    using System.Net;
+    using System.Net.Mail;
+    using Turnify.Api.Interfaces;
+
+    public class EmailService : IEmailService
+    {
+        private readonly IConfiguration _configuration;
+        public EmailService(IConfiguration configuration)
+        {
+            _configuration = configuration;
+        }
+
+        public async Task EnviarTokenCitaAsync(string emailCliente, string nombreCliente, string tokenCheckIn, DateTime fecha, TimeSpan hora, string servicioName, string localName)
+        {
+            try
+            {
+                var server = _configuration["EmailSettings:Server"];
+                var port = int.Parse(_configuration["EmailSettings:Port"] ?? "587");
+                var senderEmail = _configuration["EmailSettings:SenderEmail"];
+                var senderName = _configuration["EmailSettings:SenderName"];
+                var username = _configuration["EmailSettings:Username"];
+                var password = _configuration["EmailSettings:Password"];
+                var enableSsl = bool.Parse(_configuration["EmailSettings:EnableSsl"] ?? "true");
+
+                // Filtro preventivo de seguridad por si no se han rellenado las credenciales reales
+                if (string.IsNullOrEmpty(emailCliente) || password == "TU_CONTRASEÑA_DE_APLICACION_AQUI" || string.IsNullOrEmpty(senderEmail))
+                {
+                    Console.WriteLine($"⚠️ [Turnify Correo Alerta] Datos de SMTP por defecto en appsettings.json. Se omite envío real a {emailCliente}, pero la cita ya quedó guardada.");
+                    return;
+                }
+
+                using var client = new SmtpClient(server, port)
+                {
+                    Credentials = new NetworkCredential(username, password),
+                    EnableSsl = enableSsl
+                };
+
+                var mailMessage = new MailMessage
+                {
+                    From = new MailAddress(senderEmail, senderName),
+                    Subject = $"🕒 Tu Turno Confirmado en {localName} - Token {tokenCheckIn}",
+                    Body = $@"
+                        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>
+                            <h2 style='color: #48c1b5; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;'>¡Tu reserva está lista, {nombreCliente}!</h2>
+                            <p style='color: #334155;'>Te confirmamos que se ha agendado con éxito tu espacio en <strong>{localName}</strong>.</p>
+                            
+                            <div style='background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;'>
+                                <p style='margin: 5px 0; color: #475569;'><strong>💇‍♂️ Servicio:</strong> {servicioName}</p>
+                                <p style='margin: 5px 0; color: #475569;'><strong>📅 Fecha:</strong> {fecha:dd/MM/yyyy}</p>
+                                <p style='margin: 5px 0; color: #475569;'><strong>🕒 Hora:</strong> {hora.ToString(@"hh\:mm")}</p>
+                            </div>
+
+                            <p style='color: #334155; text-align: center; margin-top: 25px;'>Presenta este código al llegar al local:</p>
+                            <div style='background-color: #1e293b; color: #48c1b5; text-align: center; padding: 15px; border-radius: 8px; font-size: 1.5em; font-weight: bold; letter-spacing: 3px; margin: 10px 0;'>
+                                {tokenCheckIn}
+                            </div>
+
+                            <p style='font-size: 0.85em; color: #64748b; text-align: center; margin-top: 30px;'>Este es un correo automático generado por Turnify Engine. Por favor, no respondas a este mensaje.</p>
+                        </div>",
+                    IsBodyHtml = true
+                };
+
+                mailMessage.To.Add(emailCliente);
+                await client.SendMailAsync(mailMessage);
+                Console.WriteLine($"📧 [Turnify Notificador PRO] Correo despachado con éxito hacia {emailCliente} con el Token {tokenCheckIn}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [Turnify Notificador Error] Falla crítica en el canal SMTP: {ex.Message}");
+            }
+        }
+    }
+}
