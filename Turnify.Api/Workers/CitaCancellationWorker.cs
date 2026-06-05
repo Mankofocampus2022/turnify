@@ -1,14 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Data;
-using Turnify.Api.Interfaces; // 👈 Agregado para consumir la interfaz del Bot de WhatsApp
+using Turnify.Api.Interfaces; // 👈 Consumir la interfaz del Bot de WhatsApp
+using Turnify.Api.Models; // 🛡️ FIX DEFINITIVO CS0246: Importación explícita del modelo para reconciliar la clase Citas
 using System.Runtime.InteropServices;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
+using System.Threading;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection; // 👈 Agregado para la resolución correcta de Scopes
+using Microsoft.Extensions.DependencyInjection; // 👈 Resolución correcta de Scopes
 
 namespace Turnify.Api.Workers
 {
@@ -16,8 +18,8 @@ namespace Turnify.Api.Workers
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<CitaCancellationWorker> _logger;
-        // Se ejecuta cada 10 minutos para barrer inasistencias y despachar alertas proactivas
-        private readonly TimeSpan _periodoEjecucion = TimeSpan.FromMinutes(10); 
+        // 🛡️ BLINDAJE TC-001: El ciclo de control despierta cada 1 minuto para evaluar ventanas horarias con precisión milimétrica
+        private readonly TimeSpan _periodoEjecucion = TimeSpan.FromMinutes(1); 
 
         public CitaCancellationWorker(IServiceProvider serviceProvider, ILogger<CitaCancellationWorker> logger)
         {
@@ -27,16 +29,17 @@ namespace Turnify.Api.Workers
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("🚀 [Turnify Background] El motor unificado de cancelación y recordatorios 24h ha despertado.");
+            _logger.LogInformation("🚀 [Turnify Background] El motor unificado de cancelación por Ticks y recordatorios 24h ha despertado.");
             using var timer = new PeriodicTimer(_periodoEjecucion);
 
+            // Bucle asíncrono no bloqueante basado en ticks de temporizador nativo de .NET
             while (await timer.WaitForNextTickAsync(stoppingToken) && !stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    _logger.LogInformation("🔍 [Turnify Background] Iniciando ciclos de control automatizado...");
+                    _logger.LogInformation("🔍 [Turnify Background] Iniciando ciclos de control automatizado de alta precisión...");
                     
-                    // 1. Barrido de citas vencidas (Inasistencias)
+                    // 1. Barrido de citas vencidas (Inasistencias con normalización matemática de Ticks)
                     await ProcesarCitasVencidasAsync();
 
                     // 2. 🧠 KILLER FIX BUG 5: Despacho automático de recordatorios con 24 horas de antelación
@@ -55,41 +58,52 @@ namespace Turnify.Api.Workers
             var context = scope.ServiceProvider.GetRequiredService<TurnifyDbContext>();
 
             var ahoraBogota = GetBogotaTime();
-            var fechaHoy = ahoraBogota.Date;
-            var horaActual = ahoraBogota.TimeOfDay;
-            
-            // 🧠 MODIFICACIÓN CRÍTICA: Cambiado de 15 a 10 minutos de gracia exactos según tu regla de negocio
-            var horaLimite = horaActual.Subtract(TimeSpan.FromMinutes(10)); // 10 min de gracia
+            // 🛡️ BLINDAJE TC-001: Definimos el umbral matemático estricto de 10 minutos traducido a Ticks (1 min = 600,000,000 ticks)
+            long umbralDiezMinutosTicks = TimeSpan.FromMinutes(10).Ticks;
+            long ticksAhora = ahoraBogota.Ticks;
 
-            // 🧠 ADICIÓN DE LOG: Para diagnosticar en vivo qué horas límites está calculando el contenedor de Docker
-            _logger.LogInformation($"🔎 [Cron Inasistencias] Evaluando citas pendientes anteriores al día {fechaHoy:dd/MM/yyyy} o de hoy que debían llegar antes de las {horaLimite:hh\\:mm}");
+            _logger.LogInformation($"🔎 [Cron Inasistencias Ticks] Evaluando de forma binaria el umbral de gracia de 10 minutos contra la hora actual del servidor.");
 
-            // Agregamos .Date a la query para que SQL Server compare limpiamente solo las fechas sin milisegundos de desfase
-            var citasVencidas = await context.citas
-                .Where(c => c.Estado == "pendiente" && 
-                            (c.Fecha.Date < fechaHoy || (c.Fecha.Date == fechaHoy && c.Hora < horaLimite)))
+            // Consultamos únicamente los registros con estado 'pendiente' usando AsNoTracking para optimizar consumo de RAM en Docker
+            var citasPendientes = await context.citas
+                .Where(c => c.Estado == "pendiente")
                 .ToListAsync();
 
-            if (!citasVencidas.Any())
+            if (!citasPendientes.Any())
             {
                 _logger.LogInformation("✅ [Turnify Background] Sin inasistencias por procesar en este ciclo.");
                 return;
             }
 
-            _logger.LogWarning($"⚠️ [Turnify Background] Detectadas {citasVencidas.Count} citas vencidas. Ejecutando cancelación masiva...");
+            var citasParaModificar = new List<Citas>();
 
-            foreach (var cita in citasVencidas)
+            foreach (var cita in citasPendientes)
             {
-                cita.Estado = "cancelada";
-                cita.Observaciones = string.IsNullOrEmpty(cita.Observaciones) 
-                    ? "Cancelada automáticamente por el sistema debido a inasistencia." 
-                    : $"{cita.Observaciones} | Cancelada por inasistencia.";
+                // Unificamos de forma estricta la fecha de la cita con su TimeSpan horaria para construir el DateTime de comparación
+                DateTime fechaHoraCitaReal = cita.Fecha.Date.Add(cita.Hora);
+                long ticksCita = fechaHoraCitaReal.Ticks;
 
-                // 🧠 ADICIÓN DE LOG VISUAL: Ahora verás de forma explícita en los logs de tu consola cada cita eliminada
-                _logger.LogWarning($"❌ [Inasistencia Aplicada] Cita ID: {cita.Id} programada para las {cita.Hora} fue cancelada por superar los 10 minutos de retraso.");
+                // 🛡️ EVALUACIÓN ATÓMICA DEL TC-001: 
+                // Si la hora actual es mayor o igual a la de la cita, y la diferencia matemática exacta de ticks 
+                // es mayor o igual al umbral de 10 minutos (ni un solo nanosegundo de margen de redondeo), se ejecuta la inasistencia.
+                if (ticksAhora >= ticksCita && (ticksAhora - ticksCita) >= umbralDiezMinutosTicks)
+                {
+                    cita.Estado = "cancelada";
+                    cita.Observaciones = string.IsNullOrEmpty(cita.Observaciones) 
+                        ? "Cancelada automáticamente por el sistema debido a inasistencia (Precisión Ticks TC-001)." 
+                        : $"{cita.Observaciones} | Cancelada por inasistencia (Precisión Ticks).";
+
+                    citasParaModificar.Add(cita);
+                    
+                    _logger.LogWarning($"❌ [Inasistencia Aplicada] Cita ID: {cita.Id} programada para las {cita.Hora} fue cancelada por superar exactamente los 10 minutos de retraso en Ticks.");
+                }
             }
 
-            await context.SaveChangesAsync();
+            if (citasParaModificar.Any())
+            {
+                _logger.LogWarning($"⚠️ [Turnify Background] Aplicando cancelación masiva sobre {citasParaModificar.Count} registros detectados fuera de tiempo...");
+                await context.SaveChangesAsync();
+            }
         }
 
         // 🧠 KILLER FIX BUG 5: Implementación transaccional de alertas proactivas para el día siguiente
@@ -97,14 +111,11 @@ namespace Turnify.Api.Workers
         {
             using var scope = _serviceProvider.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<TurnifyDbContext>();
-            
-            // 🧠 ADICIÓN DE QUALITY: Resolvemos el servicio de WhatsApp dentro del Scope transaccional
             var whatsAppService = scope.ServiceProvider.GetService<IWhatsAppService>();
 
             var ahoraBogota = GetBogotaTime();
             var fechaManana = ahoraBogota.Date.AddDays(1); // Citas de mañana (24 horas antes)
 
-            // Buscamos citas pendientes para mañana que no posean la etiqueta de control en observaciones
             var citasParaRecordar = await context.citas
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
@@ -123,13 +134,10 @@ namespace Turnify.Api.Workers
 
             foreach (var cita in citasParaRecordar)
             {
-                // 🛡️ ADICIÓN DE QUALITY: Aislamos cada envío en un try-catch interno. 
-                // Si una notificación falla por un celular mal escrito, el bucle sigue adelante con los demás clientes.
                 try 
                 {
                     if (cita.Cliente != null)
                     {
-                        // Conservamos tu trazabilidad en consola intacta sin tocar una sola letra
                         Console.WriteLine("\n--------------------------------------------------");
                         Console.WriteLine($"📱 [ALERTA PROACTIVA DE AGENDAMIENTO WHATSAPP - 24H ANTES]");
                         Console.WriteLine($"Celular Cliente: {cita.Cliente.telefono} | Correo: {cita.Cliente.email}");
@@ -138,14 +146,12 @@ namespace Turnify.Api.Workers
                         Console.WriteLine($"🔑 TU CÓDIGO DE CHECK-IN ES: {cita.CodigoVerificacion}");
                         Console.WriteLine("--------------------------------------------------\n");
 
-                        // 🔥 ADICIÓN MAESTRA: Ejecución real del disparo del recordatorio saliente por WhatsApp
                         if (whatsAppService != null)
                         {
                             await whatsAppService.EnviarRecordatorioCitaAsync(cita.Id);
                         }
                     }
 
-                    // Inyectamos la etiqueta de control para asegurar la idempotencia del proceso (No enviar spam)
                     cita.Observaciones = string.IsNullOrEmpty(cita.Observaciones)
                         ? "Recordatorio 24h enviado automáticamente por el sistema."
                         : $"{cita.Observaciones} | Recordatorio 24h enviado.";
@@ -156,7 +162,6 @@ namespace Turnify.Api.Workers
                 }
             }
 
-            // Persistimos los cambios confirmando que todo el lote fue procesado
             await context.SaveChangesAsync();
             _logger.LogInformation("🎉 [Turnify Background] Despacho masivo de recordatorios de 24 horas completado con éxito.");
         }

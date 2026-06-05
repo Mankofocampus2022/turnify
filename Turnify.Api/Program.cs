@@ -3,15 +3,16 @@ using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
 using Turnify.Api.Services;
 using Turnify.Api.Middleware;
-using Turnify.Api.Workers; // 🔄 NUEVO: Namespace inyectado para reconocer el Worker automático
+using Turnify.Api.Workers; // 🔄 Namespace inyectado para reconocer el Worker automático
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.AspNetCore.DataProtection; // 🛡️ NUEVO: Namespace para solucionar advertencias de llaves efímeras
-using Microsoft.AspNetCore.RateLimiting; // 🧠 INYECTADO SENIOR: Motor nativo para control de ráfagas y protección DDoS (OBS-04)
+using Microsoft.AspNetCore.DataProtection; // 🛡️ Namespace para solucionar advertencias de llaves efímeras
+using Microsoft.AspNetCore.RateLimiting; // 🧠 Motor nativo para control de ráfagas y protección DDoS (OBS-04)
+using System.Security.Claims; // 🧠 REQUERIDO: Para extraer los claims del Contexto de Identidad del Token
 
 // --- ALIAS DE SWAGGER ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
@@ -223,6 +224,12 @@ else
 }
 
 app.UseAuthentication();
+
+// ============================================================================
+// 🚀 MIDDLEWARE DE EXPULSIÓN EN VIVO - BLINDAJE TC-003
+// ============================================================================
+app.UseMiddleware<LiveEvictionMiddleware>();
+
 app.UseAuthorization();
 
 app.MapControllers(); 
@@ -276,7 +283,6 @@ namespace Turnify.Api.Services
                 var password = _configuration["EmailSettings:Password"];
                 var enableSsl = bool.Parse(_configuration["EmailSettings:EnableSsl"] ?? "true");
 
-                // Filtro preventivo de seguridad por si no se han rellenado las credenciales reales
                 if (string.IsNullOrEmpty(emailCliente) || password == "TU_CONTRASEÑA_DE_APLICACION_AQUI" || string.IsNullOrEmpty(senderEmail))
                 {
                     Console.WriteLine($"⚠️ [Turnify Correo Alerta] Datos de SMTP por defecto en appsettings.json. Se omite envío real a {emailCliente}, pero la cita ya quedó guardada.");
@@ -322,6 +328,60 @@ namespace Turnify.Api.Services
             {
                 Console.WriteLine($"❌ [Turnify Notificador Error] Falla crítica en el canal SMTP: {ex.Message}");
             }
+        }
+    }
+}
+
+// ============================================================================
+// 🧠 IMPLANTACIÓN SENIOR: MIDDLEWARE DE CONTROL DE EXPULSIÓN (TC-003)
+// ============================================================================
+namespace Turnify.Api.Middleware
+{
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.EntityFrameworkCore;
+    using System;
+    using System.Linq;
+    using System.Security.Claims;
+    using System.Threading.Tasks;
+    using Turnify.Api.Data;
+
+    public class LiveEvictionMiddleware
+    {
+        private readonly RequestDelegate _next;
+
+        public LiveEvictionMiddleware(RequestDelegate next)
+        {
+            _next = next;
+        }
+
+        public async Task InvokeAsync(HttpContext context, TurnifyDbContext dbContext)
+        {
+            var userIdClaim = context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var parsedUserId))
+            {
+                // 🛡️ VERIFICACIÓN EN CALIENTE CON ASNOTRACKING
+                var usuarioStatus = await dbContext.usuarios
+                    .AsNoTracking()
+                    .Where(u => u.id == parsedUserId)
+                    .Select(u => new { u.esta_bloqueado, u.activo })
+                    .FirstOrDefaultAsync();
+
+                // 🛡️ FIX CS0019 SENIOR: Se normalizaron ambos operandos anulables (bool?) usando comparaciones explícitas coherentes
+                if (usuarioStatus == null || usuarioStatus.esta_bloqueado == true || usuarioStatus.activo == false)
+                {
+                    Console.WriteLine($"🔒 [LIVE EVICTION TC-003] Denegando petición en caliente. Usuario ID: {parsedUserId} se encuentra bloqueado o inactivo.");
+                    
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    context.Response.ContentType = "application/json";
+                    
+                    var responsePayload = new { message = "Tu cuenta ha sido suspendida o deshabilitada. Sesión revocada en vivo." };
+                    await context.Response.WriteAsync(JsonSerializer.Serialize(responsePayload));
+                    return; // 🛑 Rompe la tubería HTTP impidiendo llamadas al controlador
+                }
+            }
+
+            await _next(context);
         }
     }
 }
