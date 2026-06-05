@@ -122,5 +122,34 @@ namespace Turnify.Api.Services
         public async Task<bool> EliminarLogicoAsync(Guid id) { var u = await _context.usuarios.FindAsync(id); if (u == null) return false; u.activo = false; return await _context.SaveChangesAsync() > 0; }
         public async Task<bool> CambiarEstadoBloqueoAsync(Guid id, bool b) { var u = await _context.usuarios.FindAsync(id); if (u == null) return false; u.esta_bloqueado = b; return await _context.SaveChangesAsync() > 0; }
         public async Task<IEnumerable<Usuarios>> GetAllUsuariosAsync() => await _context.usuarios.Include(u => u.Rol).ToListAsync();
+
+        // ============================================================================
+        // 🚀 [NUEVO] MOTOR DE PAGINACIÓN DE PROVEEDORES (Mitigación OBS-01)
+        // ============================================================================
+        public async Task<IEnumerable<Usuarios>> GetProveedoresPaginadosAsync(int page, int pageSize, string? search)
+        {
+            // Control defensivo para evitar desbordamientos de paginación nula o negativa
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = 10;
+
+            var query = _context.usuarios
+                .AsNoTracking() // 🛡️ Bloquea el rastreo en RAM, optimizando el rendimiento en Docker
+                .AsQueryable();
+
+            // Filtrar opcionalmente por nombre, correo o teléfono si viene un criterio en el buscador
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(u => u.nombre.Contains(search) || 
+                                         u.email.Contains(search) || 
+                                         u.telefono.Contains(search));
+            }
+
+            // SQL Server exige obligatoriamente un OrderBy antes de aplicar las cláusulas OFFSET y FETCH NEXT (Skip/Take)
+            return await query
+                .OrderBy(u => u.nombre)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
     }
 }

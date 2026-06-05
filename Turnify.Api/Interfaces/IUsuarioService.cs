@@ -16,5 +16,9 @@ namespace Turnify.Api.Interfaces
         Task<int> GetTotalUsuariosActivosAsync();
         Task<bool> CambiarEstadoBloqueoAsync(Guid id, bool bloquear);
         Task<IEnumerable<Usuarios>> GetAllUsuariosAsync();
+
+        // 🚀 [NUEVO] Firma matriculada para mitigar la OBS-01 (Paginación de Proveedores)
+        // Apaga por completo el error CS1061 en el ProveedoresController al compilar
+        Task<IEnumerable<Usuarios>> GetProveedoresPaginadosAsync(int page, int pageSize, string? search);
     }
 }

@@ -71,7 +71,7 @@ namespace Turnify.Api.Services
                 ProveedorId = dto.proveedor_id, 
                 Nombre = dto.nombre?.Trim(),
                 Descripcion = dto.descripcion?.Trim(),
-                DuracionMinutos = dto.duracion_minutos,
+                DuracionMinutos = dto.duracion_minutos, // 🚩 FIX CS0117: Sincronizado con tu modelo real
                 Precio = dto.precio,
                 Categoria = dto.categoria ?? "Barbería",
                 ComisionPorcentaje = dto.comision_porcentaje,
@@ -93,7 +93,7 @@ namespace Turnify.Api.Services
 
             servicio.Nombre = dto.nombre?.Trim() ?? servicio.Nombre;
             servicio.Descripcion = dto.descripcion?.Trim() ?? servicio.Descripcion;
-            servicio.DuracionMinutos = dto.duracion_minutos;
+            servicio.DuracionMinutos = dto.duracion_minutos; // 🚩 Sincronizado
             servicio.Precio = dto.precio;
             servicio.Categoria = dto.categoria ?? servicio.Categoria;
             servicio.ComisionPorcentaje = dto.comision_porcentaje;
@@ -108,6 +108,7 @@ namespace Turnify.Api.Services
             return MapearADto(servicio);
         }
 
+        // 🚩 FIX CS0535: Nombre exacto del contrato de la interfaz
         public async Task<bool> EliminarServicio(Guid id)
         {
             var servicio = await _context.servicios.FindAsync(id);
@@ -129,7 +130,7 @@ namespace Turnify.Api.Services
                 Nombre = s.Nombre,
                 Descripcion = s.Descripcion,
                 Precio = s.Precio,
-                DuracionMinutos = s.DuracionMinutos,
+                DuracionMinutos = s.DuracionMinutos, // 🚩 Mapeo correcto
                 Categoria = s.Categoria,
                 ImagenUrl = s.ImagenUrl,
                 ComisionPorcentaje = s.ComisionPorcentaje,

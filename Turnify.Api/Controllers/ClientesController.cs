@@ -14,7 +14,7 @@ namespace Turnify.Api.Controllers
     public class ClientesController : ControllerBase
     {
         private readonly IClienteService _clienteService;
-        private readonly TurnifyDbContext _context; // 🚩 NUEVO: Inyectamos el DB Context para el aislamiento de datos
+        private readonly TurnifyDbContext _context;
 
         public ClientesController(IClienteService clienteService, TurnifyDbContext context)
         {
@@ -22,10 +22,10 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
-        // 🛡️ NUEVO ENDPOINT SENIOR: Trae solo los clientes atendidos por ESTE proveedor
+        // 🛡️ ENDPOINT MULTI-TENANT PAGINADO BLINDADO CONTRA NULOS (Mitigación OBS-01)
         [Authorize]
         [HttpGet]
-        public async Task<IActionResult> GetMisClientes()
+        public async Task<IActionResult> GetMisClientes([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null)
         {
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(usuarioIdClaim)) 
@@ -33,21 +33,34 @@ namespace Turnify.Api.Controllers
 
             var userId = Guid.Parse(usuarioIdClaim);
             
-            // A. Buscamos el perfil de proveedor asociado al usuario logueado
             var proveedor = await _context.proveedores
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UsuarioId == userId || p.Id == userId);
 
             var proveedorId = proveedor != null ? proveedor.Id : userId;
 
-            // B. 🛡️ FILTRO MULTI-TENANT: Traemos solo los clientes que tienen citas con este proveedor
-            var clientes = await _context.citas
+            // 🛡️ FIX CS8602: Filtramos los nulos inmediatamente en la consulta SQL usando Where
+            var query = _context.citas
                 .AsNoTracking()
                 .Where(c => c.ProveedorId == proveedorId)
                 .Include(c => c.Cliente)
                 .Select(c => c.Cliente)
-                .Where(cli => cli != null)
-                .Distinct() // Evitamos duplicados si el cliente ha ido varias veces
+                .Where(cli => cli != null) // Enseña al compilador que 'cli' jamás será null de aquí en adelante
+                .Distinct();
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                // El operador '!' le confirma a OmniSharp que confiamos en que el campo no vendrá vacío
+                query = query.Where(cli => cli!.nombre.Contains(search) || cli!.telefono.Contains(search));
+            }
+
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = 10;
+
+            var clientes = await query
+                .OrderBy(cli => cli!.nombre)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
             return Ok(clientes);
@@ -64,16 +77,13 @@ namespace Turnify.Api.Controllers
         [HttpPost("registrar")]
         public async Task<IActionResult> PostCliente(ClienteCreateDto dto)
         {
-            // 1. Llamamos al servicio usando el DTO
             var result = await _clienteService.RegistrarClienteAsync(dto);
 
-            // 2. Si algo sale mal (ej. teléfono duplicado), avisamos
             if (!result.Success) 
             {
                 return BadRequest(new { message = result.Message });
             }
 
-            // 3. Si todo sale bien, devolvemos el objeto creado
             return Ok(new 
             { 
                 message = result.Message, 
@@ -81,7 +91,6 @@ namespace Turnify.Api.Controllers
             });
         }
 
-        // Ahora el controlador solo llama al servicio y no toca las propiedades directamente
         [HttpGet("{clienteId}/mis-citas")]
         public async Task<IActionResult> GetMisCitas(Guid clienteId)
         {

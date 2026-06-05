@@ -12,5 +12,9 @@ namespace Turnify.Api.Interfaces
         Task<(bool Success, string Message, Clientes? Cliente)> RegistrarClienteAsync(ClienteCreateDto dto);
         Task<IEnumerable<Clientes>> GetClientesAsync(string? search);
         Task<IEnumerable<object>> GetMisCitasAsync(Guid clienteId);
+
+        // 🚀 [NUEVO] Firma matriculada para mitigar la OBS-01 (Paginación de alto rendimiento)
+        // Evita que el compilador tire el error CS1061 al compilar el controlador
+        Task<IEnumerable<Clientes>> GetClientesPaginadosAsync(int page, int pageSize, string? search);
     }
 }

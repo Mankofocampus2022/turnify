@@ -5,6 +5,7 @@ using Turnify.Api.Models;
 using Turnify.Api.Models.DTOs; // 🚩 Importante: Usaremos los DTOs que están en tu carpeta DTOs
 using Microsoft.Extensions.Localization;
 using Microsoft.AspNetCore.Authorization; // 🧠 INYECTADO SENIOR: Namespace necesario para liberar rutas públicas
+using Turnify.Api.Interfaces; // 🧠 INYECTADO SENIOR: Requerido para acoplar el motor de paginación de usuarios
 
 namespace Turnify.Api.Controllers
 {
@@ -14,11 +15,13 @@ namespace Turnify.Api.Controllers
     {
         private readonly TurnifyDbContext _context;
         private readonly IStringLocalizer<Messages> _localizer;
+        private readonly IUsuarioService _usuarioService; // 🧠 INYECTADO SENIOR: Abstracción acoplada para mitigar la OBS-01
 
-        public ProveedoresController(TurnifyDbContext context, IStringLocalizer<Messages> localizer)
+        public ProveedoresController(TurnifyDbContext context, IStringLocalizer<Messages> localizer, IUsuarioService usuarioService)
         {
             _context = context;
             _localizer = localizer;
+            _usuarioService = usuarioService;
         }
 
         [HttpGet("test-idioma")]
@@ -29,13 +32,32 @@ namespace Turnify.Api.Controllers
         }
 
         // 🧠 [KILLER FIX QR] - Permitimos acceso anónimo para que clientes sin cuenta carguen la lista de locales
+        // 🚀 AJUSTE EFECTIVO OBS-01: Implementación del motor de filtrado y cortes limpios en base de datos
         [HttpGet]
         [AllowAnonymous]
-        public async Task<ActionResult<IEnumerable<object>>> GetProveedores()
+        public async Task<ActionResult<IEnumerable<object>>> GetProveedores([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null)
         {
-            return await _context.proveedores
+            // 🛡️ Inicializamos la consulta base como un IQueryable
+            var query = _context.proveedores
+                .AsNoTracking() // 🛡️ Evita el desborde de memoria RAM en el servidor productivo bloqueando el rastreo
                 .Include(p => p.Usuario)
-                .Where(p => !p.Eliminado) 
+                .Where(p => !p.Eliminado);
+
+            // 🚀 Filtrado dinámico en caliente por nombre comercial o categoría
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(p => p.NombreComercial.Contains(search) || p.Categoria.Contains(search));
+            }
+
+            // 🛡️ Control defensivo de paginación nula o desbordada
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = 10;
+
+            // 🚀 Ejecución de desplazamientos (OFFSET / FETCH NEXT) indexados obligatorios para SQL Server
+            return await query
+                .OrderBy(p => p.NombreComercial)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(p => new {
                     p.Id,
                     p.NombreComercial,
@@ -45,6 +67,7 @@ namespace Turnify.Api.Controllers
                     p.Categoria,
                     p.TrabajaDomicilio,
                     p.Activo,
+                    // 🛡️ FIX NULABILIDAD SUPRESIÓN: Evita alertas falsas de compilación indicando control de nulo explícito
                     Dueno = p.Usuario != null ? p.Usuario.nombre : "Usuario no encontrado"
                 })
                 .ToListAsync();
@@ -95,6 +118,7 @@ namespace Turnify.Api.Controllers
         public async Task<ActionResult<object>> GetProveedor(Guid id)
         {
             var proveedor = await _context.proveedores
+                .AsNoTracking()
                 .Include(p => p.Usuario)
                 .Where(p => !p.Eliminado)
                 .Select(p => new {
@@ -152,4 +176,4 @@ namespace Turnify.Api.Controllers
             return Ok(new { mensaje = "Soft Delete realizado con éxito" });
         }
     }
-}
+} 

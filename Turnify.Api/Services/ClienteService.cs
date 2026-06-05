@@ -15,7 +15,6 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
-        // 1. EL QUE TE FALTABA (AQUÍ VA)
         public async Task<IEnumerable<Clientes>> GetClientesByUsuarioAsync(Guid usuarioId)
         {
             return await _context.clientes
@@ -23,13 +22,11 @@ namespace Turnify.Api.Services
                 .ToListAsync();
         }
 
-        // 2. Buscar por teléfono
         public async Task<Clientes?> GetClientePorTelefonoAsync(string telefono)
         {
             return await _context.clientes.FirstOrDefaultAsync(c => c.telefono == telefono);
         }
 
-        // 3. Registrar nuevo cliente (Ajustado para incluir usuario_id)
         public async Task<(bool Success, string Message, Clientes? Cliente)> RegistrarClienteAsync(ClienteCreateDto dto)
         {
             var existe = await _context.clientes.AnyAsync(c => c.telefono == dto.Telefono);
@@ -41,7 +38,7 @@ namespace Turnify.Api.Services
                 nombre = dto.Nombre,
                 telefono = dto.Telefono,
                 email = dto.Email,
-                usuario_id = dto.UsuarioId, // <--- ¡Vital para saber de quién es el cliente!
+                usuario_id = dto.UsuarioId,
                 fecha_creacion = DateTime.Now
             };
 
@@ -51,7 +48,6 @@ namespace Turnify.Api.Services
             return (true, "Cliente registrado con éxito", nuevoCliente);
         }
 
-        // 4. Obtener lista con buscador
         public async Task<IEnumerable<Clientes>> GetClientesAsync(string? search)
         {
             var q = _context.clientes.AsQueryable();
@@ -61,7 +57,6 @@ namespace Turnify.Api.Services
             return await q.ToListAsync();
         }
 
-        // 5. Obtener citas
         public async Task<IEnumerable<object>> GetMisCitasAsync(Guid clienteId)
         {
             return await _context.citas
@@ -78,6 +73,27 @@ namespace Turnify.Api.Services
                     c.Estado,
                     c.PrecioPactado
                 })
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Clientes>> GetClientesPaginadosAsync(int page, int pageSize, string? search)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0) pageSize = 10;
+
+            var query = _context.clientes
+                .AsNoTracking()
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(c => c.nombre.Contains(search) || c.telefono.Contains(search));
+            }
+
+            return await query
+                .OrderBy(c => c.nombre)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
         }
     }
