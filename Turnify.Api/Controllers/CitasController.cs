@@ -37,6 +37,23 @@ namespace Turnify.Api.Controllers
             _context = context; // 🛡️ Sincronizado
         }
 
+        // 🚩 MÉTODO PRIVADO: Obtener la fecha actual estricta de Bogotá (Sincronización multi-entorno Docker/Cloud)
+        private DateTime GetBogotaToday()
+        {
+            try 
+            {
+                var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
+                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone).Date;
+            }
+            catch 
+            {
+                // Fallback manual UTC-5 si hay restricciones en el proveedor de sistema operativo
+                return DateTime.UtcNow.AddHours(-5).Date;
+            }
+        }
+
         // --- 📅 1. AGENDA DE HOY (Filtro Estricto Bogota Time) ---
         [HttpGet("hoy")]
         public async Task<IActionResult> GetCitasHoy()
@@ -53,15 +70,17 @@ namespace Turnify.Api.Controllers
             return Ok(agenda);
         }
 
-        // --- 📊 2. CITAS POR RANGO (Blindado contra fechas nulas and desbordamiento) ---
+        // --- 📊 2. CITAS POR RANGO (Blindado contra fechas nulas y desbordamiento) ---
         [HttpGet("rango")]
         public async Task<IActionResult> GetCitasRango([FromQuery] DateTime? inicio, [FromQuery] DateTime? fin)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized(new { message = "Sesión no válida" });
 
-            var fechaInicio = inicio ?? DateTime.Today;
-            var fechaFin = fin ?? DateTime.Today;
+            // 🚩 FIX BUG 01: Reemplazamos DateTime.Today por la fecha normalizada de Bogotá para evitar desfases de Docker UTC
+            var hoyBogota = GetBogotaToday();
+            var fechaInicio = inicio ?? hoyBogota;
+            var fechaFin = fin ?? hoyBogota;
 
             if (fechaFin < fechaInicio) 
                 return BadRequest(new { message = "La fecha final no puede ser anterior a la inicial." });
@@ -223,7 +242,7 @@ namespace Turnify.Api.Controllers
         {
             if (dto == null) return BadRequest(new { message = "Datos de check-in requeridos." });
             if (dto.CitaId == Guid.Empty || string.IsNullOrEmpty(dto.Token))
-                return BadRequest(new { message = "Cita ID and Token son obligatorios para el Check-in." });
+                return BadRequest(new { message = "Cita ID y Token son obligatorios para el Check-in." });
 
             var result = await _citaService.ConfirmarAsistenciaAsync(dto.CitaId, dto.Token);
             if (!result.Success)
@@ -238,7 +257,9 @@ namespace Turnify.Api.Controllers
         public async Task<IActionResult> GetAgenda(Guid proveedorId, [FromQuery] DateTime? fecha)
         {
             if (proveedorId == Guid.Empty) return BadRequest(new { message = "ID de proveedor inválido." });
-            var fechaConsulta = fecha ?? DateTime.Today;
+            
+            // 🚩 FIX BUG 01: Forzamos que si el front no manda fecha, use hoy Colombia y no UTC medianoche
+            var fechaConsulta = fecha ?? GetBogotaToday();
             var agenda = await _citaService.GetAgendaDiaAsync(proveedorId, fechaConsulta);
             return Ok(agenda);
         }
@@ -251,7 +272,8 @@ namespace Turnify.Api.Controllers
             if (proveedorId == Guid.Empty || servicioId == Guid.Empty)
                 return BadRequest(new { message = "Proveedor y Servicio son requeridos para calcular el túnel de tiempo." });
 
-            var fechaConsulta = fecha ?? DateTime.Today;
+            // 🚩 FIX SENSE: Alineamos la consulta de slots libres a la zona horaria colombiana por defecto
+            var fechaConsulta = fecha ?? GetBogotaToday();
             var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fechaConsulta);
             
             if (slots == null || !slots.Any())

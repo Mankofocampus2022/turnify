@@ -60,11 +60,20 @@ namespace Turnify.Api.Services
             return result.ToString();
         }
 
-        // --- 📊 1. AGENDA POR RANGO (Fix de Reportes "Hoy") ---
+        // --- 📊 1. AGENDA POR RANGO (Fix de Reportes "Hoy" y Filtro del Panel Principal) ---
         public async Task<IEnumerable<CitaResponseDto>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
         {
             // 🛡️ Blindaje inicial: Evitar consultas con IDs vacíos
             if (userId == Guid.Empty) return Enumerable.Empty<CitaResponseDto>();
+
+            // 🛡️ BLINDAJE DEFENSIVO SENIOR: Si las fechas llegan sin inicializar (default o MinValue) desde el login
+            // o el panel general, el sistema se auto-recupera reconfigurando el rango para el día de hoy en Bogotá.
+            if (inicio == default || fin == default || inicio == DateTime.MinValue || fin == DateTime.MinValue)
+            {
+                var hoyBogota = GetBogotaTime().Date;
+                inicio = hoyBogota;
+                fin = hoyBogota;
+            }
 
             // 🚩 FIX CRÍTICO: Aseguramos que si inicio y fin son iguales (Hoy), el rango sea estricto
             var fechaInicioStr = inicio.Date;
@@ -242,7 +251,6 @@ namespace Turnify.Api.Services
                     await transaction.CommitAsync(); 
 
                     // 🚀 [NUEVO CANAL REACTIVO ASÍNCRONO] - DISPARO DE NOTIFICACIONES ELECTRÓNICAS
-                    // Se encapsula en Task.Run para que se procese en paralelo, asegurando que la API responda de inmediato
                     _ = Task.Run(async () =>
                     {
                         try
@@ -260,10 +268,6 @@ namespace Turnify.Api.Services
                                     establecimientoNombre
                                 );
                             }
-
-                            // 2. Canal de WhatsApp Bot: Aquí ya puedes invocar el método de envío nativo que tengas dentro de tu WhatsAppService.
-                            // Para mantener el blindaje contra errores de compilación por firmas, puedes descomentar y ajustar la línea según tu API:
-                            // await _whatsappService.EnviarMensajeTokenAsync(cliente.telefono, cliente.nombre, nuevaCita.CodigoVerificacion, establecimientoNombre);
                         }
                         catch (Exception ex)
                         {

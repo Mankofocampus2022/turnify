@@ -22,6 +22,23 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
+        // 🚩 MÉTODO PRIVADO: Sincronización horaria estricta de Bogotá para capas analíticas en Docker
+        private DateTime GetBogotaToday()
+        {
+            try 
+            {
+                var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
+                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone).Date;
+            }
+            catch 
+            {
+                // Fallback manual UTC-5 libre de excepciones geográficas
+                return DateTime.UtcNow.AddHours(-5).Date;
+            }
+        }
+
         // 🚩 ENDPOINT PRINCIPAL: Soporte para periodos (diario/semana/mes)
         [HttpGet("resumen")]
         public async Task<IActionResult> GetResumen(
@@ -54,8 +71,8 @@ namespace Turnify.Api.Controllers
             }
             else
             {
-                // 🚩 Pasamos mes y anio para que el Service limpie los datos de otros meses
-                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha ?? DateTime.Today, periodo, mes, anio);
+                // 🚩 FIX BUG 01/05: Reemplazamos DateTime.Today por la fecha normalizada de Bogotá para amarrar la agregación diaria
+                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha ?? GetBogotaToday(), periodo, mes, anio);
             }
 
             if (resumen == null)
@@ -91,8 +108,8 @@ namespace Turnify.Api.Controllers
             }
             else
             {
-                // 🚩 Ahora el servicio recibe mes y año. Esto mata el bug de ver Abril en Junio.
-                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha ?? DateTime.Today, periodo, mes, anio);
+                // 🚩 FIX BUG ADMIN: Sincronización horaria estricta de Bogotá para consultas delegadas de analítica
+                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha ?? GetBogotaToday(), periodo, mes, anio);
             }
 
             if (resumen == null) return NotFound(new { message = "No hay datos para este periodo." });

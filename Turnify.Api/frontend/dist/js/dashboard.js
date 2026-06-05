@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnHoy = document.querySelector(".btn-filter");
     if (btnHoy) {
         cambiarPeriodo('hoy', btnHoy, API_BASE);
+    } else {
+        // Fallback preventivo si no se encuentra la clase del botón en caliente
+        cambiarPeriodo('hoy', { classList: { add: () => {}, remove: () => {} } }, API_BASE);
     }
     
     // Carga de estadísticas globales (Clientes nuevos, etc.)
@@ -87,43 +90,61 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
     dashboardAbortController = new AbortController();
     const signal = dashboardAbortController.signal;
 
-    // A. Estética: Marcar el botón como activo
-    document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
-    boton.classList.add('active');
+    // A. Estética: Marcar el botón como activo si existe físicamente
+    if (boton.classList && typeof boton.classList.remove === 'function') {
+        document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+        boton.classList.add('active');
+    }
 
     // B. Actualizar títulos según el periodo seleccionado
     const titulos = {
         'hoy': 'Agenda de Hoy',
+        'diario': 'Agenda de Hoy',
         'mañana': 'Agenda de Mañana',
         'semana': 'Agenda de la Semana',
-        'mes': 'Agenda del Mes'
+        'mes': 'Agenda del Mes',
+        'mensual': 'Agenda del Mes'
     };
     const sectionTitle = document.getElementById('sectionTitle');
-    if (sectionTitle) sectionTitle.innerText = titulos[periodo];
+    if (sectionTitle) sectionTitle.innerText = titulos[periodo] || 'Agenda de Turnos';
 
-    // C. Calculation de Fechas para el Backend
-    let inicio = new Date();
-    let fin = new Date();
+    // C. Calculation de Fechas para el Backend (Sincronizado con la Zona Horaria de Colombia)
+    // Calculamos el desfase de Bogotá (UTC-5) para evitar que dependa de la hora de la máquina de desarrollo
+    let d = new Date();
+    let utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    let inicio = new Date(utc + (3600000 * -5));
+    let fin = new Date(utc + (3600000 * -5));
 
-    if (periodo === 'mañana') {
+    // Forzamos limpieza absoluta de horas, minutos y segundos para enviar solo el bloque de la fecha
+    inicio.setHours(0, 0, 0, 0);
+    fin.setHours(0, 0, 0, 0);
+
+    let periodoParamBackend = periodo;
+
+    if (periodo === 'hoy') {
+        periodoParamBackend = 'diario';
+    } else if (periodo === 'mañana') {
         inicio.setDate(inicio.getDate() + 1);
         fin.setDate(fin.getDate() + 1);
+        periodoParamBackend = 'diario'; // Mapeo semántico para el controlador .NET
     } else if (periodo === 'semana') {
         const day = inicio.getDay();
         const diff = inicio.getDate() - day + (day === 0 ? -6 : 1); 
         inicio.setDate(diff);
         fin.setDate(inicio.getDate() + 7);
-    } else if (periodo === 'mes') {
+    } else if (periodo === 'mes' || periodo === 'mensual') {
         inicio.setDate(1); 
         fin.setMonth(fin.getMonth() + 1);
         fin.setDate(1);
+        periodoParamBackend = 'mensual';
     }
 
-    if (periodo === 'hoy') {
-        inicio = new Date(); 
-    }
+    // Formato robusto YYYY-MM-DD sin alteraciones regionales del motor de JS
+    const year = inicio.getFullYear();
+    const month = String(inicio.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(inicio.getDate()).padStart(2, '0');
+    const startStr = `${year}-${month}-${dayStr}`;
 
-    const startStr = inicio.toLocaleDateString('en-CA'); 
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
 
     const tablaBody = document.getElementById('turnosTable');
@@ -140,7 +161,8 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 
         if (!provId) return;
 
-        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=${periodo}&fecha=${startStr}`, {
+        // Invocamos el endpoint unificado pasándole los parámetros limpios de micro-fechas
+        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=${periodoParamBackend}&fecha=${startStr}`, {
             signal: signal, // Asignamos el token de aborto seguro
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -155,7 +177,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         }
 
         const data = await response.json();
-        renderizarTablaDashboard(data.proximasCitas || [], token, API_BASE);
+        renderizarTablaDashboard(data.proximasCitas || data.citas || [], token, API_BASE);
         actualizarContadoresDashboard(data); 
 
     } catch (error) { 
@@ -254,7 +276,7 @@ async function cargarResumenDashboard(token, API_BASE) {
         if (!userStr) return;
         const user = JSON.parse(userStr);
         const provId = user?.proveedorId || user?.id;
-        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}`, {
+        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=diario`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {

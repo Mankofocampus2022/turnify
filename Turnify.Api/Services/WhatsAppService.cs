@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging; 
 using System.Text; 
@@ -26,6 +27,23 @@ namespace Turnify.Api.Services
             _logger = logger;
         }
 
+        // 🚩 MÉTODO PRIVADO: Sincronización horaria de Bogotá para validaciones lógicas del Bot
+        private DateTime GetBogotaTime()
+        {
+            try 
+            {
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
+                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
+            }
+            catch 
+            {
+                // Fallback manual UTC-5 si hay restricciones de entorno corporativo
+                return DateTime.UtcNow.AddHours(-5);
+            }
+        }
+
         private string GenerarTokenCheckInLocal()
         {
             const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
@@ -43,7 +61,7 @@ namespace Turnify.Api.Services
         }
 
         // =================================================================
-        // 🔔 ENVIAR RECORDATORIO PROACTIVO
+        // 🔔 ENVIAR RECORDATORIO PROACTIVO (Outbound)
         // =================================================================
         public async Task<bool> EnviarRecordatorioCitaAsync(Guid citaId)
         {
@@ -72,7 +90,27 @@ namespace Turnify.Api.Services
         }
 
         // =================================================================
-        // 🤖 MOTOR REACTIVO DEL BOT WHATSAPP
+        // 🚀 REQUISITO 3: [NUEVO] DESPACHO AUTOMÁTICO DE TOKEN (Outbound Directo)
+        // =================================================================
+        public async Task<bool> EnviarMensajeTokenAsync(string telefonoCliente, string nombreCliente, string tokenCheckIn, string establecimientoNombre)
+        {
+            if (string.IsNullOrEmpty(telefonoCliente)) return false;
+
+            _logger.LogInformation($"📥 [WhatsApp API Meta Outbound] Despachando confirmación y token a {telefonoCliente}...");
+
+            Console.WriteLine("\n--------------------------------------------------");
+            Console.WriteLine($"📱 NOTIFICACIÓN DE AGENDAMIENTO EXITOSO (WHATSAPP)");
+            Console.WriteLine($"Destinatario Celular: {telefonoCliente}");
+            Console.WriteLine($"Hola *{nombreCliente}*, ¡tu cita ha sido confirmada en *{establecimientoNombre}*!");
+            Console.WriteLine($"🔑 **TU CÓDIGO DE CHECK-IN ES: {tokenCheckIn}**");
+            Console.WriteLine($"Presenta este código al llegar al establecimiento para iniciar tu atención. ¡Te esperamos!");
+            Console.WriteLine("--------------------------------------------------\n");
+
+            return await Task.FromResult(true);
+        }
+
+        // =================================================================
+        // 🤖 MOTOR REACTIVO DEL BOT WHATSAPP (Inbound)
         // =================================================================
         public async Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string textoMensaje)
         {
@@ -87,6 +125,8 @@ namespace Turnify.Api.Services
 
             try
             {
+                var ahoraBogota = GetBogotaTime();
+
                 switch (session.PasoActual)
                 {
                     case PasoBot.SaludoInicial:
@@ -251,7 +291,8 @@ namespace Turnify.Api.Services
                     case PasoBot.EsperandoFecha:
                         if (DateTime.TryParse(textoMensaje, out DateTime fechaSeleccionada))
                         {
-                            if (fechaSeleccionada.Date < DateTime.Today)
+                            // 🚩 CORRECCIÓN DOCKER/UTC: Validamos contra la fecha nativa de Colombia
+                            if (fechaSeleccionada.Date < ahoraBogota.Date)
                                 return "❌ No puedes agendar en días pasados. Ingresa una fecha válida (AAAA-MM-DD):";
 
                             session.FechaSeleccionada = fechaSeleccionada.Date;
@@ -299,9 +340,6 @@ namespace Turnify.Api.Services
                             session.MapaHoras.TryGetValue(opcionHora, out string? horaString) && 
                             TimeSpan.TryParse(horaString, out TimeSpan horaSeleccionada))
                         {
-                            // 🧠 ARQUITECTURA MASTER FIX LINQ TRADUCCIÓN:
-                            // Calculamos las variables en memoria local de C# antes de armar la consulta SQL.
-                            // Esto previene que EF Core falle intentando traducir operaciones matemáticas complejas.
                             var limiteInferior = horaSeleccionada.Subtract(TimeSpan.FromMinutes(44));
                             var limiteSuperior = horaSeleccionada.Add(TimeSpan.FromMinutes(44));
 
@@ -314,9 +352,12 @@ namespace Turnify.Api.Services
 
                             if (yaOcupado) return "🛑 Turno ocupado. Selecciona una opción disponible:";
 
+                            // 🚀 COUPLING VALIDADOR PASIVO: Buscamos si el barbero ya ingresó al cliente manualmente en la base de datos
                             var cliente = await _context.clientes.FirstOrDefaultAsync(c => c.telefono == telefonoCliente);
+                            
                             if (cliente == null)
                             {
+                                // Si el barbero no lo ha creado, se habilita la creación pasiva en caliente para invitado directo
                                 cliente = new Clientes {
                                     id = Guid.NewGuid(),
                                     nombre = $"Cliente WhatsApp ({telefonoCliente})",
@@ -368,9 +409,12 @@ namespace Turnify.Api.Services
                             string modFinal = session.ModalidadSeleccionada.ToUpper();
                             string horaFinalLegible = DateTime.Today.Add(horaSeleccionada).ToString("hh:mm tt");
 
+                            // 🧠 INTEGRACIÓN COMPLETA: Disparamos el token nativo saliente de confirmación utilizando el método unificado
+                            await EnviarMensajeTokenAsync(telefonoCliente, cliente.nombre, tokenGenerado, provFinal);
+
                             session.Reset(); 
 
-                            return $"🎉 ¡Espectacular! Tu cita ha sido agendada con éxito para el día *{nuevaCita.Fecha:dd/MM/yyyy}* a las *{horaFinalLegible}*.\n\n" +
+                            return $"🎉 ¡Espectacular! Tu cita ha sido agendada con éxito para el día *{nuevaCita.Fecha:dd/MM/yyyy}* bién coordinado a las *{horaFinalLegible}*.\n\n" +
                                    $"💇‍♂️ Profesional: **{provFinal}**\n" +
                                    $"✂️ Servicio: *{servFinal}*\n" +
                                    $"📍 Modalidad: *{modFinal}*\n" +
@@ -392,13 +436,13 @@ namespace Turnify.Api.Services
                             }
                             session.Reset(); 
                             return "❌ *Tu cita ha sido cancelada con éxito.*\n\n" +
-                                   "¿Deseas reprogramar? Ecribe de nuevo *hola* y selecciona la opción 1️⃣.";
+                                   "¿Deseas reprogramar? Escribe de nuevo *hola* y selecciona la opción 1️⃣.";
                         }
                         return "⚠️ Selección inválida. Digita el número de la cita de la lista.";
 
                     default:
                         session.Reset();
-                        return "👋 Ecribe *hola* para iniciar.";
+                        return "👋 Escribe *hola* para iniciar.";
                 }
             }
             catch (Exception ex)

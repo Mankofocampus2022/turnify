@@ -12,6 +12,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Turnify.Api.Controllers
 {
+    // 🛡️ DTOs DE INTEGRACIÓN INTERNOS: Blindados contra Warning CS8618 (Nulabilidad) y unificados para el Webhook
+    public class WhatsAppIncomingDto
+    {
+        public string Telefono { get; set; } = string.Empty;
+        public string Mensaje { get; set; } = string.Empty;
+    }
+
+    public class WhatsAppResponseDto
+    {
+        public string TelefonoCliente { get; set; } = string.Empty;
+        public string Respuesta { get; set; } = string.Empty;
+        public DateTime FechaProcesado { get; set; }
+    }
+
     [ApiController]
     [Route("api/[controller]")]
     public class WhatsAppController : ControllerBase
@@ -25,16 +39,34 @@ namespace Turnify.Api.Controllers
             _logger = logger;
         }
 
+        // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá para auditoría de payloads
+        private DateTime GetBogotaTime()
+        {
+            try 
+            {
+                var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
+                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
+            }
+            catch 
+            {
+                return DateTime.UtcNow.AddHours(-5);
+            }
+        }
+
         // =================================================================
         // 📡 ENDPOINT 1: VERIFICACIÓN DEL WEBHOOK (Meta Get)
         // =================================================================
         [HttpGet("webhook")]
+        [AllowAnonymous] // El handshake de Meta se ejecuta sin token Bearer
         public IActionResult VerificarWebhook(
             [FromQuery(Name = "hub.mode")] string mode,
             [FromQuery(Name = "hub.verify_token")] string token,
             [FromQuery(Name = "hub.challenge")] string challenge)
         {
-            const string tokenSeguroLocal = "Turnify.Bot.Token.Master.2026"; 
+            // 🛡️ BLINDAJE OBS-02: Extraemos el token secreto desde el entorno Linux de Docker. Fallback seguro si no está mapeado.
+            var tokenSeguroLocal = Environment.GetEnvironmentVariable("WHATSAPP_VERIFY_TOKEN") ?? "Turnify.Bot.Token.Master.2026"; 
 
             if (mode == "subscribe" && token == tokenSeguroLocal)
             {
@@ -50,6 +82,7 @@ namespace Turnify.Api.Controllers
         // 📡 ENDPOINT 2: RECIBIR MENSAJES (El corazón del Bot)
         // =================================================================
         [HttpPost("webhook")]
+        [AllowAnonymous] // Meta envía los mensajes de los clientes de forma pública hacia tu Webhook
         public async Task<IActionResult> RecibirMensaje([FromBody] WhatsAppIncomingDto payload)
         {
             if (payload == null || string.IsNullOrWhiteSpace(payload.Telefono) || string.IsNullOrWhiteSpace(payload.Mensaje))
@@ -68,7 +101,7 @@ namespace Turnify.Api.Controllers
                 {
                     TelefonoCliente = payload.Telefono,
                     Respuesta = respuestaBot,
-                    FechaProcesado = DateTime.Now
+                    FechaProcesado = GetBogotaTime() // 🚩 FIX TC-001: Estampa de tiempo exacta de Bogotá
                 });
             }
             catch (Exception ex)

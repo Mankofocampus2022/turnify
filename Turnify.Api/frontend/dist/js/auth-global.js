@@ -3,15 +3,19 @@
    ============================================================ */
 
 function validarSesionYMenu() {
-    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
+    let token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
     
     // 🧠 FIX DE SEGURIDAD QA SENIOR: Separamos el nombre del archivo de los parámetros "?" (Query Strings)
     // Esto evita que un usuario salte el bloqueo usando "admin-dashboard.html?id=1"
     const currentPath = window.location.pathname.split('/').pop().split('?')[0];
 
+    // 🛡️ REFUERZO DE CONTENCIÓN: Limpiamos falsos positivos de cadenas vacías o literales de error
+    if (token === "null" || token === "undefined" || !token) {
+        token = null;
+    }
+
     // 1. SI NO HAY TOKEN: Patitas a la calle (al login)
-    if (!token || token === "null" || token === "undefined") {
+    if (!token) {
         // 🚀 EXCEPCIÓN SENIOR PARA GUEST CHECKOUT QR:
         // Si el cliente ingresa de manera anónima a agendar-cita.html trayendo el parámetro ID del proveedor (?id=...),
         // detenemos el bloqueo global de autenticación para permitirle el agendamiento fluido de invitado.
@@ -21,10 +25,26 @@ function validarSesionYMenu() {
         }
 
         if (currentPath !== 'login.html' && currentPath !== 'registro.html' && currentPath !== '') {
+            localStorage.clear(); // Limpiamos residuos huérfanos antes de sacar al usuario
             window.location.href = 'login.html';
         }
         return;
     }
+
+    // 🚀 INTEGRACIÓN MULTI-CLAVE DE IDENTIDAD: Recuperamos el rol desde la clave directa o el objeto user parseado
+    let rolRaw = localStorage.getItem('usuario_rol') || localStorage.getItem('role') || "";
+    const userStr = localStorage.getItem('user');
+
+    if (!rolRaw && userStr) {
+        try {
+            const userObj = JSON.parse(userStr);
+            rolRaw = userObj.rol || userObj.Rol || userObj.role || userObj.Role || "";
+        } catch (e) {
+            console.error("❌ Error de contingencia parseando rol desde el objeto de usuario");
+        }
+    }
+
+    const rol = String(rolRaw).toUpperCase().trim();
 
     // GUIDs transaccionales de control de la base de datos SQL Server
     const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";

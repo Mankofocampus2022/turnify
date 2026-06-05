@@ -5,6 +5,7 @@ using Turnify.Api.Models.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Turnify.Api.Services
@@ -18,30 +19,53 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
-        // 🚩 MOTOR PRINCIPAL: Cálculo de métricas y agenda dinámica (Standard UTC Global)
+        // 🚩 MÉTODO PRIVADO: Sincronización horaria de Bogotá (Inmunidad multi-entorno Docker UTC)
+        private DateTime GetBogotaTime()
+        {
+            try 
+            {
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
+                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
+            }
+            catch 
+            {
+                // Backup manual UTC-5 si hay restricciones en las variables del sistema operativo
+                return DateTime.UtcNow.AddHours(-5);
+            }
+        }
+
+        // 🚩 MOTOR PRINCIPAL: Cálculo de métricas y agenda dinámica (Sincronizado con Colombia)
         public async Task<object> GetResumenDiarioAsync(Guid proveedorId, DateTime? fecha, string periodo, int? mes = null, int? anio = null)
         {
             // 🛡️ BLINDAJE DE PRIORIDAD: Si vienen Mes y Año, el periodo es OBLIGATORIAMENTE "mes"
             if (mes.HasValue && anio.HasValue) periodo = "mes";
             
             periodo = periodo?.ToLower() ?? "hoy";
-            var fechaBase = fecha ?? DateTime.UtcNow.Date;
+            
+            // 🚩 Sincronizamos la fecha base con la zona horaria colombiana real
+            var ahoraBogota = GetBogotaTime();
+            var fechaBase = fecha ?? ahoraBogota.Date;
             
             DateTime inicio, fin, inicioPrev, finPrev;
 
-            // 🕒 1. CÁLCULO DE RANGOS (Actual vs Anterior para Porcentajes BI)
-            if (periodo == "hoy")
+            // 🕒 1. CÁLCULO DE RANGOS DE ALTA PRECISIÓN (Actual vs Anterior para Porcentajes BI)
+            // Cambiamos el uso de UtcNow.Date para priorizar la fecha procesada y enviada por el frontend
+            if (periodo == "hoy" || periodo == "diario")
             {
-                inicio = DateTime.UtcNow.Date;
+                inicio = fechaBase.Date;
                 fin = inicio.AddDays(1);
                 inicioPrev = inicio.AddDays(-1);
                 finPrev = inicio;
             }
             else if (periodo == "mañana")
             {
-                inicio = DateTime.UtcNow.Date.AddDays(1);
+                inicio = fechaBase.Date; // Si el front ya calculó el día de mañana, lo tomamos como base limpia
+                if (fecha == null) inicio = ahoraBogota.Date.AddDays(1); // Fallback si no viene parámetro
+                
                 fin = inicio.AddDays(1);
-                inicioPrev = DateTime.UtcNow.Date;
+                inicioPrev = inicio.AddDays(-1);
                 finPrev = inicio;
             }
             else if (periodo == "semana")
@@ -56,8 +80,8 @@ namespace Turnify.Api.Services
             {
                 int mesConsulta = mes ?? fechaBase.Month;
                 int anioConsulta = anio ?? fechaBase.Year;
-                inicio = new DateTime(anioConsulta, mesConsulta, 1, 0, 0, 0, DateTimeKind.Utc);
-                fin = inicio.AddMonths(1).AddDays(1);
+                inicio = new DateTime(anioConsulta, mesConsulta, 1, 0, 0, 0, DateTimeKind.Unspecified);
+                fin = inicio.AddMonths(1);
                 inicioPrev = inicio.AddMonths(-1);
                 finPrev = inicio;
             }
@@ -71,7 +95,7 @@ namespace Turnify.Api.Services
                 if (prov == null) return new { message = "Negocio no encontrado", totalCitas = 0 };
                 var idReal = prov.Id;
 
-                // 📊 2. CONSULTA MAESTRA CON PROYECCIÓN (Blindada contra Nulls de raíz)
+                // 📊 2. CONSULTA MAESTRA CON PROYECCIÓN (Blindada contra Nulls de raíz y optimizada OBS-01)
                 var rawCitas = await _context.citas
                     .AsNoTracking()
                     .Where(c => c.ProveedorId == idReal && c.Fecha >= inicio && c.Fecha < fin)
@@ -97,7 +121,7 @@ namespace Turnify.Api.Services
                 var nuevosClientes = rawCitas.Where(c => c.Estado != "cancelada").Select(c => c.ClienteId).Distinct().Count();
                 
                 var completadas = rawCitas.Count(c => c.Estado == "completada" || c.Estado == "confirmada");
-                var inasistencias = rawCitas.Count(c => c.Estado == "no_asistio" || (c.Estado == "pendiente" && c.Fecha < DateTime.UtcNow));
+                var inasistencias = rawCitas.Count(c => c.Estado == "no_asistio" || (c.Estado == "pendiente" && c.Fecha < ahoraBogota.Date));
                 var canceladasCount = rawCitas.Count(c => c.Estado == "cancelada");
 
                 // 📈 5. LÓGICA DE PORCENTAJES
@@ -108,7 +132,7 @@ namespace Turnify.Api.Services
                 double percClientes = clientesPrevCount > 0 ? Math.Round((double)(nuevosClientes - clientesPrevCount) / clientesPrevCount * 100, 1) : 0;
 
                 // 👥 6. ANÁLISIS DE RETENCIÓN
-                var fechaCorteRetencion = DateTime.UtcNow.AddMonths(-1);
+                var fechaCorteRetencion = ahoraBogota.Date.AddMonths(-1);
                 var clientesEnRiesgo = await _context.citas
                     .AsNoTracking()
                     .Where(c => c.ProveedorId == idReal && c.Estado == "completada")
@@ -119,7 +143,7 @@ namespace Turnify.Api.Services
                 // 🚩 7. MAPEO DE RESPUESTA FINAL
                 return new {
                     tipoResumen = periodo,
-                    rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (UTC)",
+                    rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (Colombia Time)",
                     totalCitas, tendenciaCitas = percClientes,
                     nuevosClientesTotales = nuevosClientes, clientesEnRiesgo,
                     gananciaReal, gananciaEstimada, crecimientoIngresos = percGanancia,
@@ -147,8 +171,8 @@ namespace Turnify.Api.Services
 
         public async Task<object> GetResumenMensualAsync(Guid proveedorId)
         {
-            var hoy = DateTime.UtcNow.Date;
-            return await GetResumenDiarioAsync(proveedorId, hoy, "mes", hoy.Month, hoy.Year);
+            var ahoraColombia = GetBogotaTime().Date;
+            return await GetResumenDiarioAsync(proveedorId, ahoraColombia, "mes", ahoraColombia.Month, ahoraColombia.Year);
         }
     }
 }
