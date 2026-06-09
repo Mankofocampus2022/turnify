@@ -1,3 +1,5 @@
+using System;
+
 namespace Turnify.Api.Models.DTOs
 {
     public class ProveedorCreateDto
@@ -11,6 +13,12 @@ namespace Turnify.Api.Models.DTOs
         public string? categoria { get; set; } = "Barbero";
 
         public Guid usuarioId { get; set; }
+        
+        // 🚩 [NUEVO] LLAVES DE ENTRADA MULTI-TENANT: Mapeadas para resolver el error CS1061 del controlador
+        // Capturan el teléfono corporativo y el email desde el formulario de registro inicial
+        public string? telefono { get; set; }
+        public string? email { get; set; }
+
         public bool trabaja_domicilio { get; set; } 
         public bool activo { get; set; } = true;
     }

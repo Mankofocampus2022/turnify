@@ -12,11 +12,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Turnify.Api.Controllers
 {
-    // 🛡️ DTOs DE INTEGRACIÓN INTERNOS: Blindados contra Warning CS8618 (Nulabilidad) y unificados para el Webhook
+    // 🛡️ DTOs DE INTEGRACIÓN INTERNOS: Blindados contra Warning CS8618 (Nulabilidad) y unificados para el Webhook Multi-Tenant
     public class WhatsAppIncomingDto
     {
         public string Telefono { get; set; } = string.Empty;
         public string Mensaje { get; set; } = string.Empty;
+        
+        // 🚩 [NUEVO] Propiedad para capturar cuál línea corporativa de barbero recibió el mensaje
+        public string TelefonoReceptor { get; set; } = string.Empty;
     }
 
     public class WhatsAppResponseDto
@@ -90,12 +93,12 @@ namespace Turnify.Api.Controllers
                 return BadRequest(new { error = "El número de teléfono y el mensaje son obligatorios." });
             }
 
-            _logger.LogInformation($"📥 [WhatsApp Inbound] Mensaje recibido de {payload.Telefono}: {payload.Mensaje}");
+            _logger.LogInformation($"📥 [WhatsApp Inbound] Mensaje recibido de {payload.Telefono} hacia {payload.TelefonoReceptor}: {payload.Mensaje}");
 
             try
             {
-                // Enviamos el mensaje a nuestra máquina de estados conversacional en C#
-                string respuestaBot = await _whatsAppService.ProcesarMensajeEntranteAsync(payload.Telefono, payload.Mensaje);
+                // 🚩 CAMBIO INTEGRAL: Pasamos el teléfono receptor a nuestra máquina de estados conversacional en C#
+                string respuestaBot = await _whatsAppService.ProcesarMensajeEntranteAsync(payload.Telefono, payload.TelefonoReceptor, payload.Mensaje);
 
                 return Ok(new WhatsAppResponseDto
                 {

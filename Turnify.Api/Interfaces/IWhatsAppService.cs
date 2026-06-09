@@ -10,9 +10,13 @@ namespace Turnify.Api.Interfaces
         // Envía el recordatorio automatizado el día anterior con los botones de confirmación de Meta
         Task<bool> EnviarRecordatorioCitaAsync(Guid citaId);
 
-        // 🛡️ REQUISITO 2: Flujo Reactivo (Inbound - El Bot)
+        // 🛡️ REQUISITO 2: Flujo Reactivo (Inbound - El Bot Clásico)
         // Recibe el JSON plano que nos envía el Webhook de Meta/Twilio cuando el usuario interactúa
         Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string textoMensaje);
+
+        // 🚩 [NUEVO] REQUISITO 2.1: Flujo Reactivo Multi-Tenant (Inbound - Aislamiento por Barbero)
+        // Sobrecarga extendida para identificar de forma implícita qué local/proveedor recibe el chat
+        Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string telefonoBarberoReceptor, string textoMensaje);
 
         // 🚀 REQUISITO 3: [NUEVO CANAL INTEGRADO] - Despacho Automático de Token de Check-in
         // Envía de forma nativa el código de 6 caracteres al cliente inmediatamente después de agendar

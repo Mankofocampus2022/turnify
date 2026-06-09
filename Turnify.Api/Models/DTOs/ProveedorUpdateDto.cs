@@ -1,21 +1,30 @@
 using System;
+using System.Text.Json.Serialization;
 
-namespace Turnify.Api.Models.DTOs // 🚩 Agregamos .DTOs para mantener el orden
+namespace Turnify.Api.Models.DTOs
 {
     public class ProveedorUpdateDto
     {
-        // El ID es vital para el mapeo del PUT. 
-        // Al ser Guid, .NET se encargará de validar que sea un ID real.
+        [JsonPropertyName("Id")]
         public Guid Id { get; set; }
         
+        [JsonPropertyName("NombreComercial")]
         public string NombreComercial { get; set; } = string.Empty;
         
+        [JsonPropertyName("Direccion")]
         public string Direccion { get; set; } = string.Empty;
         
+        [JsonPropertyName("Tipo")]
         public string Tipo { get; set; } = string.Empty;
 
-        // 🧠 BLINDAJE MASTER SENIOR: Permite actualizar la categoría ("Barbero" o "Manicurista") 
-        // desde el panel de administración sin romper el tipado relacional.
+        [JsonPropertyName("Categoria")]
         public string? Categoria { get; set; }
+
+        // 🚩 COPLAS DE BLINDAJE: Forzamos a que acepte tanto "Telefono" como "telefono" en el mapeo del JSON
+        [JsonPropertyName("Telefono")]
+        public string? Telefono { get; set; }
+        
+        [JsonPropertyName("Email")]
+        public string? Email { get; set; }
     }
 }

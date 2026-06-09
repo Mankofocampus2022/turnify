@@ -238,11 +238,27 @@ async function guardarConfig(e, proveedorId, token) {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
 
+    // 🚩 KILLER FIX FRONTEND: Capturamos los elementos de teléfono y correo para inyectarlos en el request
+    const inputTelefono = document.getElementById('negocioTelefono');
+    const inputEmail = document.getElementById('negocioEmail');
+    const tipoSelect = document.getElementById('negocioTipo') ? document.getElementById('negocioTipo').value : "Barbería";
+
+    // 🧠 SINCRONIZACIÓN MULTI-TENANT: Mapeamos dinámicamente los valores hacia el discriminador exacto del Bot
+    let categoriaMapeada = "Barbero";
+    if (tipoSelect === "Manicure") {
+        categoriaMapeada = "Manicurista";
+    } else if (tipoSelect === "Estética") {
+        categoriaMapeada = "Estética";
+    }
+
     const body = {
         Id: proveedorId,
         NombreComercial: document.getElementById('negocioNombre').value.trim(),
         Direccion: document.getElementById('negocioDireccion').value.trim(),
-        Tipo: document.getElementById('negocioTipo') ? document.getElementById('negocioTipo').value : "Barbería" 
+        Tipo: tipoSelect,
+        Categoria: categoriaMapeada, // 🚩 Inyectado seguro para evitar cruce de cables con Postgres
+        Telefono: inputTelefono ? inputTelefono.value.trim() : "",
+        Email: inputEmail ? inputEmail.value.trim() : ""
     };
 
     try {

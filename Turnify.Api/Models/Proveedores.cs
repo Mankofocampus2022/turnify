@@ -42,11 +42,12 @@ namespace Turnify.Api.Models
         [JsonPropertyName("email")]
         public string? Email { get; set; }
 
-        // 🚩 Campo de teléfono para validación y contacto
+        // 🛡️ FIX NUCLEAR DE PERSISTENCIA DBA: Cambiado a nullable (string?) con valor por defecto seguro
+        // Esto elimina el choque relacional en el tracker de Entity Framework Core permitiendo actualizaciones directas
         [Column("telefono")]
         [StringLength(20)]
         [JsonPropertyName("telefono")]
-        public string Telefono { get; set; } = string.Empty;
+        public string? Telefono { get; set; } = string.Empty;
 
         [Column("descripcion")]
         [JsonPropertyName("descripcion")]

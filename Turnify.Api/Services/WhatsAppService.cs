@@ -110,9 +110,15 @@ namespace Turnify.Api.Services
         }
 
         // =================================================================
-        // 🤖 MOTOR REACTIVO DEL BOT WHATSAPP (Inbound)
+        // 🤖 MOTOR REACTIVO DEL BOT WHATSAPP (Inbound MULTI-TENANT)
         // =================================================================
         public async Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string textoMensaje)
+        {
+            // Sobrecarga pasiva por si se llama al método clásico sin el número del barbero receptor
+            return await ProcesarMensajeEntranteAsync(telefonoCliente, null, textoMensaje);
+        }
+
+        public async Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string telefonoBarberoReceptor, string textoMensaje)
         {
             textoMensaje = textoMensaje.Trim().ToLower();
             var session = _sesionesBot.GetOrAdd(telefonoCliente, _ => new BotSession());
@@ -127,11 +133,26 @@ namespace Turnify.Api.Services
             {
                 var ahoraBogota = GetBogotaTime();
 
+                // 🏢 DETECCIÓN EN CALIENTE DEL PROVEEDOR MULTI-TENANT (Usando la columna 'Telefono' con T mayúscula)
+                Proveedores proveedorContexto = null;
+                if (!string.IsNullOrEmpty(telefonoBarberoReceptor))
+                {
+                    proveedorContexto = await _context.proveedores
+                        .FirstOrDefaultAsync(p => p.Telefono == telefonoBarberoReceptor);
+                }
+
                 switch (session.PasoActual)
                 {
                     case PasoBot.SaludoInicial:
                         session.PasoActual = PasoBot.WaitingOpcionMenu;
-                        return "👋 ¡Hola! Bienvenido al asistente automático de *Turnify* 🗓️.\n\n" +
+                        
+                        string saludoPersonalizado = "👋 ¡Hola! Bienvenido al asistente automático de *Turnify* 🗓️.\n\n";
+                        if (proveedorContexto != null)
+                        {
+                            saludoPersonalizado = $"👋 ¡Hola! Bienvenido al asistente de *{proveedorContexto.NombreComercial}* (vía *Turnify*) 💈.\n\n";
+                        }
+
+                        return saludoPersonalizado +
                                "¿Cómo te puedo ayudar hoy? Digita el número de la opción:\n" +
                                "1️⃣ *Agendar una nueva cita*\n" +
                                "2️⃣ *Ver mis citas pendientes*\n" +
@@ -141,6 +162,35 @@ namespace Turnify.Api.Services
                     case PasoBot.WaitingOpcionMenu:
                         if (textoMensaje == "1")
                         {
+                            // 🚀 ATAJO INTELIGENTE: Si el cliente ya está escribiendo al número exclusivo del barbero, nos saltamos los menús globales
+                            if (proveedorContexto != null)
+                            {
+                                var serviciosDelProveedor = await _context.servicios
+                                    .Where(s => s.ProveedorId == proveedorContexto.Id && s.Activo == 1)
+                                    .ToListAsync();
+
+                                if (!serviciosDelProveedor.Any())
+                                {
+                                    session.Reset();
+                                    return $"❌ Lo sentimos, *{proveedorContexto.NombreComercial}* no tiene servicios activos configurados en este momento. Inténtalo más tarde.";
+                                }
+
+                                session.ProveedorIdSeleccionado = proveedorContexto.Id;
+                                session.ProveedorNombreSeleccionado = proveedorContexto.NombreComercial;
+
+                                session.PasoActual = PasoBot.EsperandoServicio;
+                                session.MapaOpciones.Clear(); 
+
+                                var menuServiciosDirecto = $"✂️ **Servicios disponibles en {session.ProveedorNombreSeleccionado}:**\n\n";
+                                for (int i = 0; i < serviciosDelProveedor.Count; i++)
+                                {
+                                    menuServiciosDirecto += $"{i + 1}️⃣ *{serviciosDelProveedor[i].Nombre}* (${serviciosDelProveedor[i].Precio})\n";
+                                    session.MapaOpciones.TryAdd(i + 1, serviciosDelProveedor[i].Id);
+                                }
+                                return menuServiciosDirecto;
+                            }
+
+                            // Flujo global por defecto si no se detecta número receptor exclusivo
                             session.PasoActual = PasoBot.EsperandoCategoriaServicio;
                             return "💈 **¿Qué tipo de servicio estás buscando hoy?**\n\n" +
                                    "1️⃣ **Barbería** 💈\n" +
@@ -149,13 +199,20 @@ namespace Turnify.Api.Services
                         }
                         else if (textoMensaje == "2")
                         {
-                            var citasCliente = await _context.citas
+                            var citasClienteQuery = _context.citas
                                 .Include(c => c.Servicio)
-                                .Where(c => c.Cliente != null && c.Cliente.telefono == telefonoCliente && c.Estado == "pendiente")
-                                .ToListAsync();
+                                .Where(c => c.Cliente != null && c.Cliente.telefono == telefonoCliente && c.Estado == "pendiente");
 
+                            // Si está en el WhatsApp del barbero, solo listamos las citas de ese barbero específico
+                            if (proveedorContexto != null)
+                            {
+                                citasClienteQuery = citasClienteQuery.Where(c => c.ProveedorId == proveedorContexto.Id);
+                            }
+
+                            var citasCliente = await citasClienteQuery.ToListAsync();
                             session.Reset(); 
-                            if (!citasCliente.Any()) return "🤷‍♂️ No tienes citas pendientes registradas con este número de teléfono.";
+
+                            if (!citasCliente.Any()) return "🤷‍♂️ No tienes citas pendientes registradas en este chat.";
 
                             var agendaText = "📅 *Tus próximas citas pendientes:*\n\n";
                             foreach (var c in citasCliente)
@@ -166,10 +223,16 @@ namespace Turnify.Api.Services
                         }
                         else if (textoMensaje == "3")
                         {
-                            var citasCancelables = await _context.citas
+                            var citasCancelablesQuery = _context.citas
                                 .Include(c => c.Servicio)
-                                .Where(c => c.Cliente != null && c.Cliente.telefono == telefonoCliente && c.Estado == "pendiente")
-                                .ToListAsync();
+                                .Where(c => c.Cliente != null && c.Cliente.telefono == telefonoCliente && c.Estado == "pendiente");
+
+                            if (proveedorContexto != null)
+                            {
+                                citasCancelablesQuery = citasCancelablesQuery.Where(c => c.ProveedorId == proveedorContexto.Id);
+                            }
+
+                            var citasCancelables = await citasCancelablesQuery.ToListAsync();
 
                             if (!citasCancelables.Any())
                             {
@@ -291,9 +354,8 @@ namespace Turnify.Api.Services
                     case PasoBot.EsperandoFecha:
                         if (DateTime.TryParse(textoMensaje, out DateTime fechaSeleccionada))
                         {
-                            // 🚩 CORRECCIÓN DOCKER/UTC: Validamos contra la fecha nativa de Colombia
                             if (fechaSeleccionada.Date < ahoraBogota.Date)
-                                return "❌ No puedes agendar en días pasados. Ingresa una fecha válida (AAAA-MM-DD):";
+                                return "❌ No puedes agendar en days pasados. Ingresa una fecha válida (AAAA-MM-DD):";
 
                             session.FechaSeleccionada = fechaSeleccionada.Date;
 
@@ -352,12 +414,10 @@ namespace Turnify.Api.Services
 
                             if (yaOcupado) return "🛑 Turno ocupado. Selecciona una opción disponible:";
 
-                            // 🚀 COUPLING VALIDADOR PASIVO: Buscamos si el barbero ya ingresó al cliente manualmente en la base de datos
                             var cliente = await _context.clientes.FirstOrDefaultAsync(c => c.telefono == telefonoCliente);
                             
                             if (cliente == null)
                             {
-                                // Si el barbero no lo ha creado, se habilita la creación pasiva en caliente para invitado directo
                                 cliente = new Clientes {
                                     id = Guid.NewGuid(),
                                     nombre = $"Cliente WhatsApp ({telefonoCliente})",
@@ -409,7 +469,6 @@ namespace Turnify.Api.Services
                             string modFinal = session.ModalidadSeleccionada.ToUpper();
                             string horaFinalLegible = DateTime.Today.Add(horaSeleccionada).ToString("hh:mm tt");
 
-                            // 🧠 INTEGRACIÓN COMPLETA: Disparamos el token nativo saliente de confirmación utilizando el método unificado
                             await EnviarMensajeTokenAsync(telefonoCliente, cliente.nombre, tokenGenerado, provFinal);
 
                             session.Reset(); 

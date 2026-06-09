@@ -1,3 +1,4 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Models; 
 
@@ -64,15 +65,21 @@ namespace Turnify.Api.Data
                 entity.Property(c => c.usuario_id).HasColumnName("usuario_id");
             });
 
-            // 🛡️ BLINDAJE PARA PROVEEDORES (Mapeo de PascalCase a minúsculas)
+            // 🛡️ BLINDAJE PARA PROVEEDORES (Mapeo Estricto y Absoluto para Postgres)
             modelBuilder.Entity<Proveedores>(entity => {
                 entity.ToTable("proveedores");
-                // 🚩 FIX: Mapeamos la propiedad 'Id' a la columna 'id'
                 entity.Property(p => p.Id).HasColumnName("id");
-                // 🚩 FIX: Mapeamos la propiedad 'UsuarioId' a la columna 'usuario_id'
                 entity.Property(p => p.UsuarioId).HasColumnName("usuario_id");
-                entity.Property(p => p.Telefono).HasColumnName("telefono").IsRequired(false);
-                entity.Property(p => p.Email).HasColumnName("email").IsRequired(false); 
+                
+                // 🚩 FIX NUCLEAR: Mapeamos explícitamente TODAS las columnas para que EF no ignore ninguna en el UPDATE
+                entity.Property(p => p.NombreComercial).HasColumnName("nombre_comercial");
+                entity.Property(p => p.Direccion).HasColumnName("direccion");
+                entity.Property(p => p.Tipo).HasColumnName("tipo");
+                entity.Property(p => p.Categoria).HasColumnName("categoria");
+                
+                // Mantenemos la tolerancia de nulos pero forzamos el límite y el nombre exacto de la base de datos
+                entity.Property(p => p.Telefono).HasColumnName("telefono").HasMaxLength(20).IsRequired(false);
+                entity.Property(p => p.Email).HasColumnName("email").HasMaxLength(150).IsRequired(false); 
             });
 
             // 3. Relaciones de Citas (🚩 FIX MAESTRO PARA ELIMINAR 'ProveedoresId')

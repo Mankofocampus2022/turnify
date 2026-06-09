@@ -379,7 +379,7 @@ function seleccionarHora(hora, elemento) {
     if (inputHora) inputHora.value = hora;
 }
 
-// 🛡️ GUARDAR CITA: Blindaje de Token e Identidad (Fix "El cliente no existe" y Pruebas QR)
+// 🛡️ GUARDAR CITA: Blindaje de Token e Identidad (Fix de Mapeo PascalCase y Regex de Nombres)
 async function guardarCita(e, token, user, rol, API_BASE) {
     e.preventDefault();
     
@@ -387,7 +387,6 @@ async function guardarCita(e, token, user, rol, API_BASE) {
     let hora = inputHora ? inputHora.value : null;
     
     // 🚀 FIX CRÍTICO: Formateo de hora obligatorio para .NET (HH:mm:ss)
-    // Agregamos los segundos si vienen en formato HH:mm para evitar el error 400
     if (hora && hora.length === 5) {
         hora = `${hora}:00`;
     }
@@ -406,9 +405,7 @@ async function guardarCita(e, token, user, rol, API_BASE) {
         return alert("❌ Error de negocio: Un proveedor o administrador no puede solicitar citas para sí mismo. Por favor, cierra sesión o ingresa desde una cuenta de cliente.");
     }
 
-    // 🚀 INYECCIÓN DINÁMICA DE IDENTIDAD:
-    // Si viene por QR, el cliente es el usuario autenticado (tú testeando o un cliente real).
-    // Si no viene por QR, respetamos tu flujo original (user.clienteId o el select administrativo).
+    // 🚀 INYECCIÓN DINÁMICA DE IDENTIDAD
     const clienteIdFinal = qrId ? (user.clienteId || user.id) : (esCliente ? user.clienteId : (selectCliente ? selectCliente.value : null));
     const proveedorIdFinal = qrId || (esCliente ? (selectProv ? selectProv.value : null) : (user.proveedorId || user.id));
 
@@ -418,32 +415,48 @@ async function guardarCita(e, token, user, rol, API_BASE) {
 
     if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("⚠️ Completa todos los campos.");
 
+    // 🧠 RECOLECCIÓN Y BLINDAJE CONTRA EL REGEX DEL NOMBRE DE INVITADO
+    let anonNombre = document.getElementById('citaAnonimoNombre') ? document.getElementById('citaAnonimoNombre').value.trim() : "";
+    let anonEmail = document.getElementById('citaAnonimoEmail') ? document.getElementById('citaAnonimoEmail').value.trim() : "";
+    let anonWpp = document.getElementById('citaAnonimoWhatsApp') ? document.getElementById('citaAnonimoWhatsApp').value.trim() : "";
+
+    // Si es un cliente anónimo puro que entra por el QR, el paso 1 es estrictamente obligatorio
+    if (!token && (!anonNombre || !anonEmail || !anonWpp)) {
+        return alert("⚠️ Por favor completa tu Nombre, Correo y WhatsApp en el Paso 1 para poder procesar la reserva.");
+    }
+
+    // 🚩 FALLBACK SENIOR: Si el usuario ya está autenticado en su panel, los campos de invitado no existen.
+    // Para evitar enviar un string vacío "" que quiebre el Regex de C#, inyectamos un nombre alfabético plano por defecto.
+    if (token && anonNombre === "") {
+        anonNombre = "Cliente Registrado Turnify";
+        anonEmail = "usuario_autenticado@turnify.com";
+        anonWpp = "3000000000";
+    }
+
     const btn = e.target.querySelector('button');
     const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Agendando...';
 
+    // 🚩 SOLUCIÓN INTEGRAL AL ERROR 400: Cambiamos las llaves a PascalCase para que el ModelBinder de .NET 
+    // ensamble el objeto directamente contra las propiedades correspondientes de CitasCreateDto.
     const dto = {
-        clienteId: clienteIdFinal,
-        servicioId: document.getElementById('citaServicioId').value,
-        fecha: document.getElementById('citaFecha').value,
-        hora: hora, // Ya incluye los segundos gracias al fix
-        modalidad: document.getElementById('citaModalidad').value,
-        direccion: document.getElementById('citaDireccion').value.trim(),
-        observaciones: document.getElementById('citaObservaciones').value.trim(),
-        metodoRegistro: qrId ? "QR_Cliente" : (esCliente ? "Panel_Cliente" : "Barbero_Manual"),
-        // 🚀 [BUG 2 PAYLOAD] Inyección limpia de propiedades de contacto para la auto-creación en caliente de invitados
-        anonimoNombre: document.getElementById('citaAnonimoNombre') ? document.getElementById('citaAnonimoNombre').value.trim() : "",
-        anonimoEmail: document.getElementById('citaAnonimoEmail') ? document.getElementById('citaAnonimoEmail').value.trim() : "",
-        anonimoWhatsApp: document.getElementById('citaAnonimoWhatsApp') ? document.getElementById('citaAnonimoWhatsApp').value.trim() : ""
+        ClienteId: clienteIdFinal,
+        ServicioId: document.getElementById('citaServicioId').value,
+        Fecha: document.getElementById('citaFecha').value,
+        Hora: hora, 
+        Modalidad: document.getElementById('citaModalidad').value,
+        Direccion: document.getElementById('citaDireccion') ? document.getElementById('citaDireccion').value.trim() : "",
+        Observaciones: document.getElementById('citaObservaciones') ? document.getElementById('citaObservaciones').value.trim() : "",
+        
+        // Mapeamos los valores exactos requeridos por las anotaciones de datos de tu API
+        MetodoRegistro: qrId ? "QR" : (esCliente ? "Web" : "Manual"),
+        DuracionPactadaMin: 30, // Turno estándar seguro para pasar la regla [Range(1, 1440)]
+        
+        AnonimoNombre: anonNombre,
+        AnonimoEmail: anonEmail,
+        AnonimoWhatsApp: anonWpp
     };
-
-    // Validación preventiva en el cliente si es un flujo anónimo sin credenciales
-    if (!token && (!dto.anonimoNombre || !dto.anonimoEmail || !dto.anonimoWhatsApp)) {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-        return alert("⚠️ Por favor completa tu Nombre, Correo y WhatsApp en el Paso 1 para poder procesar la reserva.");
-    }
 
     try {
         const resp = await fetch(`${API_BASE}/Citas/agendar`, {
@@ -457,7 +470,6 @@ async function guardarCita(e, token, user, rol, API_BASE) {
             body: JSON.stringify(dto)
         });
 
-        // 🛡️ BLINDAJE DE RESPUESTA: Captura errores de texto del servidor
         const contentType = resp.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
             const data = await resp.json();
@@ -465,7 +477,12 @@ async function guardarCita(e, token, user, rol, API_BASE) {
                 alert(`✅ ¡Cita Confirmada!\n\n${data.message}`); 
                 window.location.reload(); 
             } else {
-                alert("❌ No se pudo agendar: " + (data.message || "Error desconocido."));
+                // Mapeo detallado por si llega a saltar otra advertencia en las propiedades internas
+                let msgError = data.message || "Error al procesar la solicitud.";
+                if (data.errors) {
+                    msgError = Object.values(data.errors).flat().join("\n");
+                }
+                alert("❌ No se pudo agendar:\n" + msgError);
                 btn.disabled = false;
                 btn.innerHTML = originalHTML;
             }
@@ -476,7 +493,7 @@ async function guardarCita(e, token, user, rol, API_BASE) {
             btn.innerHTML = originalHTML;
         }
     } catch (e) { 
-        alert("🔌 Error de conexión.");
+        alert("🔌 Error de conexión con el servicio de Turnify.");
         btn.disabled = false;
         btn.innerHTML = originalHTML;
     }

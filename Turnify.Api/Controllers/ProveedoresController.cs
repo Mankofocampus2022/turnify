@@ -53,7 +53,7 @@ namespace Turnify.Api.Controllers
             if (page <= 0) page = 1;
             if (pageSize <= 0) pageSize = 10;
 
-            // 🚀 Ejecución de desplazamientos (OFFSET / FETCH NEXT) indexados obligatorios para SQL Server
+            // 🚀 Ejecución de desplazamientos (OFFSET / FETCH NEXT) indexados obligatorios para SQL Server/Postgres
             return await query
                 .OrderBy(p => p.NombreComercial)
                 .Skip((page - 1) * pageSize)
@@ -63,8 +63,10 @@ namespace Turnify.Api.Controllers
                     p.NombreComercial,
                     p.Direccion,
                     p.Tipo,
-                    // 🧠 INYECTADO SENIOR: Mapeo de salida para listar la categoría en el panel web global
                     p.Categoria,
+                    // 🚩 AGREGADO EN LECTURA: Exponemos teléfono y correo para pintarlos en el panel
+                    p.Telefono,
+                    p.Email,
                     p.TrabajaDomicilio,
                     p.Activo,
                     // 🛡️ FIX NULABILIDAD SUPRESIÓN: Evita alertas falsas de compilación indicando control de nulo explícito
@@ -98,6 +100,11 @@ namespace Turnify.Api.Controllers
             // 🧠 INYECTADO SENIOR: Mapeo de actualización en caliente desde el panel administrativo
             proveedor.Categoria = dto.Categoria ?? proveedor.Categoria;
 
+            // 🚩 KILLER FIX BUG DE ACTUALIZACIÓN: Forzamos la asignación de campos críticos
+            // Se usa operador de coalescencia nula (??) para no sobreescribir con nulo si el Front-end no los envía
+            proveedor.Telefono = dto.Telefono ?? proveedor.Telefono;
+            proveedor.Email = dto.Email ?? proveedor.Email;
+
             try
             {
                 await _context.SaveChangesAsync();
@@ -126,8 +133,10 @@ namespace Turnify.Api.Controllers
                     p.NombreComercial,
                     p.Direccion,
                     p.Tipo,
-                    // 🧠 INYECTADO SENIOR: Mapeo de salida para la vista unitaria del detalle del perfil
                     p.Categoria,
+                    // 🚩 AGREGADO EN DETALLE: Despachamos WhatsApp y Correo
+                    p.Telefono,
+                    p.Email,
                     p.UsuarioId,
                     UsuarioNombre = p.Usuario != null ? p.Usuario.nombre : "N/A",
                     p.TrabajaDomicilio,
@@ -154,7 +163,10 @@ namespace Turnify.Api.Controllers
                 // 🧠 INYECTADO SENIOR: Captura el valor exacto enviado por el JSON del frontend, si falta cae en "Barbero"
                 Categoria = dto.categoria ?? "Barbero",
                 UsuarioId = dto.usuarioId,
-                FechaCreacion = DateTime.Now,
+                // 🚩 AGREGADO EN CREACIÓN: Capturamos los datos base desde el inicio
+                Telefono = dto.telefono ?? string.Empty,
+                Email = dto.email,
+                FechaCreacion = DateTime.UtcNow, // Cambiado a UtcNow para estandarizar con Postgres
                 TrabajaDomicilio = dto.trabaja_domicilio,
                 Activo = dto.activo,
                 Eliminado = false
@@ -176,4 +188,4 @@ namespace Turnify.Api.Controllers
             return Ok(new { mensaje = "Soft Delete realizado con éxito" });
         }
     }
-} 
+}

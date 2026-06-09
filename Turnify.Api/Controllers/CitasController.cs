@@ -6,6 +6,10 @@ using Turnify.Api.Models.DTOs;
 using Turnify.Api.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Turnify.Api.Controllers
 {
@@ -159,20 +163,30 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
-                // 🚀 [BUG 2 FIX] - GUEST CHECKOUT QR (PROYECTADO CON SELECT PARA EVITAR SQLNULLVALUEEXCEPTION)
+                // 🚀 [BUG 2 FIX] - GUEST CHECKOUT QR (ANTI COLESIONAMIENTO DE NULLS DE BD ANTIGUA)
                 if (dto.ClienteId == Guid.Empty && (!string.IsNullOrEmpty(dto.AnonimoNombre) || !string.IsNullOrEmpty(dto.AnonimoEmail) || !string.IsNullOrEmpty(dto.AnonimoWhatsApp)))
                 {
-                    // 🧠 SOLUCIÓN SENIOR: Consultamos y proyectamos únicamente el ID para evitar fallas de mapeo de NULLs en registros de prueba antiguos
-                    var clienteExistenteId = await _context.clientes
-                        .Where(c => (!string.IsNullOrEmpty(dto.AnonimoEmail) && c.email == dto.AnonimoEmail) || 
-                                    (!string.IsNullOrEmpty(dto.AnonimoWhatsApp) && c.telefono == dto.AnonimoWhatsApp))
-                        .Select(c => c.id)
-                        .FirstOrDefaultAsync();
+                    // 🧠 MASTER SOLID FIX: Evitamos evaluar directamente strings de entrada contra campos que contengan NULL en SQL Server.
+                    // Forzamos la sanitización perimetral en la consulta antes de proyectar con el Select.
+                    var emailTarget = (dto.AnonimoEmail ?? string.Empty).Trim().ToLower();
+                    var wppTarget = (dto.AnonimoWhatsApp ?? string.Empty).Trim().ToLower();
+
+                    var clienteExistenteId = Guid.Empty;
+
+                    if (!string.IsNullOrEmpty(emailTarget) || !string.IsNullOrEmpty(wppTarget))
+                    {
+                        clienteExistenteId = await _context.clientes
+                            .AsNoTracking()
+                            .Where(c => (!string.IsNullOrEmpty(emailTarget) && c.email != null && c.email.ToLower() == emailTarget) || 
+                                        (!string.IsNullOrEmpty(wppTarget) && c.telefono != null && c.telefono == wppTarget))
+                            .Select(c => c.id)
+                            .FirstOrDefaultAsync();
+                    }
 
                     if (clienteExistenteId != Guid.Empty)
                     {
                         dto.ClienteId = clienteExistenteId;
-                        Console.WriteLine($"🔍 [Turnify Guest Checkout] Reutilizando registro de cliente existente: {clienteExistenteId}");
+                        Console.WriteLine($"🔍 [Turnify Guest Checkout] Reutilizando registro de cliente existente libre de nulos: {clienteExistenteId}");
                     }
                     else
                     {
@@ -217,6 +231,7 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
+                // 🚩 OBSERVACIONES Y CAMPOS INTACTOS: Pasamos la estafeta al CitaService conservando todo el payload
                 var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
                 if (!result.Success) 
                     return BadRequest(new { message = result.Message });

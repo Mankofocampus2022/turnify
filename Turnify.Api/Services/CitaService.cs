@@ -60,7 +60,7 @@ namespace Turnify.Api.Services
             return result.ToString();
         }
 
-        // --- 📊 1. AGENDA POR RANGO (Fix de Reportes "Hoy" y Filtro del Panel Principal) ---
+        // --- 📅 1. AGENDA POR RANGO (Fix de Reportes "Hoy" y Filtro del Panel Principal) ---
         public async Task<IEnumerable<CitaResponseDto>> GetCitasRangoAsync(Guid userId, DateTime inicio, DateTime fin)
         {
             // 🛡️ Blindaje inicial: Evitar consultas con IDs vacíos
@@ -84,7 +84,7 @@ namespace Turnify.Api.Services
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
                 // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ProveedorId o ClienteId (validando contra usuario_id también)
-                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id == userId)) && 
+                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == userId)) && 
                             c.Fecha >= fechaInicioStr && 
                             c.Fecha < fechaFinLimite && 
                             c.Estado != "cancelada")
@@ -151,9 +151,9 @@ namespace Turnify.Api.Services
             if (dto.ClienteId == Guid.Empty || dto.ServicioId == Guid.Empty)
                 return (false, "Los identificadores de cliente o servicio no pueden estar vacíos.", (Guid?)null);
 
-            // 🚩 FIX MAESTRO: Buscamos al cliente por su ID primario O por su UsuarioId (Alexandra Fix)
+            // 🚩 FIX ANTI-NULLS EF CORE: Blindamos la evaluación del predicado aislando los valores nulos de usuario_id
             var cliente = await _context.clientes
-                .FirstOrDefaultAsync(c => c.id == dto.ClienteId || c.usuario_id == dto.ClienteId);
+                .FirstOrDefaultAsync(c => c.id == dto.ClienteId || (c.usuario_id != null && c.usuario_id == dto.ClienteId));
 
             if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
 
@@ -227,7 +227,7 @@ namespace Turnify.Api.Services
                         PrecioPactado = servicio.Precio + (dto.CostoDomicilio >= 0 ? dto.CostoDomicilio : 0), 
                         DuracionPactadaMin = servicio.DuracionMinutos,
                         FechaCreacion = DateTime.UtcNow,
-                        Observaciones = dto.Observaciones,
+                        Observaciones = dto.Observaciones ?? "", // 🚩 OBSERVACIONES TOTALMENTE RESPETADAS E INTACTAS
                         Direccion = dto.Direccion,
                         MetodoRegistro = dto.MetodoRegistro ?? "Web",
                         Latitud = dto.Latitud,
@@ -416,7 +416,7 @@ namespace Turnify.Api.Services
             return await _context.citas.AsNoTracking()
                 .Include(c => c.Servicio)
                 .Include(c => c.Cliente) 
-                .Where(c => c.ClienteId == clienteId || (c.Cliente != null && c.Cliente.usuario_id == clienteId))
+                .Where(c => c.ClienteId == clienteId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == clienteId))
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
                 .Select(c => new CitaResponseDto {
                     Id = c.Id,
