@@ -25,7 +25,7 @@ namespace Turnify.Api.Models
 
         [Required(ErrorMessage = "La fecha de la cita es obligatoria")]
         [Column("fecha")]
-        public DateTime Fecha { get; set; } 
+        public DateTimeOffset Fecha { get; set; } // 📅 MIGRADO A DATETIMEOFFSET: Soporte internacional absoluto
 
         [Required(ErrorMessage = "La hora de la cita es obligatoria")]
         [Column("hora")]
@@ -60,7 +60,7 @@ namespace Turnify.Api.Models
         public string? Observaciones { get; set; }
 
         [Column("fecha_creacion")]
-        public DateTime FechaCreacion { get; set; } = DateTime.Now;
+        public DateTimeOffset FechaCreacion { get; set; } = DateTimeOffset.UtcNow; // 📅 MIGRADO A DATETIMEOFFSET: Enrutado en UTC por defecto
 
         [Required]
         [Column("precio_pactado", TypeName = "decimal(18, 2)")]
@@ -81,12 +81,11 @@ namespace Turnify.Api.Models
         public string? CodigoVerificacion { get; set; }
 
         // 🛡️ SELLO DE CONCURRENCIA SENIOR (Bloqueo Optimista)
-        // SQL Server administrará e incrementará este token binario automáticamente en cada UPDATE.
         [Timestamp]
         [Column("row_version")]
         public byte[] RowVersion { get; set; }
 
-        // --- RELACIONES ---
+        // --- RELACIONES INTACTAS ---
         [ForeignKey("ClienteId")]
         public virtual Clientes? Cliente { get; set; }
         

@@ -132,7 +132,6 @@ builder.Services.AddDbContext<TurnifyDbContext>(options =>
     ));
 
 // --- 🛡️ CONFIGURACIÓN DE DATA PROTECTION PARA PRODUCCIÓN ---
-// Forzamos una ruta física persistente dentro del contenedor para que las llaves JWT y de Tokens no se destruyan al reiniciar Docker
 var keysFolder = Path.Combine(builder.Environment.ContentRootPath, "dataprotection-keys");
 if (!Directory.Exists(keysFolder))
 {
@@ -160,14 +159,12 @@ builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // 🚀 [NUEVO MOTOR DE MENSAJERÍA OUT-OF-THE-BOX]
-// Matrícula del servicio de Correo Electrónico corporativo/SMTP para Turnify QR
 builder.Services.AddScoped<IEmailService, EmailService>();
 
-// 🛡️ MATRÍCULA DEL BOT DE WHATSAPP: Soluciona el error fatal de activación en el controlador
+// 🛡️ MATRÍCULA DEL BOT DE WHATSAPP
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 
-// 🔄 Inyección del Worker Automático en segundo plano (Sistemas Reactivos - Frente 2)
-// Este servicio se encarga de monitorear y cancelar las citas no asistidas automáticamente.
+// 🔄 Inyección del Worker Automático en segundo plano
 builder.Services.AddHostedService<CitaCancellationWorker>();
 
 var app = builder.Build();
@@ -200,7 +197,6 @@ Console.WriteLine($"--- 📂 ¿La carpeta existe?: {Directory.Exists(frontendPat
 
 if (Directory.Exists(frontendPath))
 {
-    // Listamos qué archivos .html ve .NET físicamente dentro del contenedor
     var files = Directory.GetFiles(frontendPath, "*.html");
     Console.WriteLine($"--- 📄 Archivos HTML disponibles en Docker ({files.Length}): ---");
     foreach (var file in files) {
@@ -239,6 +235,44 @@ if (Directory.Exists(frontendPath))
     app.MapFallbackToFile("login.html", new StaticFileOptions {
         FileProvider = new PhysicalFileProvider(frontendPath)
     });
+}
+
+// ============================================================================
+// 🛡️ BÚNKER DE MIGRACIÓN AUTOMÁTICA INTELIGENTE EN DOCKER (INYECCIÓN RESILIENTE)
+// ============================================================================
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<TurnifyDbContext>();
+        Console.WriteLine("⏳ [Docker Boot] Detectando estado de TurnifyDb en SQL Server...");
+        
+        // 🧠 CONTROL DE PERSISTENCIA: Valida de manera segura la conexión física. 
+        // Si la base de datos ya está montada en el disco real, evita el choque del CREATE DATABASE automático.
+        await context.Database.OpenConnectionAsync();
+        await context.Database.CloseConnectionAsync();
+        
+        Console.WriteLine("⏳ [Docker Boot] Sincronizando e impactando columnas DateTimeOffset...");
+        await context.Database.MigrateAsync();
+        Console.WriteLine("🎉 [Docker Boot] Base de datos sincronizada y blindada a nivel mundial con éxito.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"💥 [Docker Boot Warning] Ajustando estrategia de sincronización de tablas: {ex.Message}");
+        
+        // Canal de rescate por si el motor levantó en frío sin tablas históricas o con volúmenes mapeados
+        try
+        {
+            var context = services.GetRequiredService<TurnifyDbContext>();
+            await context.Database.MigrateAsync();
+            Console.WriteLine("🎉 [Docker Boot Rescate] Sincronización forzada completada con éxito.");
+        }
+        catch (Exception innerEx)
+        {
+            Console.WriteLine($"❌ [Docker Boot Critical Error] Falló el mapeo final de esquemas en el contenedor: {innerEx.Message}");
+        }
+    }
 }
 
 app.Run();
@@ -333,7 +367,7 @@ namespace Turnify.Api.Services
 }
 
 // ============================================================================
-// 🧠 IMPLANTACIÓN SENIOR: MIDDLEWARE DE CONTROL DE EXPULSIÓN (TC-003)
+// 🚀 INFRAESTRUCTURA DE EXPULSIÓN EN VIVO CONSERVADA (TC-003)
 // ============================================================================
 namespace Turnify.Api.Middleware
 {
@@ -360,14 +394,12 @@ namespace Turnify.Api.Middleware
 
             if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var parsedUserId))
             {
-                // 🛡️ VERIFICACIÓN EN CALIENTE CON ASNOTRACKING
                 var usuarioStatus = await dbContext.usuarios
                     .AsNoTracking()
                     .Where(u => u.id == parsedUserId)
                     .Select(u => new { u.esta_bloqueado, u.activo })
                     .FirstOrDefaultAsync();
 
-                // 🛡️ FIX CS0019 SENIOR: Se normalizaron ambos operandos anulables (bool?) usando comparaciones explícitas coherentes
                 if (usuarioStatus == null || usuarioStatus.esta_bloqueado == true || usuarioStatus.activo == false)
                 {
                     Console.WriteLine($"🔒 [LIVE EVICTION TC-003] Denegando petición en caliente. Usuario ID: {parsedUserId} se encuentra bloqueado o inactivo.");
@@ -377,7 +409,7 @@ namespace Turnify.Api.Middleware
                     
                     var responsePayload = new { message = "Tu cuenta ha sido suspendida o deshabilitada. Sesión revocada en vivo." };
                     await context.Response.WriteAsync(JsonSerializer.Serialize(responsePayload));
-                    return; // 🛑 Rompe la tubería HTTP impidiendo llamadas al controlador
+                    return; 
                 }
             }
 

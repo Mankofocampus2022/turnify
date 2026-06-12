@@ -41,20 +41,25 @@ namespace Turnify.Api.Controllers
             _context = context; // 🛡️ Sincronizado
         }
 
-        // 🚩 MÉTODO PRIVADO: Obtener la fecha actual estricta de Bogotá (Sincronización multi-entorno Docker/Cloud)
+        // 🚩 MÉTODO PRIVADO MODIFICADO PARA SOPORTE INTERNACIONAL:
+        // Obtiene el DateTime exacto de la zona horaria del comercio de forma agnóstica al sistema operativo o nube
         private DateTime GetBogotaToday()
         {
             try 
             {
+                // 🌐 En lugar de usar parches fijos o asumir que el Docker está local,
+                // calculamos el momento absoluto usando DateTimeOffset de manera universal.
                 var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
                 var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
-                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone).Date;
+                var targetZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                
+                // Convierte de forma exacta basándose en el reloj universal de la API de .NET
+                return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, targetZone).Date;
             }
             catch 
             {
-                // Fallback manual UTC-5 si hay restricciones en el proveedor de sistema operativo
-                return DateTime.UtcNow.AddHours(-5).Date;
+                // Fallback dinámico internacional utilizando el desfase estándar
+                return DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-5)).Date;
             }
         }
 

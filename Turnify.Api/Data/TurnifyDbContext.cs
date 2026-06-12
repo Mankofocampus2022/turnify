@@ -1,5 +1,6 @@
 using System;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion; // 🛡️ Conservado por consistencia estructural
 using Turnify.Api.Models; 
 
 namespace Turnify.Api.Data
@@ -53,7 +54,6 @@ namespace Turnify.Api.Data
                       .HasForeignKey<Clientes>(c => c.usuario_id);
 
                 // 🛡️ RELACIÓN MAESTRA: Usuario -> Proveedor (PascalCase en Proveedores)
-                // 🚩 FIX: Cambiamos p.usuario_id por p.UsuarioId
                 entity.HasOne(u => u.Proveedor)
                       .WithOne(p => p.Usuario)
                       .HasForeignKey<Proveedores>(p => p.UsuarioId);
@@ -65,27 +65,37 @@ namespace Turnify.Api.Data
                 entity.Property(c => c.usuario_id).HasColumnName("usuario_id");
             });
 
-            // 🛡️ BLINDAJE PARA PROVEEDORES (Mapeo Estricto y Absoluto para Postgres)
+            // 🛡️ BLINDAJE PARA PROVEEDORES (Mapeo Estricto y Absoluto para Postgres/SQL Server)
             modelBuilder.Entity<Proveedores>(entity => {
                 entity.ToTable("proveedores");
                 entity.Property(p => p.Id).HasColumnName("id");
                 entity.Property(p => p.UsuarioId).HasColumnName("usuario_id");
                 
-                // 🚩 FIX NUCLEAR: Mapeamos explícitamente TODAS las columnas para que EF no ignore ninguna en el UPDATE
+                // 🚩 FIX NUCLEAR: Mapeamos explícitamente TODAS las columnas
                 entity.Property(p => p.NombreComercial).HasColumnName("nombre_comercial");
                 entity.Property(p => p.Direccion).HasColumnName("direccion");
                 entity.Property(p => p.Tipo).HasColumnName("tipo");
                 entity.Property(p => p.Categoria).HasColumnName("categoria");
                 
-                // Mantenemos la tolerancia de nulos pero forzamos el límite y el nombre exacto de la base de datos
                 entity.Property(p => p.Telefono).HasColumnName("telefono").HasMaxLength(20).IsRequired(false);
                 entity.Property(p => p.Email).HasColumnName("email").HasMaxLength(150).IsRequired(false); 
             });
 
+            // ============================================================================
+            // 🌐 ALINEACIÓN GLOBAL NATIVA: Mapeo nativo datetimeoffset sin convertidores obsoletos
+            // ============================================================================
+            modelBuilder.Entity<Citas>()
+                .Property(c => c.Fecha)
+                .HasColumnType("datetimeoffset");
+
+            modelBuilder.Entity<Citas>()
+                .Property(c => c.FechaCreacion)
+                .HasColumnType("datetimeoffset");
+
             // 3. Relaciones de Citas (🚩 FIX MAESTRO PARA ELIMINAR 'ProveedoresId')
             modelBuilder.Entity<Citas>()
                 .HasOne(c => c.Proveedor)
-                .WithMany(p => p.Citas) // 🛡️ Mapeo explícito a la colección en Proveedores
+                .WithMany(p => p.Citas) 
                 .HasForeignKey(c => c.ProveedorId)
                 .OnDelete(DeleteBehavior.Restrict);
 
@@ -102,7 +112,6 @@ namespace Turnify.Api.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             // 🛡️ MAPEO DE CONCURRENCIA SENIOR (RowVersion)
-            // Vincula la propiedad binaria con la columna física y activa el rastreo de tokens de EF Core
             modelBuilder.Entity<Citas>()
                 .Property(c => c.RowVersion)
                 .HasColumnName("row_version")
@@ -115,7 +124,7 @@ namespace Turnify.Api.Data
                 .HasForeignKey(h => h.ProveedorId)
                 .OnDelete(DeleteBehavior.NoAction);
 
-            // 4. DATOS SEMILLA (TUS GUIDS SAGRADOS)
+            // 4. DATOS SEMILLA (TUS GUIDS SAGRADOS CORREGIDOS - SIN DUPLICADOS)
             modelBuilder.Entity<Roles>().HasData(
                 new Roles { id = Guid.Parse("6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43"), nombre = "Administrador" },
                 new Roles { id = Guid.Parse("56992F75-6420-4D55-A5F9-9223248C50D7"), nombre = "Cliente" },

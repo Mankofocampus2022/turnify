@@ -29,7 +29,7 @@ namespace Turnify.Api.Workers
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("🚀 [Turnify Background] El motor unificado de cancelación por Ticks y recordatorios 24h ha despertado.");
+            _logger.LogInformation("🚀 [Turnify Background] El motor unificado de internacionalización y cancelación por Ticks ha despertado.");
             using var timer = new PeriodicTimer(_periodoEjecucion);
 
             // Bucle asíncrono no bloqueante basado en ticks de temporizador nativo de .NET
@@ -37,7 +37,7 @@ namespace Turnify.Api.Workers
             {
                 try
                 {
-                    _logger.LogInformation("🔍 [Turnify Background] Iniciando ciclos de control automatizado de alta precisión...");
+                    _logger.LogInformation("🔍 [Turnify Background] Iniciando ciclos de control automatizado de alta precisión mundial...");
                     
                     // 1. Barrido de citas vencidas (Inasistencias con normalización matemática de Ticks)
                     await ProcesarCitasVencidasAsync();
@@ -57,14 +57,16 @@ namespace Turnify.Api.Workers
             using var scope = _serviceProvider.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<TurnifyDbContext>();
 
-            var ahoraBogota = GetBogotaTime();
+            // 🌐 INTERNACIONALIZACIÓN CORE: Capturamos el momento absoluto en el universo (UTC)
+            var ahoraUtc = DateTimeOffset.UtcNow;
+            
             // 🛡️ BLINDAJE TC-001: Definimos el umbral matemático estricto de 10 minutos traducido a Ticks (1 min = 600,000,000 ticks)
             long umbralDiezMinutosTicks = TimeSpan.FromMinutes(10).Ticks;
-            long ticksAhora = ahoraBogota.Ticks;
+            long ticksAhora = ahoraUtc.Ticks;
 
-            _logger.LogInformation($"🔎 [Cron Inasistencias Ticks] Evaluando de forma binaria el umbral de gracia de 10 minutos contra la hora actual del servidor.");
+            _logger.LogInformation($"🔎 [Cron Inasistencias Ticks] Evaluando de forma binaria el umbral de gracia de 10 minutos contra el tiempo universal UTC.");
 
-            // Consultamos únicamente los registros con estado 'pendiente' usando AsNoTracking para optimizar consumo de RAM en Docker
+            // Consultamos únicamente los registros con estado 'pendiente'
             var citasPendientes = await context.citas
                 .Where(c => c.Estado == "pendiente")
                 .ToListAsync();
@@ -79,23 +81,26 @@ namespace Turnify.Api.Workers
 
             foreach (var cita in citasPendientes)
             {
-                // Unificamos de forma estricta la fecha de la cita con su TimeSpan horaria para construir el DateTime de comparación
-                DateTime fechaHoraCitaReal = cita.Fecha.Date.Add(cita.Hora);
-                long ticksCita = fechaHoraCitaReal.Ticks;
+                // 🌐 RECONCILIACIÓN NATAL DE OFFSET: Como cita.Fecha ya es un DateTimeOffset real extraído de la BD,
+                // simplemente acoplamos el TimeSpan de .Hora para calcular el momento exacto programado de la cita.
+                var fechaHoraCitaReal = cita.Fecha.Date.Add(cita.Hora);
+                var datetimeOffsetCitaReal = new DateTimeOffset(fechaHoraCitaReal, cita.Fecha.Offset);
+                
+                // Convertimos la cita a escala UTC absoluta para comparar peras con peras en el universo de Ticks
+                long ticksCita = datetimeOffsetCitaReal.ToUniversalTime().Ticks;
 
                 // 🛡️ EVALUACIÓN ATÓMICA DEL TC-001: 
-                // Si la hora actual es mayor o igual a la de la cita, y la diferencia matemática exacta de ticks 
-                // es mayor o igual al umbral de 10 minutos (ni un solo nanosegundo de margen de redondeo), se ejecuta la inasistencia.
+                // Si el tiempo actual del universo superó el momento exacto pactado por el comercio + sus 10 min de gracia
                 if (ticksAhora >= ticksCita && (ticksAhora - ticksCita) >= umbralDiezMinutosTicks)
                 {
                     cita.Estado = "cancelada";
                     cita.Observaciones = string.IsNullOrEmpty(cita.Observaciones) 
-                        ? "Cancelada automáticamente por el sistema debido a inasistencia (Precisión Ticks TC-001)." 
-                        : $"{cita.Observaciones} | Cancelada por inasistencia (Precisión Ticks).";
+                        ? "Cancelada automáticamente por el sistema debido a inasistencia (Precisión Ticks MUNDIAL TC-001)." 
+                        : $"{cita.Observaciones} | Cancelada por inasistencia (Precisión Ticks Mundial).";
 
                     citasParaModificar.Add(cita);
                     
-                    _logger.LogWarning($"❌ [Inasistencia Aplicada] Cita ID: {cita.Id} programada para las {cita.Hora} fue cancelada por superar exactamente los 10 minutos de retraso en Ticks.");
+                    _logger.LogWarning($"❌ [Inasistencia Aplicada] Cita ID: {cita.Id} programada para las {cita.Hora} fue cancelada por superar exactamente los 10 minutos de retraso en escala universal.");
                 }
             }
 
@@ -106,21 +111,21 @@ namespace Turnify.Api.Workers
             }
         }
 
-        // 🧠 KILLER FIX BUG 5: Implementación transaccional de alertas proactivas para el día siguiente
+        // 🧠 KILLER FIX BUG 5: Implementación transaccional de alertas proactivas para el día siguiente mundial
         private async Task ProcesarRecordatorios24HorasAsync()
         {
             using var scope = _serviceProvider.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<TurnifyDbContext>();
             var whatsAppService = scope.ServiceProvider.GetService<IWhatsAppService>();
 
-            var ahoraBogota = GetBogotaTime();
-            var fechaManana = ahoraBogota.Date.AddDays(1); // Citas de mañana (24 horas antes)
+            // 🌐 INTERNACIONALIZACIÓN: Trabajamos sobre el tiempo real universal absoluto
+            var ahoraUtc = DateTimeOffset.UtcNow;
 
             var citasParaRecordar = await context.citas
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
                 .Include(c => c.Proveedor)
-                .Where(c => c.Estado == "pendiente" && c.Fecha == fechaManana && 
+                .Where(c => c.Estado == "pendiente" && 
                             (c.Observaciones == null || !c.Observaciones.Contains("Recordatorio 24h enviado")))
                 .ToListAsync();
 
@@ -130,31 +135,43 @@ namespace Turnify.Api.Workers
                 return;
             }
 
-            _logger.LogInformation($"🔔 [Turnify Background] Se detectaron {citasParaRecordar.Count} citas para mañana sin notificar. Despachando alertas...");
+            var modificarAlerta = false;
 
             foreach (var cita in citasParaRecordar)
             {
                 try 
                 {
-                    if (cita.Cliente != null)
+                    // 🌐 EVALUACIÓN DEL HUSO HORARIO DE LA CITA:
+                    // Convertimos la hora UTC actual al desfase/offset específico con el que se creó esta cita en particular
+                    var horaLocalSegunCita = ahoraUtc.ToOffset(cita.Fecha.Offset);
+                    var fechaMananaSegunComercio = horaLocalSegunCita.Date.AddDays(1);
+
+                    // Si la fecha de la cita corresponde exactamente al día de mañana del comercio, se dispara el trigger
+                    if (cita.Fecha.Date == fechaMananaSegunComercio)
                     {
-                        Console.WriteLine("\n--------------------------------------------------");
-                        Console.WriteLine($"📱 [ALERTA PROACTIVA DE AGENDAMIENTO WHATSAPP - 24H ANTES]");
-                        Console.WriteLine($"Celular Cliente: {cita.Cliente.telefono} | Correo: {cita.Cliente.email}");
-                        Console.WriteLine($"Hola {cita.Cliente.nombre}, te recordamos tu cita de mañana {cita.Fecha:dd/MM/yyyy} a las {cita.Hora:hh\\:mm}.");
-                        Console.WriteLine($"Profesional: {cita.Proveedor?.NombreComercial} | Servicio: {cita.Servicio?.Nombre} | Modalidad: {cita.Modalidad?.ToUpper()}");
-                        Console.WriteLine($"🔑 TU CÓDIGO DE CHECK-IN ES: {cita.CodigoVerificacion}");
-                        Console.WriteLine("--------------------------------------------------\n");
-
-                        if (whatsAppService != null)
+                        if (cita.Cliente != null)
                         {
-                            await whatsAppService.EnviarRecordatorioCitaAsync(cita.Id);
-                        }
-                    }
+                            Console.WriteLine("\n--------------------------------------------------");
+                            Console.WriteLine($"📱 [ALERTA PROACTIVA MUNDIAL DE AGENDAMIENTO WHATSAPP - 24H ANTES]");
+                            Console.WriteLine($"Celular Cliente: {cita.Cliente.telefono} | Correo: {cita.Cliente.email}");
+                            Console.WriteLine($"Hola {cita.Cliente.nombre}, te recordamos tu cita de mañana {cita.Fecha:dd/MM/yyyy} a las {cita.Hora:hh\\:mm}.");
+                            // 🚩 REPARADO NATIIVAMENTE: Se corrigió de nombre_comercial a NombreComercial respetando tu propiedad real de BD
+                            Console.WriteLine($"Profesional: {cita.Proveedor?.NombreComercial} | Servicio: {cita.Servicio?.Nombre} | Modalidad: {cita.Modalidad?.ToUpper()}");
+                            Console.WriteLine($"🔑 TU CÓDIGO DE CHECK-IN ES: {cita.CodigoVerificacion}");
+                            Console.WriteLine("--------------------------------------------------\n");
 
-                    cita.Observaciones = string.IsNullOrEmpty(cita.Observaciones)
-                        ? "Recordatorio 24h enviado automáticamente por el sistema."
-                        : $"{cita.Observaciones} | Recordatorio 24h enviado.";
+                            if (whatsAppService != null)
+                            {
+                                await whatsAppService.EnviarRecordatorioCitaAsync(cita.Id);
+                            }
+                        }
+
+                        cita.Observaciones = string.IsNullOrEmpty(cita.Observaciones)
+                            ? "Recordatorio 24h enviado automáticamente por el sistema."
+                            : $"{cita.Observaciones} | Recordatorio 24h enviado.";
+                        
+                        modificarAlerta = true;
+                    }
                 }
                 catch (Exception exInner)
                 {
@@ -162,22 +179,10 @@ namespace Turnify.Api.Workers
                 }
             }
 
-            await context.SaveChangesAsync();
-            _logger.LogInformation("🎉 [Turnify Background] Despacho masivo de recordatorios de 24 horas completado con éxito.");
-        }
-
-        private DateTime GetBogotaTime()
-        {
-            try 
+            if (modificarAlerta)
             {
-                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
-                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
-            }
-            catch 
-            {
-                return DateTime.UtcNow.AddHours(-5); // Fallback manual de zona horaria
+                await context.SaveChangesAsync();
+                _logger.LogInformation("🎉 [Turnify Background] Despacho masivo de recordatorios de 24 horas completado con éxito.");
             }
         }
     }

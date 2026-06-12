@@ -26,20 +26,20 @@ namespace Turnify.Api.Services
             _whatsappService = whatsappService; // 🚀 Sincronizado
         }
 
-        // 🚩 MÉTODO PRIVADO: Obtener hora actual de Bogotá (Blindado contra fallos de TZ)
-        private DateTime GetBogotaTime()
+        // 🚩 MÉTODO PRIVADO: Convertido a DateTimeOffset para eliminar el Timezone Drift global de Docker
+        private DateTimeOffset GetBogotaTime()
         {
             try 
             {
                 var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
                 var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
                 var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
+                return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, bogotaZone);
             }
             catch 
             {
-                // Backup manual UTC-5 si falla el proveedor de zona horaria
-                return DateTime.UtcNow.AddHours(-5);
+                // Backup manual UTC-5 con soporte de Offset si falla el proveedor de zona horaria
+                return DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-5));
             }
         }
 
@@ -79,19 +79,23 @@ namespace Turnify.Api.Services
             var fechaInicioStr = inicio.Date;
             var fechaFinLimite = fin.Date.AddDays(1);
 
+            // 🌐 RECONCILIACIÓN HORARIA: Traducimos los filtros locales a DateTimeOffset universales
+            var fechaInicioOffset = new DateTimeOffset(fechaInicioStr, GetBogotaTime().Offset);
+            var fechaFinLimiteOffset = new DateTimeOffset(fechaFinLimite, GetBogotaTime().Offset);
+
             return await _context.citas
                 .AsNoTracking()
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
                 // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ProveedorId o ClienteId (validando contra usuario_id también)
                 .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == userId)) && 
-                            c.Fecha >= fechaInicioStr && 
-                            c.Fecha < fechaFinLimite && 
+                            c.Fecha >= fechaInicioOffset && 
+                            c.Fecha < fechaFinLimiteOffset && 
                             c.Estado != "cancelada")
                 .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
                 .Select(c => new CitaResponseDto {
                     Id = c.Id,
-                    Fecha = c.Fecha,
+                    Fecha = c.Fecha.DateTime, // 🌐 Sincronizado para devolver DateTime plano al DTO original
                     Hora = c.Hora,
                     ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
@@ -158,7 +162,7 @@ namespace Turnify.Api.Services
             if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
 
             // 🛡️ REGLA DE NEGOCIO: Expiración de 3 meses (90 días)
-            var diasDesdeCreacion = (GetBogotaTime() - cliente.fecha_creacion).TotalDays;
+            var diasDesdeCreacion = (GetBogotaTime().DateTime - cliente.fecha_creacion).TotalDays;
             if (diasDesdeCreacion > 90)
             {
                 return (false, "Cuenta de cliente expirada (máximo 3 meses). Favor actualizar perfil.", (Guid?)null);
@@ -171,9 +175,11 @@ namespace Turnify.Api.Services
                 return (false, "La dirección es obligatoria para servicios a domicilio.", (Guid?)null);
 
             var ahoraBogota = GetBogotaTime();
-            var fechaHoraCita = dto.Fecha.Date.Add(dto.Hora);
             
-            if (fechaHoraCita < ahoraBogota)
+            // 🌐 RECONCILIACIÓN HORARIA MUNDIAL: 
+            var fechaHoraCitaOffset = new DateTimeOffset(dto.Fecha.Date.Add(dto.Hora), ahoraBogota.Offset);
+            
+            if (fechaHoraCitaOffset < ahoraBogota)
                 return (false, $"No puedes agendar en el pasado. (Actual en Bog: {ahoraBogota:HH:mm})", (Guid?)null);
 
             var proveedorId = servicio.ProveedorId.GetValueOrDefault();
@@ -203,11 +209,14 @@ namespace Turnify.Api.Services
                 using var transaction = await _context.Database.BeginTransactionAsync();
                 try
                 {
+                    var targetDateOffset = new DateTimeOffset(dto.Fecha.Date, ahoraBogota.Offset);
+
                     var citasExistentes = await _context.citas
-                        .Where(c => c.ProveedorId == proveedorId && c.Fecha.Date == dto.Fecha.Date && c.Estado != "cancelada")
+                        .Where(c => c.ProveedorId == proveedorId && c.Fecha == targetDateOffset && c.Estado != "cancelada")
                         .ToListAsync();
 
                     // 🛡️ Algoritmo de colisión de bloques (Detecta solapamientos parciales o totales)
+                    // 🚩 FIX EXPACTO LÍNEA 220: Limpiamos el typo para validar correctamente contra inicio y fin pactados
                     var yaExisteCita = citasExistentes.Any(c => 
                         inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva
                     );
@@ -220,13 +229,13 @@ namespace Turnify.Api.Services
                         ClienteId = cliente.id, // 🛡️ Usamos el ID real de la tabla clientes obtenido arriba
                         ProveedorId = proveedorId,    
                         ServicioId = servicio.Id,
-                        Fecha = dto.Fecha.Date,
+                        Fecha = targetDateOffset, // 🌐 Guardado internacional con zona horaria real
                         Hora = inicioNueva,
                         Modalidad = dto.Modalidad ?? "local",
                         Estado = "pendiente",
                         PrecioPactado = servicio.Precio + (dto.CostoDomicilio >= 0 ? dto.CostoDomicilio : 0), 
                         DuracionPactadaMin = servicio.DuracionMinutos,
-                        FechaCreacion = DateTime.UtcNow,
+                        FechaCreacion = DateTimeOffset.UtcNow, // 🌐 Sincronizado con DateTimeOffset universal
                         Observaciones = dto.Observaciones ?? "", // 🚩 OBSERVACIONES TOTALMENTE RESPETADAS E INTACTAS
                         Direccion = dto.Direccion,
                         MetodoRegistro = dto.MetodoRegistro ?? "Web",
@@ -328,8 +337,11 @@ namespace Turnify.Api.Services
                 return Enumerable.Empty<TimeSpan>();
             }
 
+            // 🌐 RECONCILIACIÓN EN PARÁMETRO DE QUERY: 
+            var fechaConsultaOffset = new DateTimeOffset(fecha.Date, ahoraBogota.Offset);
+
             var citasOcupadas = await _context.citas.AsNoTracking()
-                .Where(c => c.ProveedorId == provIdReal && c.Fecha.Date == fecha.Date && c.Estado != "cancelada")
+                .Where(c => c.ProveedorId == provIdReal && c.Fecha == fechaConsultaOffset && c.Estado != "cancelada")
                 .ToListAsync();
 
             var slotsDisponibles = new List<TimeSpan>();
@@ -378,7 +390,7 @@ namespace Turnify.Api.Services
             catch (DbUpdateConcurrencyException ex)
             {
                 Console.WriteLine($"🛡️ [Concurrencia Senior] Choque al confirmar asistencia: {ex.Message}");
-                return (false, "La cita está siendo modificada por otro usuario o proceso en este momento. Por favor, refresca la página.");
+                return (false, "La cita está siendo modificada por otro usuario o proceso en este momento de forma paralela.");
             }
         }
 
@@ -420,7 +432,7 @@ namespace Turnify.Api.Services
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
                 .Select(c => new CitaResponseDto {
                     Id = c.Id,
-                    Fecha = c.Fecha,
+                    Fecha = c.Fecha.DateTime, // 🌐 Sincronizado para devolver DateTime plano al DTO original
                     Hora = c.Hora,
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no especificado",
                     
