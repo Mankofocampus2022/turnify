@@ -47,16 +47,16 @@
 
         <div class="config-container">
             <div class="config-menu">
-                <div class="config-menu-item config-menu-item active">
+                <div class="config-menu-item active">
                     <i class="fas fa-store"></i> Perfil del Negocio
                 </div>
-                <div class="config-menu-item config-menu-item">
+                <div class="config-menu-item">
                     <i class="fas fa-clock"></i> Horarios
                 </div>
-                <div class="config-menu-item config-menu-item">
+                <div class="config-menu-item">
                     <i class="fas fa-credit-card"></i> Pagos
                 </div>
-                <div class="config-menu-item config-menu-item">
+                <div class="config-menu-item">
                     <i class="fas fa-bell"></i> Notificaciones
                 </div>
             </div>
@@ -125,8 +125,8 @@
                     <form id="formConfigPagos">
                         <h3>Métodos de Pago y Facturación</h3>
                         <p style="color: #64748b; margin-bottom: 20px;">Configura tus llaves de API para recibir pagos en línea con tarjetas de crédito.</p>
+                        
                         <div class="form-grid">
-                            <div class="form-grid">
                             <div class="form-group">
                                 <label>Pasarela de Pago</label>
                                 <select id="pagosPasarela">
@@ -149,6 +149,7 @@
                                 </select>
                             </div>
                         </div>
+
                         <div class="form-group full-width" style="margin-bottom: 25px;">
                             <label>Public Key / Client ID</label>
                             <input type="password" id="pagosPublicKey" placeholder="TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
@@ -157,6 +158,7 @@
                         <h4 style="margin-top: 30px; margin-bottom: 15px; color: #48c1b5; font-size: 1.05rem; border-top: 1px solid rgba(72,193,181,0.15); padding-top: 25px;">
                             <i class="fas fa-wallet"></i> Recaudo Digital Directo (Nequi / Daviplata / Bancos)
                         </h4>
+                        
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>Celular Nequi</label>
@@ -178,6 +180,7 @@
                                 </select>
                             </div>
                         </div>
+
                         <div class="form-group full-width" style="margin-bottom: 20px;">
                             <label>Número de Cuenta Bancaria</label>
                             <input type="text" id="pagoNumeroCuenta" placeholder="Ej: 12345678901">
@@ -191,25 +194,29 @@
                     <form id="formConfigNotificaciones">
                         <h3>Notificaciones Automáticas</h3>
                         <p style="color: #64748b; margin-bottom: 20px;">Activa o desactiva las alertas automáticas para mantener informada a tu agenda.</p>
+                        
                         <div class="form-group">
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(72,193,181,0.1); margin-bottom: 15px;">
                                 <div>
                                     <strong style="color: #fff;">🔔 Recordatorios por Correo Electrónico</strong>
                                     <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Notificar alertas generales y cancelaciones automáticas vía Email.</p>
                                 </div>
-                                <input type="checkbox" id="notifEmail" checked style="width: 22px; height: 22px; cursor: pointer; accent-color: #48c1b5;">
+                                <input type="checkbox" id="notifEmail" style="width: 22px; height: 22px; cursor: pointer; accent-color: #48c1b5;">
                             </div>
+                            
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(72,193,181,0.1); margin-bottom: 20px;">
                                 <div>
                                     <strong style="color: #fff;">💬 Canal de Mensajería WhatsApp (Meta API)</strong>
                                     <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Disparar plantillas automáticas cuando se agende, cancele o venza un turno.</p>
                                 </div>
-                                <input type="checkbox" id="notifWhatsApp" checked style="width: 22px; height: 22px; cursor: pointer; accent-color: #48c1b5;">
+                                <input type="checkbox" id="notifWhatsApp" style="width: 22px; height: 22px; cursor: pointer; accent-color: #48c1b5;">
                             </div>
                         </div>
+                        
                         <button type="submit" class="btn-save"><i class="fas fa-bell"></i> Guardar Preferencias de Alertas</button>
                     </form>
                 </div>
+
             </div> 
         </div> 
     </main> 

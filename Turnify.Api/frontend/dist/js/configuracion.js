@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if(targetElement) {
                         targetElement.style.display = 'block';
                         if(targetId === 'content-horarios') cargarHorarios();
-                        // 🧠 ADICIÓN: Al dar clic en pestañas de pagos o notificaciones, disparamos su carga asíncrona
+                        // 🧠 ADICIÓN ARMÓNICA: Consumimos el canal nativo de Proveedores existente
                         if(targetId === 'content-pagos') cargarDatosPagos(proveedorId, token);
                         if(targetId === 'content-notificaciones') cargarDatosNotificaciones(proveedorId, token);
                     }
@@ -136,7 +136,6 @@ async function cambiarPeriodo(periodo, boton) {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_BASE}/Citas/rango?inicio=${startStr}&fin=${endStr}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -178,13 +177,11 @@ function renderizarTablaDashboard(citas) {
    SECCIÓN: PERFIL, HORARIOS Y QR (THE BOSS)
    ========================================= */
 
-// 🚩 NUEVA FUNCIÓN: Generación de QR Dinámico
 function generarQRNegocio(proveedorId) {
-    // 🚩 FIX: Apuntando al archivo correcto agendar-cita.html
     const urlReserva = `${window.location.origin}/agendar-cita.html?id=${proveedorId}`;
     const container = document.getElementById('qr-container');
     
-    if (!container) return; // Si no existe el div en el HTML, no hace nada
+    if (!container) return; 
 
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlReserva)}&color=48c1b5&bgcolor=0a101e`;
 
@@ -199,7 +196,6 @@ function generarQRNegocio(proveedorId) {
     `;
 }
 
-// 🚩 NUEVA FUNCIÓN: Descarga del QR para impresión
 async function descargarQR(url) {
     try {
         const response = await fetch(url);
@@ -216,7 +212,6 @@ async function descargarQR(url) {
 
 async function cargarDatosConfig(proveedorId, token) {
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -238,12 +233,10 @@ async function guardarConfig(e, proveedorId, token) {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
 
-    // 🚩 KILLER FIX FRONTEND: Capturamos los elementos de teléfono y correo para inyectarlos en el request
     const inputTelefono = document.getElementById('negocioTelefono');
     const inputEmail = document.getElementById('negocioEmail');
     const tipoSelect = document.getElementById('negocioTipo') ? document.getElementById('negocioTipo').value : "Barbería";
 
-    // 🧠 SINCRONIZACIÓN MULTI-TENANT: Mapeamos dinámicamente los valores hacia el discriminador exacto del Bot
     let categoriaMapeada = "Barbero";
     if (tipoSelect === "Manicure") {
         categoriaMapeada = "Manicurista";
@@ -256,13 +249,12 @@ async function guardarConfig(e, proveedorId, token) {
         NombreComercial: document.getElementById('negocioNombre').value.trim(),
         Direccion: document.getElementById('negocioDireccion').value.trim(),
         Tipo: tipoSelect,
-        Categoria: categoriaMapeada, // 🚩 Inyectado seguro para evitar cruce de cables con Postgres
+        Categoria: categoriaMapeada, 
         Telefono: inputTelefono ? inputTelefono.value.trim() : "",
         Email: inputEmail ? inputEmail.value.trim() : ""
     };
 
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
             method: 'PUT', 
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -280,7 +272,6 @@ async function cargarHorarios() {
     if(!contenedor) return;
     
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_BASE}/Horarios/mi-semana`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -320,7 +311,6 @@ async function guardarTodosLosHorarios() {
         }
     }
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_BASE}/Horarios/configurar-semana`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -331,12 +321,13 @@ async function guardarTodosLosHorarios() {
 }
 
 /* ============================================================
-   🧠 NUEVAS SECCIONES FINTECH (NEQUI, DAVIPLATA) Y NOTIFICACIONES
+   🧠 RECONCILIACIÓN FINTECH Y ALERTAS INTEGRADA EN PROVEEEDORES
    ============================================================ */
 
 async function cargarDatosPagos(proveedorId, token) {
     try {
-        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/pagos`, {
+        // Mapeado de forma segura al endpoint nativo del Proveedor
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -357,8 +348,16 @@ async function guardarConfigPagos(e, proveedorId, token) {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando cuentas...';
 
+    // Capturamos el estado actual de los inputs de perfil para no sobreescribir con nulos
+    const nombreComercial = document.getElementById('negocioNombre')?.value || "";
+    const direccion = document.getElementById('negocioDireccion')?.value || "";
+    const tipo = document.getElementById('negocioTipo')?.value || "Barbería";
+
     const body = {
-        ProveedorId: proveedorId,
+        Id: proveedorId,
+        NombreComercial: nombreComercial,
+        Direccion: direccion,
+        Tipo: tipo,
         NequiCelular: document.getElementById('pagoNequi').value.trim(),
         DaviplataCelular: document.getElementById('pagoDaviplata').value.trim(),
         BancoNombre: document.getElementById('pagoBancoNombre').value.trim(),
@@ -367,8 +366,8 @@ async function guardarConfigPagos(e, proveedorId, token) {
     };
 
     try {
-        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/pagos`, {
-            method: 'POST',
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(body)
         });
@@ -379,7 +378,7 @@ async function guardarConfigPagos(e, proveedorId, token) {
 
 async function cargarDatosNotificaciones(proveedorId, token) {
     try {
-        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/notificaciones`, {
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -397,15 +396,22 @@ async function guardarConfigNotificaciones(e, proveedorId, token) {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando alertas...';
 
+    const nombreComercial = document.getElementById('negocioNombre')?.value || "";
+    const direccion = document.getElementById('negocioDireccion')?.value || "";
+    const tipo = document.getElementById('negocioTipo')?.value || "Barbería";
+
     const body = {
-        ProveedorId: proveedorId,
+        Id: proveedorId,
+        NombreComercial: nombreComercial,
+        Direccion: direccion,
+        Tipo: tipo,
         PermitirWhatsApp: document.getElementById('notifWhatsApp').checked,
         PermitirEmail: document.getElementById('notifEmail').checked
     };
 
     try {
-        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}/notificaciones`, {
-            method: 'POST',
+        const response = await fetch(`${API_BASE}/Proveedores/${proveedorId}`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(body)
         });

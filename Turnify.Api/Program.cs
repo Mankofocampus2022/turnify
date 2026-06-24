@@ -230,10 +230,21 @@ app.UseAuthorization();
 
 app.MapControllers(); 
 
+// ============================================================================
+// 🛡️ ENRUTAMIENTO INTELIGENTE ANTI-SPA CONTRA UNEXPECTED TOKEN
+// ============================================================================
 if (Directory.Exists(frontendPath))
 {
-    app.MapFallbackToFile("login.html", new StaticFileOptions {
-        FileProvider = new PhysicalFileProvider(frontendPath)
+    // Bloqueamos que las rutas dirigidas a "/api" sirvan el HTML por accidente
+    app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api"), builder =>
+    {
+        builder.UseRouting();
+        builder.UseEndpoints(endpoints =>
+        {
+            endpoints.MapFallbackToFile("login.html", new StaticFileOptions {
+                FileProvider = new PhysicalFileProvider(frontendPath)
+            });
+        });
     });
 }
 
