@@ -17,6 +17,14 @@ namespace Turnify.Api.Models.DTOs
         // 👤 Identificación
         public string ClienteNombre { get; set; } = "Sin Nombre";
         public string ServicioNombre { get; set; } = "Sin Servicio";
+        
+        // 🚩 NUEVO: Nombre comercial o personal del proveedor profesional (Barbería/Establecimiento)
+        public string ProveedorNombre { get; set; } = "Sin Proveedor";
+
+        // 🚀 HU 001 - MULTI-SILLA: Mapeo de Entidades Staff (Fix CS0117)
+        public string EmpleadoAsignado { get; set; } = "Sin asignar";
+        public string EstacionAsignada { get; set; } = "Local";
+        
         public string Estado { get; set; } = "pendiente";
 
         // 💰 Propiedades de compatibilidad (Nombres Cortos para Frontend)

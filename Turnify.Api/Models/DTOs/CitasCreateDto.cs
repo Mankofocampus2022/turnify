@@ -88,5 +88,11 @@ namespace Turnify.Api.Models.DTOs
         [StringLength(20, ErrorMessage = "La cadena del número de WhatsApp/Teléfono excede el límite de 20 caracteres.")]
         [RegularExpression(@"^\+?[0-9]*$", ErrorMessage = "El número telefónico de WhatsApp de invitados solo admite caracteres numéricos y el prefijo '+'.")]
         public string? AnonimoWhatsApp { get; set; }
+
+        // --- 🚀 HU 001 - MULTI-SILLA: NUEVOS CAMPOS DE VINCULACIÓN OPERATIVA ---
+        // Se establecen como opcionales con 'Guid?' para garantizar retrocompatibilidad total 
+        // con agendamientos rápidos de clientes e historiales antiguos que no poseían asignaciones.
+        public Guid? EmpleadoId { get; set; }
+        public Guid? EstacionId { get; set; }
     }
 }

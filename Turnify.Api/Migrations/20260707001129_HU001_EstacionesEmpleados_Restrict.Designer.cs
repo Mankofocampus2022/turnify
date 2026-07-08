@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Turnify.Api.Data;
 
@@ -11,9 +12,11 @@ using Turnify.Api.Data;
 namespace Turnify.Api.Migrations
 {
     [DbContext(typeof(TurnifyDbContext))]
-    partial class TurnifyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260707001129_HU001_EstacionesEmpleados_Restrict")]
+    partial class HU001_EstacionesEmpleados_Restrict
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

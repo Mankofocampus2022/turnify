@@ -104,6 +104,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (selectServicio) selectServicio.addEventListener('change', () => cargarDisponibilidad(API_BASE));
     
     if (selectModalidad) {
+        // 🚀 FIX VISUAL: Forzamos estilos oscuros en las opciones estáticas de modalidad para evitar blanco sobre blanco
+        Array.from(selectModalidad.options).forEach(opt => {
+            opt.style.backgroundColor = "#1a2238";
+            opt.style.color = "#ffffff";
+        });
         selectModalidad.addEventListener('change', () => {
             toggleDireccionCita();
             cargarDisponibilidad(API_BASE);
@@ -169,6 +174,11 @@ function renderizarCitas(citas, container, token, API_BASE) {
                 </button>
             ` : ''}
             <h6>${c.servicioNombre || "Servicio"}</h6>
+            
+            <div class="cita-info" style="font-weight: 600; color: #fff;">
+                <i class="fas fa-store"></i> ${c.proveedorNombre || c.ProveedorNombre || "Establecimiento"}
+            </div>
+
             <div class="cita-info">
                 <i class="far fa-calendar-alt"></i> ${c.fecha ? c.fecha.split('T')[0] : 'Hoy'}
             </div>
@@ -216,15 +226,21 @@ async function cancelarCita(id, token, API_BASE) {
  */
 async function cargarProveedores(token, API_BASE) {
     try {
-        const resp = await fetch(`${API_BASE}/Proveedores`, {
+        // 🚀 ROMPE-CACHÉ: Añadimos ignorePagination=true y un timestamp (?t=...) para traer el 100% de la BD sin cortes
+        const resp = await fetch(`${API_BASE}/Proveedores?ignorePagination=true&t=${new Date().getTime()}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}
         });
         if (resp.ok) {
             const proveedores = await resp.json();
             const selectProv = document.getElementById('citaProveedorId');
             if (selectProv) {
-                selectProv.innerHTML = '<option value="">-- Selecciona Profesional --</option>' + 
-                    proveedores.map(p => `<option value="${p.id}">${p.nombreComercial || p.nombre}</option>`).join('');
+                // 🚀 FIX VISUAL SUPREMO: Estilos oscuros inline para asegurar legibilidad en cualquier dispositivo
+                selectProv.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Selecciona Profesional --</option>' + 
+                    proveedores.map(p => {
+                        const idFinal = p.id || p.Id;
+                        const nombreFinal = p.nombre_comercial || p.nombreComercial || p.NombreComercial || p.nombre || p.Nombre || "Establecimiento";
+                        return `<option value="${idFinal}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${nombreFinal}</option>`;
+                    }).join('');
                 
                 // 🛡️ [NUEVO] OBSERVACIÓN EXCEL MATADA: Forzamos el aislamiento estricto de negocio de este QR
                 const urlParams = new URLSearchParams(window.location.search);
@@ -234,9 +250,10 @@ async function cargarProveedores(token, API_BASE) {
                     selectProv.disabled = true; // Impedimos que el cliente altere el ID o vea otros negocios
                     
                     // Renombramos dinámicamente el título con el nombre de la barbería/manicurista
-                    const provSeleccionado = proveedores.find(p => p.id === qrId);
+                    const provSeleccionado = proveedores.find(p => (p.id || p.Id) === qrId);
                     if (provSeleccionado && document.getElementById('subtituloAgendar')) {
-                        document.getElementById('subtituloAgendar').innerText = `Agendando cita en: ${provSeleccionado.nombreComercial || provSeleccionado.nombre}`;
+                        const nombreQrFinal = provSeleccionado.nombre_comercial || provSeleccionado.nombreComercial || provSeleccionado.NombreComercial || provSeleccionado.nombre || provSeleccionado.Nombre || "Establecimiento";
+                        document.getElementById('subtituloAgendar').innerText = `Agendando cita en: ${nombreQrFinal}`;
                     }
                     // Forzamos de inmediato la inyección de sus servicios específicos
                     cargarServicios(qrId, token, API_BASE);
@@ -276,8 +293,9 @@ async function cargarServicios(proveedorId, token, API_BASE) {
             const servicios = await resp.json();
             const selectServicio = document.getElementById('citaServicioId');
             if (selectServicio) {
-                selectServicio.innerHTML = '<option value="">Selecciona un servicio</option>' + 
-                    servicios.map(s => `<option value="${s.id}">${s.nombre} ($${s.precio})</option>`).join('');
+                // 🚀 FIX VISUAL: Inyectamos estilos oscuros inline en las opciones dinámicas de servicios para evitar texto blanco oculto
+                selectServicio.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">Selecciona un servicio</option>' + 
+                    servicios.map(s => `<option value="${s.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${s.nombre} ($${s.precio})</option>`).join('');
             }
         }
     } catch (e) { console.error("🔥 Error servicios:", e); }
@@ -292,8 +310,9 @@ async function cargarClientes(token, API_BASE) {
             const clientes = await resp.json();
             const selectCliente = document.getElementById('citaClienteId');
             if (selectCliente) {
-                selectCliente.innerHTML = '<option value="">-- Buscar Cliente --</option>' + 
-                    clientes.map(c => `<option value="${c.id}">${c.nombre} (${c.telefono})</option>`).join('');
+                // 🚀 FIX VISUAL: Inyectamos estilos oscuros inline en las opciones dinámicas de clientes para evitar texto blanco oculto
+                selectCliente.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Buscar Cliente --</option>' + 
+                    clientes.map(c => `<option value="${c.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${c.nombre} (${c.telefono})</option>`).join('');
             }
         }
     } catch (e) { console.error("🔥 Error clientes:", e); }

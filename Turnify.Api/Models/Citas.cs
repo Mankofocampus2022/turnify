@@ -23,15 +23,21 @@ namespace Turnify.Api.Models
         [Column("servicio_id")]
         public Guid ServicioId { get; set; }
 
+        // 🚀 HU 001 - MULTI-SILLA Y AGENCIAS (NULABLES)
+        [Column("empleado_id")]
+        public Guid? EmpleadoId { get; set; }
+
+        [Column("estacion_id")]
+        public Guid? EstacionId { get; set; }
+
         [Required(ErrorMessage = "La fecha de la cita es obligatoria")]
         [Column("fecha")]
-        public DateTimeOffset Fecha { get; set; } // 📅 MIGRADO A DATETIMEOFFSET: Soporte internacional absoluto
+        public DateTimeOffset Fecha { get; set; } 
 
         [Required(ErrorMessage = "La hora de la cita es obligatoria")]
         [Column("hora")]
         public TimeSpan Hora { get; set; } 
 
-        // 🚩 MODIFICADO: Permitimos null para evitar el crash de SqlDataReader
         [Column("modalidad")]
         public string? Modalidad { get; set; } = "local";
 
@@ -47,11 +53,9 @@ namespace Turnify.Api.Models
         [Range(-180, 180, ErrorMessage = "Longitud fuera de rango")]
         public decimal? Longitud { get; set; }
 
-        // 🚩 MODIFICADO: Blindaje contra nulos en DB
         [Column("metodo_registro")]
         public string? MetodoRegistro { get; set; } = "Web";
 
-        // 🚩 MODIFICADO: El estado es el principal sospechoso del crash
         [Column("estado")]
         public string? Estado { get; set; } = "pendiente";
 
@@ -60,7 +64,7 @@ namespace Turnify.Api.Models
         public string? Observaciones { get; set; }
 
         [Column("fecha_creacion")]
-        public DateTimeOffset FechaCreacion { get; set; } = DateTimeOffset.UtcNow; // 📅 MIGRADO A DATETIMEOFFSET: Enrutado en UTC por defecto
+        public DateTimeOffset FechaCreacion { get; set; } = DateTimeOffset.UtcNow; 
 
         [Required]
         [Column("precio_pactado", TypeName = "decimal(18, 2)")]
@@ -80,12 +84,11 @@ namespace Turnify.Api.Models
         [StringLength(10)]
         public string? CodigoVerificacion { get; set; }
 
-        // 🛡️ SELLO DE CONCURRENCIA SENIOR (Bloqueo Optimista)
         [Timestamp]
         [Column("row_version")]
         public byte[] RowVersion { get; set; }
 
-        // --- RELACIONES INTACTAS ---
+        // --- RELACIONES INTACTAS Y NUEVAS ---
         [ForeignKey("ClienteId")]
         public virtual Clientes? Cliente { get; set; }
         
@@ -95,5 +98,12 @@ namespace Turnify.Api.Models
         
         [ForeignKey("ServicioId")]
         public virtual Servicios? Servicio { get; set; }
+
+        // 🚀 Relaciones Multi-Tenant 2.0
+        [ForeignKey("EmpleadoId")]
+        public virtual Empleado? Empleado { get; set; }
+
+        [ForeignKey("EstacionId")]
+        public virtual EstacionTrabajo? Estacion { get; set; }
     }
 }

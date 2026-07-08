@@ -66,7 +66,7 @@ namespace Turnify.Api.Services
             // 🛡️ Blindaje inicial: Evitar consultas con IDs vacíos
             if (userId == Guid.Empty) return Enumerable.Empty<CitaResponseDto>();
 
-            // 🛡️ BLINDAJE DEFENSIVO SENIOR: Si las fechas llegan sin inicializar (default o MinValue) desde el login
+            // 🛡️ BLINDAJE DEFENSIVO Si las fechas llegan sin inicializar (default o MinValue) desde el login
             // o el panel general, el sistema se auto-recupera reconfigurando el rango para el día de hoy en Bogotá.
             if (inicio == default || fin == default || inicio == DateTime.MinValue || fin == DateTime.MinValue)
             {
@@ -87,8 +87,11 @@ namespace Turnify.Api.Services
                 .AsNoTracking()
                 .Include(c => c.Cliente)
                 .Include(c => c.Servicio)
+                .Include(c => c.Proveedor) // 🚩 INYECTADO: Inclusión del Proveedor para jalar el Nombre Comercial
+                .Include(c => c.Empleado)  // 🚀 HU 001: Incluimos el empleado
+                .Include(c => c.Estacion)  // 🚀 HU 001: Incluimos la estación
                 // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ProveedorId o ClienteId (validando contra usuario_id también)
-                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == userId)) && 
+                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == userId) || c.EmpleadoId == userId) && // 🚀 HU 001: Filtro para empleados 
                             c.Fecha >= fechaInicioOffset && 
                             c.Fecha < fechaFinLimiteOffset && 
                             c.Estado != "cancelada")
@@ -100,6 +103,13 @@ namespace Turnify.Api.Services
                     ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
                     
+                    // 🚩 NUEVO: Mapeo exacto del nombre del establecimiento/proveedor libre de nulos
+                    ProveedorNombre = c.Proveedor != null ? (!string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Establecimiento Turnify") : "Sin Proveedor",
+                    
+                    // 🚀 HU 001: Proyección de datos Staff
+                    EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
+                    EstacionAsignada = c.Estacion != null ? c.Estacion.Nombre : "Local",
+
                     // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
                     Estado = c.Estado ?? "pendiente",
                     PrecioPactado = c.PrecioPactado,
@@ -217,11 +227,15 @@ namespace Turnify.Api.Services
 
                     // 🛡️ Algoritmo de colisión de bloques (Detecta solapamientos parciales o totales)
                     // 🚩 FIX EXPACTO LÍNEA 220: Limpiamos el typo para validar correctamente contra inicio y fin pactados
+                    
+                    // 🚀 HU 001: REFINAMIENTO DE OVERBOOKING (Permitir reservas simultáneas si son diferentes empleados/sillas)
                     var yaExisteCita = citasExistentes.Any(c => 
-                        inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva
+                        inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva &&
+                        // Si no especifican empleado, usamos la validación tradicional. Si lo especifican, solo choca si es el MISMO empleado o MISMA silla.
+                        (dto.EmpleadoId == null || c.EmpleadoId == null || c.EmpleadoId == dto.EmpleadoId || c.EstacionId == dto.EstacionId)
                     );
 
-                    if (yaExisteCita) return (false, "Este bloque de tiempo ya está reservado o interfiere con otra cita.", (Guid?)null);
+                    if (yaExisteCita) return (false, "Este bloque de tiempo ya está reservado para ese empleado/silla, o interfiere con otra cita.", (Guid?)null);
 
                     var nuevaCita = new Citas
                     {
@@ -242,6 +256,11 @@ namespace Turnify.Api.Services
                         Latitud = dto.Latitud,
                         Longitud = dto.Longitud,
                         CostoDomicilio = dto.CostoDomicilio,
+                        
+                        // 🚀 HU 001 - MULTI-SILLA: Mapeo de Entidades Staff (Aceptan null)
+                        EmpleadoId = dto.EmpleadoId,
+                        EstacionId = dto.EstacionId,
+
                         // 🛡️ GENERACIÓN DE TOKEN DE CHECK-IN
                         CodigoVerificacion = GenerarTokenCheckIn()
                     };
@@ -351,6 +370,9 @@ namespace Turnify.Api.Services
 
             TimeSpan limiteHoraActual = fecha.Date == ahoraBogota.Date ? ahoraBogota.TimeOfDay : TimeSpan.Zero;
 
+            // 🚀 HU 001: Lógica Básica de Aforo (Asume 1 barbero por defecto si no hay estaciones matriculadas)
+            // Para habilitar overbooking real, se podría contar cuántos empleados activos hay vs citas solapadas.
+            // Por retrocompatibilidad, mantenemos la validación estricta actual.
             while (tiempoActual + duracionSolicitada <= horario.HoraCierre)
             {
                 if (tiempoActual > limiteHoraActual) 
@@ -428,6 +450,9 @@ namespace Turnify.Api.Services
             return await _context.citas.AsNoTracking()
                 .Include(c => c.Servicio)
                 .Include(c => c.Cliente) 
+                .Include(c => c.Proveedor) // 🚩 INYECTADO: Inclusión del Proveedor para el Historial del Cliente
+                .Include(c => c.Empleado)  // 🚀 HU 001: Incluir el Empleado
+                .Include(c => c.Estacion)  // 🚀 HU 001: Incluir la Estación
                 .Where(c => c.ClienteId == clienteId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == clienteId))
                 .OrderByDescending(c => c.Fecha).ThenByDescending(c => c.Hora)
                 .Select(c => new CitaResponseDto {
@@ -436,6 +461,13 @@ namespace Turnify.Api.Services
                     Hora = c.Hora,
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no especificado",
                     
+                    // 🚩 NUEVO: Mapeo exacto del nombre comercial de la barbería/establecimiento para el historial
+                    ProveedorNombre = c.Proveedor != null ? (!string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Establecimiento Turnify") : "Sin Proveedor",
+                    
+                    // 🚀 HU 001: Información del barbero y la silla
+                    EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
+                    EstacionAsignada = c.Estacion != null ? c.Estacion.Nombre : "Local",
+
                     // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
                     Estado = c.Estado ?? "pendiente",
                     PrecioPactado = c.PrecioPactado,

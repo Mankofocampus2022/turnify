@@ -19,24 +19,8 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
-        // 🚩 MÉTODO PRIVADO: Sincronización horaria de Bogotá (Inmunidad multi-entorno Docker UTC)
-        private DateTime GetBogotaTime()
-        {
-            try 
-            {
-                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-                var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
-                var bogotaZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, bogotaZone);
-            }
-            catch 
-            {
-                // Backup manual UTC-5 si hay restricciones en las variables del sistema operativo
-                return DateTime.UtcNow.AddHours(-5);
-            }
-        }
-
-        // 🚩 MOTOR PRINCIPAL: Cálculo de métricas y agenda dinámica (Sincronizado con Colombia)
+        // 🚩 MOTOR PRINCIPAL: Cálculo de métricas y agenda dinámica (GLOBALIZADO)
+        // La variable 'fecha' ahora es inyectada por el Controller basada en la zona horaria del cliente (Ej: Europe/Madrid)
         public async Task<object> GetResumenDiarioAsync(Guid proveedorId, DateTime? fecha, string periodo, int? mes = null, int? anio = null)
         {
             // 🛡️ BLINDAJE DE PRIORIDAD: Si vienen Mes y Año, el periodo es OBLIGATORIAMENTE "mes"
@@ -44,14 +28,13 @@ namespace Turnify.Api.Services
             
             periodo = periodo?.ToLower() ?? "hoy";
             
-            // 🚩 Sincronizamos la fecha base con la zona horaria colombiana real
-            var ahoraBogota = GetBogotaTime();
-            var fechaBase = fecha ?? ahoraBogota.Date;
+            // 🌐 GLOBALIZACIÓN: Asumimos que la fecha que entra ya es el "Hoy" local del usuario. 
+            // Si por alguna razón llega nula, hacemos un fallback seguro a la hora UTC.
+            var fechaBase = fecha ?? DateTime.UtcNow.Date;
             
             DateTime inicio, fin, inicioPrev, finPrev;
 
-            // 🕒 1. CÁLCULO DE RANGOS DE ALTA PRECISIÓN (Actual vs Anterior para Porcentajes BI)
-            // Cambiamos el uso de UtcNow.Date para priorizar la fecha procesada y enviada por el frontend
+            // 🕒 1. CÁLCULO DE RANGOS DE ALTA PRECISIÓN (Basado en la fecha local del usuario)
             if (periodo == "hoy" || periodo == "diario")
             {
                 inicio = fechaBase.Date;
@@ -62,7 +45,7 @@ namespace Turnify.Api.Services
             else if (periodo == "mañana")
             {
                 inicio = fechaBase.Date; // Si el front ya calculó el día de mañana, lo tomamos como base limpia
-                if (fecha == null) inicio = ahoraBogota.Date.AddDays(1); // Fallback si no viene parámetro
+                if (fecha == null) inicio = DateTime.UtcNow.Date.AddDays(1); // Fallback si no viene parámetro
                 
                 fin = inicio.AddDays(1);
                 inicioPrev = inicio.AddDays(-1);
@@ -102,7 +85,10 @@ namespace Turnify.Api.Services
                     .Select(c => new {
                         c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado, c.ClienteId, c.CodigoVerificacion,
                         ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
-                        ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido"
+                        ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
+                        // 🚀 HU 001 - INYECCIÓN UI: Nombre del empleado y estación asignada
+                        EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
+                        Estacion = c.Estacion != null ? c.Estacion.Nombre : "Local"
                     })
                     .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
                     .ToListAsync();
@@ -121,7 +107,7 @@ namespace Turnify.Api.Services
                 var nuevosClientes = rawCitas.Where(c => c.Estado != "cancelada").Select(c => c.ClienteId).Distinct().Count();
                 
                 var completadas = rawCitas.Count(c => c.Estado == "completada" || c.Estado == "confirmada");
-                var inasistencias = rawCitas.Count(c => c.Estado == "no_asistio" || (c.Estado == "pendiente" && c.Fecha < ahoraBogota.Date));
+                var inasistencias = rawCitas.Count(c => c.Estado == "no_asistio" || (c.Estado == "pendiente" && c.Fecha < fechaBase.Date));
                 var canceladasCount = rawCitas.Count(c => c.Estado == "cancelada");
 
                 // 📈 5. LÓGICA DE PORCENTAJES
@@ -132,7 +118,7 @@ namespace Turnify.Api.Services
                 double percClientes = clientesPrevCount > 0 ? Math.Round((double)(nuevosClientes - clientesPrevCount) / clientesPrevCount * 100, 1) : 0;
 
                 // 👥 6. ANÁLISIS DE RETENCIÓN
-                var fechaCorteRetencion = ahoraBogota.Date.AddMonths(-1);
+                var fechaCorteRetencion = fechaBase.Date.AddMonths(-1);
                 var clientesEnRiesgo = await _context.citas
                     .AsNoTracking()
                     .Where(c => c.ProveedorId == idReal && c.Estado == "completada")
@@ -140,10 +126,10 @@ namespace Turnify.Api.Services
                     .Where(g => g.Max(c => c.Fecha) < fechaCorteRetencion)
                     .CountAsync();
 
-                // 🚩 7. MAPEO DE RESPUESTA FINAL
+                // 🚩 7. MAPEO DE RESPUESTA FINAL (GLOBAL)
                 return new {
                     tipoResumen = periodo,
-                    rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (Colombia Time)",
+                    rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (Local Time)",
                     totalCitas, tendenciaCitas = percClientes,
                     nuevosClientesTotales = nuevosClientes, clientesEnRiesgo,
                     gananciaReal, gananciaEstimada, crecimientoIngresos = percGanancia,
@@ -154,7 +140,10 @@ namespace Turnify.Api.Services
                     proximasCitas = rawCitas.Select(c => new {
                         id = c.Id, hora = c.Hora.ToString(@"hh\:mm"), fecha = c.Fecha,
                         cliente = c.ClienteNombre, servicio = c.ServicioNombre,
-                        precioPactado = c.PrecioPactado, estado = c.Estado, codigoVerificacion = c.CodigoVerificacion
+                        precioPactado = c.PrecioPactado, estado = c.Estado, codigoVerificacion = c.CodigoVerificacion,
+                        // 🚀 HU 001 - INYECCIÓN UI: Los mandamos al frontend
+                        empleadoAsignado = c.EmpleadoAsignado,
+                        estacion = c.Estacion
                     }).ToList(),
                     chartServiciosPopulares = rawCitas.Where(c => c.Estado != "cancelada")
                                                   .GroupBy(c => c.ServicioNombre)
@@ -171,8 +160,68 @@ namespace Turnify.Api.Services
 
         public async Task<object> GetResumenMensualAsync(Guid proveedorId)
         {
-            var ahoraColombia = GetBogotaTime().Date;
-            return await GetResumenDiarioAsync(proveedorId, ahoraColombia, "mes", ahoraColombia.Month, ahoraColombia.Year);
+            // 🌐 GLOBALIZACIÓN: Si se llama directo (sin fecha local), usamos UTC como estándar neutro.
+            var ahoraGlobal = DateTime.UtcNow.Date;
+            return await GetResumenDiarioAsync(proveedorId, ahoraGlobal, "mes", ahoraGlobal.Month, ahoraGlobal.Year);
+        }
+
+        // 🚀🚀🚀 HU 001: EL CEREBRO FINANCIERO (NUEVO MÉTODO GLOBAL) 🚀🚀🚀
+        public async Task<object> GetLiquidacionStaffAsync(Guid empleadoId, DateTime fechaBase, string periodo, int? mes = null, int? anio = null)
+        {
+            // 1. Obtener los datos del contrato del empleado
+            var empleado = await _context.empleados
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == empleadoId);
+
+            if (empleado == null) return new { message = "Empleado no encontrado." };
+
+            // 2. Calcular las fechas locales
+            DateTime inicio, fin;
+            if (periodo == "hoy" || periodo == "diario") { inicio = fechaBase.Date; fin = inicio.AddDays(1); }
+            else if (periodo == "semana") { int diff = (7 + (inicio = fechaBase.Date).DayOfWeek - DayOfWeek.Monday) % 7; inicio = inicio.AddDays(-1 * diff).Date; fin = inicio.AddDays(7); }
+            else { int m = mes ?? fechaBase.Month; int a = anio ?? fechaBase.Year; inicio = new DateTime(a, m, 1, 0, 0, 0, DateTimeKind.Unspecified); fin = inicio.AddMonths(1); }
+
+            // 3. Consultar SOLO las citas asignadas a este empleado en el periodo
+            var misCitas = await _context.citas
+                .AsNoTracking()
+                .Where(c => c.EmpleadoId == empleadoId && c.Fecha >= inicio && c.Fecha < fin && c.Estado != "cancelada")
+                .Select(c => new {
+                    c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado,
+                    ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "No registrado",
+                    ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "No definido"
+                })
+                .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
+                .ToListAsync();
+
+            // 4. LÓGICA DE COMISIONES (La magia financiera)
+            decimal totalGenerado = misCitas.Where(c => c.Estado == "completada" || c.Estado == "confirmada").Sum(c => c.PrecioPactado);
+            decimal miComisionNeta = 0;
+
+            if (empleado.TipoContrato.ToLower() == "porcentaje")
+            {
+                miComisionNeta = totalGenerado * (empleado.ValorContrato / 100);
+            }
+            else if (empleado.TipoContrato.ToLower() == "fijo")
+            {
+                miComisionNeta = empleado.ValorContrato; 
+            }
+
+            // 5. Devolver un Dashboard "Lite" exclusivo para el barbero
+            return new
+            {
+                tipoResumen = periodo,
+                empleado = empleado.Nombre,
+                contrato = $"{empleado.TipoContrato} ({empleado.ValorContrato}{(empleado.TipoContrato.ToLower() == "porcentaje" ? "%" : "$")})",
+                totalCitasAtendidas = misCitas.Count,
+                ventasTotalesGeneradas = totalGenerado, 
+                miComisionLiquidar = Math.Round(miComisionNeta, 2), 
+                gananciaParaLocal = Math.Round(totalGenerado - miComisionNeta, 2), 
+                misCitas = misCitas.Select(c => new {
+                    id = c.Id, hora = c.Hora.ToString(@"hh\:mm"), fecha = c.Fecha,
+                    cliente = c.ClienteNombre, servicio = c.ServicioNombre,
+                    precioCobrado = c.PrecioPactado, estado = c.Estado
+                }).ToList()
+            };
         }
     }
 }

@@ -22,7 +22,7 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
-        // 🚩 MÉTODO PRIVADO: Sincronización horaria estricta de Bogotá para capas analíticas en Docker
+        // 🚩 MÉTODO PRIVADO: Sincronización horaria estricta de Bogotá para capas analíticas en Docker (INTACTO)
         private DateTime GetBogotaToday()
         {
             try 
@@ -39,7 +39,29 @@ namespace Turnify.Api.Controllers
             }
         }
 
-        // 🚩 ENDPOINT PRINCIPAL: Soporte para periodos (diario/semana/mes)
+        // 🌐 NUEVO MÉTODO GLOBAL: Lee el país del usuario y usa Bogotá como red de seguridad
+        private DateTime GetLocalToday()
+        {
+            var timeZoneHeader = Request.Headers["X-TimeZone"].FirstOrDefault();
+            
+            if (!string.IsNullOrEmpty(timeZoneHeader))
+            {
+                try 
+                {
+                    var localZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneHeader);
+                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, localZone).Date;
+                }
+                catch 
+                {
+                    // Si el frontend envía una zona inválida, ignora y sigue abajo
+                }
+            }
+
+            // Fallback a tu lógica original intacta
+            return GetBogotaToday();
+        }
+
+        // 🚩 ENDPOINT PRINCIPAL: Soporte para periodos (diario/semana/mes) y Módulo Staff
         [HttpGet("resumen")]
         public async Task<IActionResult> GetResumen(
             [FromQuery] string periodo = "diario", 
@@ -52,9 +74,24 @@ namespace Turnify.Api.Controllers
             
             if (string.IsNullOrEmpty(usuarioIdClaim)) return Unauthorized(new { message = "Sesión no válida" });
 
-            // 🛡️ RESCATE DE IDENTIDAD: Buscamos el perfil de proveedor amarrado al usuario
+            var userId = Guid.Parse(usuarioIdClaim);
+
+            // 🚀 HU 001 - MULTI-SILLA: 1. Identificar si el usuario es STAFF (Empleado)
+            var usuario = await _context.usuarios.AsNoTracking().FirstOrDefaultAsync(u => u.id == userId);
+            
+            if (usuario != null && usuario.rol_id == Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099"))
+            {
+                var empleado = await _context.empleados.AsNoTracking().FirstOrDefaultAsync(e => e.UsuarioId == userId);
+                if (empleado == null) return NotFound(new { message = "Perfil de empleado no configurado." });
+
+                // Delegamos la liquidación al nuevo cerebro financiero usando la fecha global
+                var resumenEmpleado = await _dashboardService.GetLiquidacionStaffAsync(empleado.Id, fecha ?? GetLocalToday(), periodo, mes, anio);
+                return Ok(resumenEmpleado);
+            }
+
+            // 🛡️ RESCATE DE IDENTIDAD ORIGINAL: Buscamos el perfil de proveedor amarrado al usuario
             var proveedor = await _context.proveedores
-                .FirstOrDefaultAsync(p => p.UsuarioId == Guid.Parse(usuarioIdClaim));
+                .FirstOrDefaultAsync(p => p.UsuarioId == userId);
 
             if (proveedor == null)
             {
@@ -63,7 +100,7 @@ namespace Turnify.Api.Controllers
 
             object resumen;
             
-            // 🛡️ REPARACIÓN SENIOR: 
+            
             // Si vienen mes y año, priorizamos el GetResumenDiarioAsync con esos filtros para evitar el bug de fechas
             if ((periodo.ToLower() == "mensual" || periodo.ToLower() == "mes") && !mes.HasValue)
             {
@@ -71,8 +108,8 @@ namespace Turnify.Api.Controllers
             }
             else
             {
-                // 🚩 FIX BUG 01/05: Reemplazamos DateTime.Today por la fecha normalizada de Bogotá para amarrar la agregación diaria
-                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha ?? GetBogotaToday(), periodo, mes, anio);
+                // 🚩 FIX BUG 01/05: Reemplazamos DateTime.Today por la fecha globalizada
+                resumen = await _dashboardService.GetResumenDiarioAsync(proveedor.Id, fecha ?? GetLocalToday(), periodo, mes, anio);
             }
 
             if (resumen == null)
@@ -108,8 +145,8 @@ namespace Turnify.Api.Controllers
             }
             else
             {
-                // 🚩 FIX BUG ADMIN: Sincronización horaria estricta de Bogotá para consultas delegadas de analítica
-                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha ?? GetBogotaToday(), periodo, mes, anio);
+                // 🚩 FIX BUG ADMIN: Sincronización horaria globalizada
+                resumen = await _dashboardService.GetResumenDiarioAsync(idRealParaServicio, fecha ?? GetLocalToday(), periodo, mes, anio);
             }
 
             if (resumen == null) return NotFound(new { message = "No hay datos para este periodo." });

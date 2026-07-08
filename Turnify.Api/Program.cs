@@ -157,12 +157,17 @@ builder.Services.AddScoped<IClienteService, ClienteService>();
 builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+// 🚀 INYECCIÓN DEL NUEVO SERVICIO DE EMPLEADOS
+builder.Services.AddScoped<IEmpleadoService, EmpleadoService>();
 
 // 🚀 [NUEVO MOTOR DE MENSAJERÍA OUT-OF-THE-BOX]
 builder.Services.AddScoped<IEmailService, EmailService>();
 
 // 🛡️ MATRÍCULA DEL BOT DE WHATSAPP
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
+
+//🚀 INYECCIÓN DEL NUEVO SERVICIO DE ESTACIONES DE TRABAJO
+builder.Services.AddScoped<IEstacionTrabajoService, EstacionTrabajoService>();
 
 // 🔄 Inyección del Worker Automático en segundo plano
 builder.Services.AddHostedService<CitaCancellationWorker>();

@@ -33,9 +33,15 @@ namespace Turnify.Api.Controllers
 
         // 🧠 [KILLER FIX QR] - Permitimos acceso anónimo para que clientes sin cuenta carguen la lista de locales
         // 🚀 AJUSTE EFECTIVO OBS-01: Implementación del motor de filtrado y cortes limpios en base de datos
+        // 🛠️ FIX BUG 2: Modificamos el pageSize por defecto a 200 para que se listen todos los negocios en el dropdown del front-end sin truncarse en 10.
+        // 🛡️ BLINDAJE TOTAL: Agregamos [FromQuery] bool ignorePagination = false para que el Front-end pueda solicitar el listado completo sin cortes.
         [HttpGet]
         [AllowAnonymous]
-        public async Task<ActionResult<IEnumerable<object>>> GetProveedores([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null)
+        public async Task<ActionResult<IEnumerable<object>>> GetProveedores(
+            [FromQuery] int page = 1, 
+            [FromQuery] int pageSize = 200, 
+            [FromQuery] string? search = null,
+            [FromQuery] bool ignorePagination = false)
         {
             // 🛡️ Inicializamos la consulta base como un IQueryable
             var query = _context.proveedores
@@ -49,28 +55,39 @@ namespace Turnify.Api.Controllers
                 query = query.Where(p => p.NombreComercial.Contains(search) || p.Categoria.Contains(search));
             }
 
-            // 🛡️ Control defensivo de paginación nula o desbordada
-            if (page <= 0) page = 1;
-            if (pageSize <= 0) pageSize = 10;
+            // 🚀 Ordenamos alfabéticamente por Nombre Comercial
+            var finalQuery = query.OrderBy(p => p.NombreComercial);
 
-            // 🚀 Ejecución de desplazamientos (OFFSET / FETCH NEXT) indexados obligatorios para SQL Server/Postgres
-            return await query
-                .OrderBy(p => p.NombreComercial)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+            // 🚩 Si ignorePagination es true, se salta los cortes Skip/Take de forma limpia y segura
+            IQueryable<Proveedores> queryProcesada = finalQuery;
+            if (!ignorePagination)
+            {
+                if (page <= 0) page = 1;
+                if (pageSize <= 0) pageSize = 200;
+                queryProcesada = finalQuery.Skip((page - 1) * pageSize).Take(pageSize);
+            }
+
+            // 🚀 Execution of displacements (OFFSET / FETCH NEXT) mandatory indexed for SQL Server/Postgres
+            return await queryProcesada
                 .Select(p => new {
+                    // 🚩 MANTENEMOS TUS PROPIEDADES ORIGINALES INTACTAS (Se serializan automáticamente a camelCase: id, nombreComercial, etc.)
                     p.Id,
                     p.NombreComercial,
                     p.Direccion,
                     p.Tipo,
                     p.Categoria,
-                    // 🚩 AGREGADO EN LECTURA: Exponemos teléfono y correo para pintarlos en el panel
                     p.Telefono,
                     p.Email,
                     p.TrabajaDomicilio,
                     p.Activo,
-                    // 🛡️ FIX NULABILIDAD SUPRESIÓN: Evita alertas falsas de compilación indicando control de nulo explícito
-                    Dueno = p.Usuario != null ? p.Usuario.nombre : "Usuario no encontrado"
+                    // 🛡️ FIX TRADUCCIÓN: Estandarizado con coalescencia nula para evitar excepciones HTTP 500 de LINQ
+                    Dueno = p.Usuario.nombre ?? "Usuario no encontrado",
+
+                    // 🛠️ RETROCOMPATIBILIDAD SEGURA: Inyectamos únicamente variantes snake_case que no colisionan con el mapeo camelCase
+                    usuario_id = p.UsuarioId,
+                    nombre_comercial = p.NombreComercial,
+                    trabaja_domicilio = p.TrabajaDomicilio,
+                    // dueno = p.Usuario.nombre ?? "Usuario no encontrado" // 🚩 FIX 500: Comentado para evitar que choque con 'Dueno' al serializar en camelCase
                 })
                 .ToListAsync();
         }
@@ -129,18 +146,34 @@ namespace Turnify.Api.Controllers
                 .Include(p => p.Usuario)
                 .Where(p => !p.Eliminado)
                 .Select(p => new {
+                    // 🚩 MANTENEMOS TUS PROPIEDADES INTACTAS (PascalCase original)
                     p.Id,
                     p.NombreComercial,
                     p.Direccion,
                     p.Tipo,
                     p.Categoria,
-                    // 🚩 AGREGADO EN DETALLE: Despachamos WhatsApp y Correo
                     p.Telefono,
                     p.Email,
                     p.UsuarioId,
                     UsuarioNombre = p.Usuario != null ? p.Usuario.nombre : "N/A",
                     p.TrabajaDomicilio,
-                    p.Activo
+                    p.Activo,
+
+                    // 🛠️ FIX BUG 1 UNITARIO: Espejo de propiedades seguras también para la consulta individual por ID
+                    // 🚩 FIX 500: Comentamos los alias redundantes que colisionan con las propiedades estándar al serializarse a camelCase
+                    // id = p.Id,
+                    nombre_comercial = p.NombreComercial,
+                    // nombreComercial = p.NombreComercial,
+                    // direccion = p.Direccion,
+                    // tipo = p.Tipo,
+                    // categoria = p.Categoria,
+                    // telefono = p.Telefono,
+                    // email = p.Email,
+                    // usuarioId = p.UsuarioId,
+                    usuario_id = p.UsuarioId,
+                    // usuarioNombre = p.Usuario != null ? p.Usuario.nombre : "N/A",
+                    trabaja_domicilio = p.TrabajaDomicilio,
+                    // activo = p.Activo
                 })
                 .FirstOrDefaultAsync(p => p.Id == id);
 

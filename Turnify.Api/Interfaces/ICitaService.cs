@@ -16,6 +16,7 @@ namespace Turnify.Api.Interfaces
         /// <summary>
         /// Ageda una cita validando bloques de tiempo (Fix Overbooking PRO) y generando Token de seguridad.
         /// 🛡️ Ahora soporta mapeo automático de UsuarioId a ClienteId.
+        /// 🚀 HU 001: Soporta inyección de EmpleadoId y EstacionId mediante el DTO.
         /// </summary>
         Task<(bool Success, string Message, Guid? CitaId)> AgendarCitaAutomaticaAsync(CitaCreateDto dto);
 

@@ -5,11 +5,14 @@ namespace Turnify.Api.Interfaces
 {
     public interface IDashboardService
     {
-        // 🚩 AJUSTE SENIOR: Sincronizamos con la implementación para incluir mes y anio.
+        // 🚩 Sincroniza con la implementación para incluir mes y año.
         // Esto soluciona el error CS0535 al permitir filtros específicos de mes y año.
         Task<object> GetResumenDiarioAsync(Guid proveedorId, DateTime? fecha, string periodo = "hoy", int? mes = null, int? anio = null);
 
         // Resumen mensual para reportes específicos
         Task<object> GetResumenMensualAsync(Guid proveedorId);
+
+        // 🚀 HU 001: Contrato para la liquidación financiera global del Staff
+        Task<object> GetLiquidacionStaffAsync(Guid empleadoId, DateTime fechaBase, string periodo, int? mes = null, int? anio = null);
     }
 }
