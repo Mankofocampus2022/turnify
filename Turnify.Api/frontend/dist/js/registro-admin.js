@@ -106,8 +106,8 @@ document.getElementById('formRegistroAdmin').addEventListener('submit', async (e
 });
 
 /* ============================================================
-   🛡️ [NUEVO COMPONENTE APARTE]: CAMBIO SEGURO DE CLAVE PARA ADMINS
-   ============================================================ */
+    🛡️ [NUEVO COMPONENTE APARTE]: CAMBIO SEGURO DE CLAVE PARA ADMINS
+    ============================================================ */
 const formCambioPassAdmin = document.getElementById('formCambioPasswordAdmin');
 if (formCambioPassAdmin) {
     formCambioPassAdmin.addEventListener('submit', async (e) => {

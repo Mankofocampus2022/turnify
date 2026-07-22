@@ -7,7 +7,7 @@ namespace Turnify.Api.Interfaces
 {
     public interface IEmpleadoService
     {
-        // Traer todos los empleados de un negocio específico
+        // Traer todos los empleados de un negocio específico (Vista Admin - Incluye inactivos)
         Task<IEnumerable<EmpleadoResponseDto>> GetAllByProveedorAsync(Guid proveedorId);
 
         // Traer un empleado por su ID
@@ -21,5 +21,8 @@ namespace Turnify.Api.Interfaces
 
         // Borrado lógico o desactivación rápida
         Task<bool> ToggleEstadoAsync(Guid id, Guid proveedorId);
+
+        // 🚀 HU 001 - PÚBLICO: Traer SOLO los empleados activos para que el cliente elija (Barbero Preferido)
+        Task<IEnumerable<EmpleadoResponseDto>> GetActivosByProveedorAsync(Guid proveedorId);
     }
 }

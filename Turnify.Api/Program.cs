@@ -1,18 +1,21 @@
-using Microsoft.EntityFrameworkCore;
-using Turnify.Api.Data;
-using Turnify.Api.Interfaces;
-using Turnify.Api.Services;
-using Turnify.Api.Middleware;
-using Turnify.Api.Workers; // 🔄 Namespace inyectado para reconocer el Worker automático
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.EntityFrameworkCore;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.AspNetCore.DataProtection; // 🛡️ Namespace para solucionar advertencias de llaves efímeras
-using Microsoft.AspNetCore.RateLimiting; // 🧠 Motor nativo para control de ráfagas y protección DDoS (OBS-04)
-using System.Security.Claims; // 🧠 REQUERIDO: Para extraer los claims del Contexto de Identidad del Token
+using Microsoft.AspNetCore.DataProtection; 
+using Microsoft.AspNetCore.RateLimiting; 
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Turnify.Api.Data;
+using Turnify.Api.Models;
+using Turnify.Api.Interfaces;
+using Turnify.Api.Services;
+using Turnify.Api.Middleware;
+using Turnify.Api.Workers; 
 
 // --- ALIAS DE SWAGGER ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
@@ -89,8 +92,7 @@ var jwtSecretKey = Environment.GetEnvironmentVariable("JWT_KEY")
     ?? builder.Configuration["Jwt:Key"] 
     ?? "Turnify_Secret_Key_2026_Enterprise_Edition_Security_PRO";
 
-// 🛡️ CONTROL DEFENSIVO ANTI-BLOQUEO: Si la llave extraída mide menos de 128 bits (16 caracteres), 
-// forzamos una firma criptográfica robusta para evitar excepciones en tiempo de ejecución (HS256 minimum requirement)
+// 🛡️ CONTROL DEFENSIVO ANTI-BLOQUEO
 if (string.IsNullOrEmpty(jwtSecretKey) || jwtSecretKey.Length < 16)
 {
     jwtSecretKey = "Turnify_Master_Secret_Key_Enterprise_Secure_2026_Edition_PRO_Security_Crypto_Engine_512_Bits#";
@@ -157,16 +159,9 @@ builder.Services.AddScoped<IClienteService, ClienteService>();
 builder.Services.AddScoped<ICitaService, CitaService>();
 builder.Services.AddScoped<IServicioService, ServicioService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
-// 🚀 INYECCIÓN DEL NUEVO SERVICIO DE EMPLEADOS
 builder.Services.AddScoped<IEmpleadoService, EmpleadoService>();
-
-// 🚀 [NUEVO MOTOR DE MENSAJERÍA OUT-OF-THE-BOX]
 builder.Services.AddScoped<IEmailService, EmailService>();
-
-// 🛡️ MATRÍCULA DEL BOT DE WHATSAPP
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
-
-//🚀 INYECCIÓN DEL NUEVO SERVICIO DE ESTACIONES DE TRABAJO
 builder.Services.AddScoped<IEstacionTrabajoService, EstacionTrabajoService>();
 
 // 🔄 Inyección del Worker Automático en segundo plano
@@ -174,7 +169,9 @@ builder.Services.AddHostedService<CitaCancellationWorker>();
 
 var app = builder.Build();
 
-// 3. MIDDLEWARES (Orden Crítico)
+// ============================================================================
+// 3. PIPELINE DE MIDDLEWARES (Refactorización de Orden Crítico para Citas/Seguridad)
+// ============================================================================
 
 app.UseSwagger();
 app.UseSwaggerUI(c => {
@@ -186,8 +183,20 @@ app.UseRequestLocalization(localizationOptions);
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("AllowTurnify");
 
-// 🧠 ACTIVACIÓN DEL MIDDLEWARE DE CONTROL DE RÁFAGAS (Antes de la Autenticación)
+// 🌐 1. El Enrutamiento base debe inicializarse primero
+app.UseRouting();
+
+// 🧠 2. Control de ráfagas DDoS (Inmediatamente después de Routing)
 app.UseRateLimiter();
+
+// 🛡️ 3. AUTENTICACIÓN (Verifica las llaves JWT antes de validar estados o archivos)
+app.UseAuthentication();
+
+// 🚀 4. MIDDLEWARE DE EXPULSIÓN EN VIVO - BLINDAJE TC-003 (Requiere la identidad del paso anterior)
+app.UseMiddleware<LiveEvictionMiddleware>();
+
+// 🛡️ 5. AUTORIZACIÓN (Evalúa los roles corporativos una vez confirmada la validez)
+app.UseAuthorization();
 
 // --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS DIAGNÓSTICO ---
 string rootPath = builder.Environment.ContentRootPath;
@@ -224,15 +233,7 @@ else
     Console.WriteLine("⚠️ --- ADVERTENCIA: No se encontró la carpeta de frontend. ---");
 }
 
-app.UseAuthentication();
-
-// ============================================================================
-// 🚀 MIDDLEWARE DE EXPULSIÓN EN VIVO - BLINDAJE TC-003
-// ============================================================================
-app.UseMiddleware<LiveEvictionMiddleware>();
-
-app.UseAuthorization();
-
+// Mapeo nativo de los controladores
 app.MapControllers(); 
 
 // ============================================================================
@@ -240,7 +241,6 @@ app.MapControllers();
 // ============================================================================
 if (Directory.Exists(frontendPath))
 {
-    // Bloqueamos que las rutas dirigidas a "/api" sirvan el HTML por accidente
     app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api"), builder =>
     {
         builder.UseRouting();
@@ -254,7 +254,7 @@ if (Directory.Exists(frontendPath))
 }
 
 // ============================================================================
-// 🛡️ BÚNKER DE MIGRACIÓN AUTOMÁTICA INTELIGENTE EN DOCKER (INYECCIÓN RESILIENTE)
+// 🛡️ BÚNKER DE MIGRACIÓN AUTOMÁTICA INTELIGENTE EN DOCKER
 // ============================================================================
 using (var scope = app.Services.CreateScope())
 {
@@ -264,8 +264,6 @@ using (var scope = app.Services.CreateScope())
         var context = services.GetRequiredService<TurnifyDbContext>();
         Console.WriteLine("⏳ [Docker Boot] Detectando estado de TurnifyDb en SQL Server...");
         
-        // 🧠 CONTROL DE PERSISTENCIA: Valida de manera segura la conexión física. 
-        // Si la base de datos ya está montada en el disco real, evita el choque del CREATE DATABASE automático.
         await context.Database.OpenConnectionAsync();
         await context.Database.CloseConnectionAsync();
         
@@ -276,8 +274,6 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         Console.WriteLine($"💥 [Docker Boot Warning] Ajustando estrategia de sincronización de tablas: {ex.Message}");
-        
-        // Canal de rescate por si el motor levantó en frío sin tablas históricas o con volúmenes mapeados
         try
         {
             var context = services.GetRequiredService<TurnifyDbContext>();
@@ -298,7 +294,6 @@ public class Messages { }
 // ============================================================================
 // 🚀 INFRAESTRUCTURA INYECTADA EN CALIENTE PARA GUEST CHECKOUT NOTIFICATIONS
 // ============================================================================
-
 namespace Turnify.Api.Interfaces
 {
     public interface IEmailService

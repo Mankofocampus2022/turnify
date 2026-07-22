@@ -59,6 +59,20 @@ async function login() {
             // Guardamos el objeto usuario completo (importante para el dashboard)
             localStorage.setItem('user', JSON.stringify(data.user));
 
+            // 🚀 PERSISTENCIA DE IDS E IDENTIDADES SEGÚN ROL INVERTIDO
+            // Guardamos el proveedorId (Negocio del Administrador/Dueño) y el empleadoId (si es colaborador/barbero/Staff) de forma explícita
+            if (data.user.proveedorId) {
+                localStorage.setItem('turnify_proveedor_id', data.user.proveedorId);
+            } else {
+                localStorage.removeItem('turnify_proveedor_id');
+            }
+
+            if (data.user.empleadoId) {
+                localStorage.setItem('turnify_empleado_id', data.user.empleadoId);
+            } else {
+                localStorage.removeItem('turnify_empleado_id');
+            }
+
             // Extraemos y normalizamos el Rol (Manejamos nulls con "")
             const userRole = (data.user.rol || data.user.Rol || data.user.rolNombre || "").toUpperCase();
             localStorage.setItem('usuario_rol', userRole);
@@ -67,10 +81,15 @@ async function login() {
             const ADMIN_ID = "8854C07C-6E5E-4876-A29A-C7AD5DCFBAB7"; 
 
             // 3. 🛡️ REDIRECCIÓN INTELIGENTE (Blindada)
-            // Incluimos SUPERADMINISTRADOR (que es el que sale en tus logs)
+            // Se sincroniza con tu lógica real: 
+            // - El Administrador (Dueño del Local) y el Staff (Colaborador/Barbero) van al "admin-dashboard.html" para gestionar turnos y agendas.
+            // - El Cliente (no administrativo) va al flujo de agendamiento "agendar-cita.html".
             const esAdmin = userRole.includes("ADMIN") || 
+                            userRole.includes("SUPERADMIN") ||
+                            userRole.includes("SUPER_ADMIN") ||
                             userRole.includes("PROVEEDOR") || 
                             userRole.includes("BARBERO") ||
+                            userRole.includes("STAFF") ||
                             data.user.rolId?.toUpperCase() === ADMIN_ID;
 
             console.log("Verificando acceso para rol:", userRole);

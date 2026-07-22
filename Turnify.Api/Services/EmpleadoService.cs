@@ -165,5 +165,23 @@ namespace Turnify.Api.Services
             await _context.SaveChangesAsync();
             return true;
         }
+
+        // 🚀 HU 001 - PÚBLICO: Traer SOLO los empleados activos para que el cliente elija (Barbero Preferido)
+        public async Task<IEnumerable<EmpleadoResponseDto>> GetActivosByProveedorAsync(Guid proveedorId)
+        {
+            return await _context.empleados
+                .AsNoTracking()
+                .Where(e => e.ProveedorId == proveedorId && e.Activo == true)
+                .Select(e => new EmpleadoResponseDto
+                {
+                    Id = e.Id,
+                    ProveedorId = e.ProveedorId,
+                    Nombre = e.Nombre,
+                    TipoContrato = e.TipoContrato,
+                    Activo = e.Activo
+                    // No exponemos el teléfono, el salario, ni el email del staff por privacidad hacia el cliente público
+                })
+                .ToListAsync();
+        }
     }
 }

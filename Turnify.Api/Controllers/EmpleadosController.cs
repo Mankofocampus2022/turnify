@@ -107,5 +107,18 @@ namespace Turnify.Api.Controllers
 
             return Ok(new { message = "Estado del empleado modificado exitosamente." });
         }
+
+        // 🚀 HU 001 - PÚBLICO: GET: api/empleados/activos/{proveedorId}
+        [HttpGet("activos/{proveedorId}")]
+        [AllowAnonymous] // Permite el acceso sin token para clientes que escanean el QR
+        public async Task<IActionResult> GetActivosPúblico(Guid proveedorId)
+        {
+            if (proveedorId == Guid.Empty) return BadRequest(new { message = "ID de negocio no válido." });
+
+            var empleadosActivos = await _empleadoService.GetActivosByProveedorAsync(proveedorId);
+            
+            // Siempre devolvemos 200 OK, incluso si la lista está vacía, para no romper el frontend
+            return Ok(empleadosActivos);
+        }
     }
 }

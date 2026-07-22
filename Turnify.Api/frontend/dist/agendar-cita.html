@@ -60,7 +60,7 @@
                 <h1>Panel de Agendamiento</h1>
                 <span style="font-size: 0.8rem; color: #48c1b5;">Sesión: <strong id="user-display-name">...</strong></span>
             </div>
-            <p id="subtituloAgendar">Gestiona tus servicios en el local or a domicilio.</p>
+            <p id="subtituloAgendar">Gestiona tus servicios en el local o a domicilio.</p>
         </div>
 
         <div class="table-card booking-card">
@@ -111,7 +111,37 @@
                     </div>
                 </div>
 
-                <div class="step-title"><i class="fas fa-motorcycle"></i> 3. Modalidad y Ubicación</div>
+                <div id="sectionBarberoPreferido" style="display: none;">
+                    <div class="step-title"><i class="fas fa-star"></i> 3. Preferencia de Profesional</div>
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label>¿Tienes algún barbero o manicurista preferido?</label>
+                            <select id="citaClienteEmpleadoId" class="input-style">
+                                <option value="">-- Cualquier barbero disponible --</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="sectionStaffEstacion" style="display: none;">
+                    <div class="step-title"><i class="fas fa-chair"></i> 3. Asignación (Solo Admin)</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>¿Quién realizará el servicio?</label>
+                            <select id="citaEmpleadoId" class="input-style">
+                                <option value="">-- Cualquier barbero disponible --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Silla / Estación de trabajo</label>
+                            <select id="citaEstacionId" class="input-style">
+                                <option value="">-- Cualquier silla libre --</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step-title"><i class="fas fa-motorcycle"></i> 4. Modalidad y Ubicación</div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Tipo de atención</label>
@@ -126,7 +156,7 @@
                     </div>
                 </div>
 
-                <div class="step-title"><i class="fas fa-calendar-alt"></i> 4. Fecha y Hora</div>
+                <div class="step-title"><i class="fas fa-calendar-alt"></i> 5. Fecha y Hora</div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Fecha programada</label>
@@ -139,7 +169,7 @@
                 </div>
                 <input type="hidden" id="citaHoraSeleccionada">
 
-                <div class="step-title"><i class="fas fa-comment-dots"></i> 5. Notas Adicionales</div>
+                <div class="step-title"><i class="fas fa-comment-dots"></i> 6. Notas Adicionales</div>
                 <div class="form-group full-width">
                     <textarea id="citaObservaciones" class="input-style" placeholder="¿Alguna instrucción especial?" rows="2"></textarea>
                 </div>

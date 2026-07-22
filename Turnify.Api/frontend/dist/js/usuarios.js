@@ -1,260 +1,390 @@
-/* ============================================================
-   TURNIFY - GESTIÓN DE USUARIOS (PRO)
-   ============================================================ */
+/* ============================================================================
+   TURNIFY - MOTOR DE GESTIÓN DE DIRECTORIO, PERSONAL Y ESTACIONES (HU 001)
+   ============================================================================ */
 
-// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el origen de red en caliente. Si corre localmente usa el puerto 5000 de .NET,
-// si entran desde una IP local o dominio en producción, reconfigura el host de inmediato para la gestión de usuarios.
 const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:5000'
-    : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
-        ? `${window.location.protocol}//${window.location.hostname}:5000`
-        : window.location.origin);
+    : `${window.location.protocol}//${window.location.hostname}:5000`;
 
-const API_URL = `${API_HOST}/api/Usuarios`;
-let listaUsuariosGlobal = []; 
+const API_BASE = `${API_HOST}/api`;
 
-// 1. EL GUARDIÁN (Blindado)
+// Estado global de la vista
+let currentTab = 'staff';
+const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 🛡️ Buscamos en ambas llaves para evitar el "bug loco" de redirección
-    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    
-    if (!token || token === "undefined" || token === "null") {
-        console.error("🚨 Acceso denegado: Token no encontrado.");
+    // Validar autenticación preliminar
+    if (!token) {
+        localStorage.clear();
         window.location.href = 'login.html';
         return;
     }
 
-    console.log("🔐 Sesión validada. Cargando sistema...");
-    cargarUsuarios();
+    // Inicializar listeners de los formularios
+    inicializarFormularios();
 
-    // 🔥 ESCUCHADOR DEL BUSCADOR (FILTRO LOCAL)
-    const inputBusqueda = document.getElementById('inputBusqueda');
-    if (inputBusqueda) {
-        inputBusqueda.addEventListener('input', (e) => {
-            const texto = e.target.value.toLowerCase();
-            const filtrados = listaUsuariosGlobal.filter(u => {
-                const nombre = (u.nombre || u.Nombre || "").toLowerCase();
-                const email = (u.email || u.Email || "").toLowerCase();
-                return nombre.includes(texto) || email.includes(texto);
-            });
-            renderizarTabla(filtrados);
+    // Carga por defecto de la primera pestaña
+    cargarDatosPestaña('staff');
+
+    // Manejo dinámico de etiquetas en formulario de empleados según tipo de contrato
+    const selectContrato = document.getElementById('staffTipoContrato');
+    if (selectContrato) {
+        selectContrato.addEventListener('change', (e) => {
+            const lbl = document.getElementById('lblValorContrato');
+            const input = document.getElementById('staffValorContrato');
+            if (e.target.value === 'Fijo') {
+                if (lbl) lbl.innerText = 'Salario Fijo Mensual ($)';
+                if (input) input.placeholder = 'Ej: 1500000';
+            } else {
+                if (lbl) lbl.innerText = 'Porcentaje de Comisión (%)';
+                if (input) input.placeholder = 'Ej: 50';
+            }
         });
     }
 });
 
-// 2. OBTENER DATOS DE LA API (Con manejo de errores 401)
-async function cargarUsuarios() {
-    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+/* ============================================================================
+   🧠 CONTROL DE PESTAÑAS (TABS)
+   ============================================================================ */
+window.switchTab = function(tabName) {
+    currentTab = tabName;
     
-    try {
-        const response = await fetch(API_URL, {
-            method: 'GET',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json',
-                'Cache-Control': 'no-cache'
-            }
-        });
+    // Cambiar clases activas en los botones
+    const botones = document.querySelectorAll('.tab-btn');
+    botones.forEach(btn => btn.classList.remove('active'));
+    
+    // Encontrar el botón clickeado por su atributo onclick
+    const botonActivo = Array.from(botones).find(btn => btn.getAttribute('onclick').includes(`'${tabName}'`));
+    if (botonActivo) botonActivo.classList.add('active');
 
-        // 🛡️ Si la API dice que el token no vale (401), limpiamos y salimos
-        if (response.status === 401) {
-            console.warn("⚠️ Token inválido o expirado.");
-            logout();
+    // Cambiar visibilidad de los contenedores de contenido
+    const contenidos = document.querySelectorAll('.tab-content');
+    contenidos.forEach(cont => cont.classList.remove('active'));
+
+    const contenidoActivo = document.getElementById(`tab-${tabName}`);
+    if (contenidoActivo) contenidoActivo.classList.add('active');
+
+    // Cargar los datos específicos de la pestaña seleccionada
+    cargarDatosPestaña(tabName);
+}
+
+function cargarDatosPestaña(tab) {
+    switch (tab) {
+        case 'staff':
+            listarPersonal();
+            break;
+        case 'estaciones':
+            listarEstaciones();
+            break;
+        case 'clientes':
+            listarClientes();
+            break;
+        case 'usuarios':
+            listarUsuariosSistema();
+            break;
+    }
+}
+
+/* ============================================================================
+   👥 FLUJO 1: MI PERSONAL (STAFF / EMPLEADOS)
+   ============================================================================ */
+async function listarPersonal() {
+    const tbody = document.getElementById('tablaStaff');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/Empleados`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Error al leer el personal');
+        
+        const empleados = await response.json();
+        if (empleados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hay empleados registrados.</td></tr>';
             return;
         }
 
-        if (response.ok) {
-            listaUsuariosGlobal = await response.json(); 
-            renderizarTabla(listaUsuariosGlobal); 
-        } else {
-            console.error("❌ Error API:", response.statusText);
-        }
-    } catch (error) {
-        console.error("🚨 Error de conexión:", error);
-    }
-}
-
-// 3. PINTAR LA TABLA (Normalización de datos Senior)
-function renderizarTabla(usuarios) {
-    const tabla = document.getElementById('tablaUsuarios');
-    if (!tabla) return;
-
-    const userRoleActual = (localStorage.getItem('usuario_rol') || "").toUpperCase(); 
-    
-    let htmlContent = ''; 
-
-    usuarios.forEach(u => {
-        const id = u.id || u.Id;
-        const nombre = u.nombre || u.Nombre || "Sin nombre";
-        const email = u.email || u.Email || "Sin email";
-        const rol = u.rol || u.Rol || "Usuario"; 
-        const bloqueado = u.esta_bloqueado ?? u.Esta_bloqueado ?? false;
-        const fechaFinRaw = u.suscripcion_fin || u.Suscripcion_fin;
-        const fechaFin = fechaFinRaw ? new Date(fechaFinRaw).toLocaleDateString() : 'N/A';
-
-        const statusClass = bloqueado ? 'status-bloqueado' : 'status-activo';
-        const statusText = bloqueado ? '🚫 Suspendido' : '✅ Activo';
-
-        let botonesExtra = '';
-
-        if (rol.toLowerCase().includes('barbero') || rol.toLowerCase().includes('proveedor')) {
-            botonesExtra += `
-                <button class="btn-action" style="background-color: #ffc107; color: #000;" onclick="gestionarTarjeta('${id}')" title="Ver Tarjeta Digital">
-                    <i class="fas fa-id-card"></i>
-                </button>`;
-        }
-
-        if (userRoleActual.includes('ADMIN')) {
-            botonesExtra += `
-                <button class="btn-action" style="background-color: #48c1b5; color: #1b3d5f;" onclick="renovarSuscripcion('${id}')" title="Renovar Suscripción">
-                    <i class="fas fa-calendar-plus"></i>
-                </button>`;
-        }
-
-        htmlContent += `
+        tbody.innerHTML = empleados.map(emp => `
             <tr>
-                <td class="td-user"><strong>${nombre}</strong></td>
-                <td class="td-user">${email}</td>
-                <td class="td-user">
-                    <span class="role-pill ${rol.toLowerCase()}">${rol}</span>
-                </td>
-                <td class="td-user">${fechaFin}</td>
-                <td><span class="status-pill ${statusClass}">${statusText}</span></td>
+                <td><strong>${emp.nombre}</strong><br><small style="opacity:0.6;">${emp.email || 'Sin email de acceso'}</small></td>
+                <td>${emp.telefono || 'N/A'}</td>
+                <td><span class="status-pill status-pendiente">${emp.tipoContrato}</span></td>
+                <td>${emp.tipoContrato === 'Porcentaje' ? `${emp.valorContrato}%` : `$${emp.valorContrato.toLocaleString()}`}</td>
+                <td><span class="status-pill ${emp.activo ? 'status-activo' : 'status-bloqueado'}">${emp.activo ? 'Activo' : 'Inactivo'}</span></td>
                 <td>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn-action ${bloqueado ? 'btn-activar' : 'btn-bloquear'}" onclick="toggleUser('${id}', ${bloqueado})" title="${bloqueado ? 'Activar' : 'Suspender'}">
-                            <i class="fas ${bloqueado ? 'fa-check' : 'fa-ban'}"></i>
-                        </button>
-                        ${botonesExtra}
-                    </div>
+                    <button class="btn-filter" onclick="eliminarEmpleado('${emp.id}')" style="background:#e94560; color:white; border:none; padding:5px 10px; border-radius:5px; cursor:pointer;">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </td>
             </tr>
-        `;
-    });
-
-    tabla.innerHTML = htmlContent;
+        `).join('');
+    } catch (err) {
+        console.error(err);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#e94560;">Error al conectar con el servidor.</td></tr>';
+    }
 }
 
-// 4. ACCIONES (Normalizadas)
-async function toggleUser(id, estadoActual) {
-    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    const nuevoEstado = !estadoActual;
-    const accion = nuevoEstado ? 'BLOQUEAR' : 'ACTIVAR';
+window.abrirModalStaff = function() {
+    document.getElementById('formStaff').reset();
+    document.getElementById('staffId').value = '';
+    document.getElementById('modalStaffTitulo').innerText = 'Registrar Empleado';
+    document.getElementById('modalStaff').style.display = 'flex';
+}
 
-    if (!confirm(`¿Estás seguro de que quieres ${accion} a este usuario?`)) return;
+window.cerrarModalStaff = function() {
+    document.getElementById('modalStaff').style.display = 'none';
+}
+
+async function guardarEmpleado(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnGuardarStaff');
+    const origText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = 'Procesando...';
+
+    const payload = {
+        Nombre: document.getElementById('staffNombre').value.trim(),
+        Telefono: document.getElementById('staffTelefono').value.trim(),
+        TipoContrato: document.getElementById('staffTipoContrato').value,
+        ValorContrato: parseFloat(document.getElementById('staffValorContrato').value),
+        Email: document.getElementById('staffEmail').value.trim() || null,
+        Password: document.getElementById('staffPassword').value || null
+    };
 
     try {
-        const response = await fetch(`${API_URL}/cambiar-estado/${id}?bloquear=${nuevoEstado}`, {
-            method: 'PUT',
+        const response = await fetch(`${API_BASE}/Empleados`, {
+            method: 'POST',
             headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
         });
 
         if (response.ok) {
-            cargarUsuarios(); 
+            alert('🎉 Empleado y puesto de trabajo configurados con éxito.');
+            cerrarModalStaff();
+            listarPersonal();
+        } else {
+            const errData = await response.json();
+            alert(`⚠️ Error: ${errData.message || 'No se pudo guardar el empleado.'}`);
         }
-    } catch (error) { console.error(error); }
+    } catch (err) {
+        alert('❌ Error crítico de red al guardar el personal.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = origText;
+    }
 }
 
-async function renovarSuscripcion(id) {
-    const meses = prompt("¿Cuántos meses desea agregar?", "1");
-    if (!meses) return;
-    
-    const numMeses = parseInt(meses);
-    if (isNaN(numMeses) || numMeses <= 0) return alert("⚠️ Número inválido");
-
-    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    
+window.eliminarEmpleado = async function(id) {
+    if (!confirm('¿Seguro que deseas remover este empleado de la plantilla?')) return;
     try {
-        const response = await fetch(`${API_URL}/renovar/${id}?meses=${numMeses}`, {
-            method: 'PUT',
+        const response = await fetch(`${API_BASE}/Empleados/${id}`, {
+            method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (response.ok) {
+            listarPersonal();
+        }
+    } catch (err) { console.error(err); }
+}
+
+/* ============================================================================
+   🪑 FLUJO 2: SILLAS / ESTACIONES DE TRABAJO
+   ============================================================================ */
+async function listarEstaciones() {
+    const tbody = document.getElementById('tablaEstaciones');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/EstacionesTrabajo`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Error al leer estaciones');
+        
+        const estaciones = await response.json();
+        if (estaciones.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No hay estaciones configuradas.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = estaciones.map(est => `
+            <tr>
+                <td><strong><i class="fas fa-chair" style="color:#48c1b5;"></i> ${est.nombreSilla}</strong></td>
+                <td>${est.descripcion || 'Sin descripción'}</td>
+                <td><span class="status-pill ${est.activa ? 'status-activo' : 'status-bloqueado'}">${est.activa ? 'Disponible' : 'Mantenimiento'}</span></td>
+                <td>
+                    <button class="btn-filter" onclick="eliminarEstacion('${est.id}')" style="background:#e94560; color:white; border:none; padding:5px 10px; border-radius:5px; cursor:pointer;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#e94560;">Error de comunicación.</td></tr>';
+    }
+}
+
+window.abrirModalEstacion = function() {
+    document.getElementById('formEstacion').reset();
+    document.getElementById('estacionId').value = '';
+    document.getElementById('modalEstacionTitulo').innerText = 'Registrar Estación / Silla';
+    document.getElementById('modalEstacion').style.display = 'flex';
+}
+
+window.cerrarModalEstacion = function() {
+    document.getElementById('modalEstacion').style.display = 'none';
+}
+
+async function guardarEstacion(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnGuardarEstacion');
+    btn.disabled = true;
+
+    const payload = {
+        NombreSilla: document.getElementById('estacionNombre').value.trim(),
+        Descripcion: document.getElementById('estacionDescripcion').value.trim()
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/EstacionesTrabajo`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
 
         if (response.ok) {
-            alert("✅ Renovado con éxito");
-            cargarUsuarios();
+            cerrarModalEstacion();
+            listarEstaciones();
+        } else {
+            alert('Error al mapear la estación.');
         }
-    } catch (error) { console.error(error); }
-}
-
-// --- 🚩 5. FUNCIONALIDAD DE LA TARJETA DIGITAL (NUEVO) ---
-
-function gestionarTarjeta(id) {
-    // Buscamos los datos del usuario en la lista que ya cargamos de la API
-    const usuario = listaUsuariosGlobal.find(u => (u.id || u.Id) === id);
-    
-    if (!usuario) {
-        alert("❌ Error: No se encontró la información del usuario.");
-        return;
+    } catch (err) {
+        console.error(err);
+    } finally {
+        btn.disabled = false;
     }
-
-    const nombre = usuario.nombre || usuario.Nombre || "Barbero Profesional";
-    const rol = usuario.rol || usuario.Rol || "Especialista";
-
-    // Llenamos el modal
-    document.getElementById('tarjetaNombre').innerText = nombre;
-    document.getElementById('tarjetaRol').innerText = rol;
-    
-    // Limpiamos el QR anterior para que no se amontone
-    const qrContainer = document.getElementById('qrcode');
-    qrContainer.innerHTML = "";
-
-    // Mostramos el modal
-    document.getElementById('modalTarjeta').style.display = 'flex';
-
-    // Generamos el código QR con el link de agendamiento
-    // 🛡️ FIX DE QR COMPARTIBLE: Usamos window.location.origin en lugar de un localhost quemado, 
-    // garantizando que si se escanea desde un celular apunte al dominio real del despliegue.
-    const linkReserva = `${window.location.origin}/agendar-cita.html?id=${id}`;
-
-    new QRCode(qrContainer, {
-        text: linkReserva,
-        width: 200,
-        height: 200,
-        colorDark : "#000000",
-        colorLight : "#ffffff",
-        correctLevel : QRCode.CorrectLevel.H
-    });
 }
 
-function cerrarTarjeta() {
-    const modal = document.getElementById('modalTarjeta');
-    if (modal) modal.style.display = 'none';
+window.eliminarEstacion = async function(id) {
+    if (!confirm('¿Deseas desvincular esta estación de trabajo?')) return;
+    try {
+        const response = await fetch(`${API_BASE}/EstacionesTrabajo/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) listarEstaciones();
+    } catch (err) { console.error(err); }
 }
 
-function descargarQR() {
-    const qrImg = document.querySelector('#qrcode img');
-    if (!qrImg) return alert("❌ Primero genera el código QR.");
+/* ============================================================================
+   🙍‍♂️ FLUJO 3: MIS CLIENTES (WEB REGISTRADOS)
+   ============================================================================ */
+async function listarClientes() {
+    const tbody = document.getElementById('tablaClientes');
+    if (!tbody) return;
 
-    const link = document.createElement('a');
-    const nombreBarbero = document.getElementById('tarjetaNombre').innerText;
-    
-    link.href = qrImg.src;
-    link.download = `QR_Turnify_${nombreBarbero.replace(/\s+/g, '_')}.png`;
-    link.click();
-}
+    try {
+        const response = await fetch(`${API_BASE}/Clientes`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error();
+        
+        const clientes = await response.json();
+        if (clientes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No hay clientes registrados desde la web aún.</td></tr>';
+            return;
+        }
 
-// Cerrar modal al hacer clic afuera de la tarjeta
-window.onclick = function(event) {
-    const modal = document.getElementById('modalTarjeta');
-    if (event.target === modal) {
-        cerrarTarjeta();
+        tbody.innerHTML = clientes.map(cli => {
+            const fecha = cli.fechaRegistro ? new Date(cli.fechaRegistro).toLocaleDateString('es-CO') : 'N/A';
+            return `
+                <tr>
+                    <td><strong>${cli.nombre}</strong></td>
+                    <td><i class="fab fa-whatsapp" style="color:#25d366;"></i> ${cli.telefono || 'N/A'}</td>
+                    <td>${cli.email || 'N/A'}</td>
+                    <td><small>${fecha}</small></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No se pudo procesar el listado de clientes.</td></tr>';
     }
-};
+}
 
-// 6. ✅ CIERRE DE SESIÓN LIMPIO
+/* ============================================================================
+   💻 FLUJO 4: USUARIOS DEL SISTEMA (Mantenimiento de tu Lógica Original)
+   ============================================================================ */
+async function listarUsuariosSistema() {
+    const tbody = document.getElementById('tablaUsuarios');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/Usuarios`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error();
+        
+        const usuarios = await response.json();
+        tbody.innerHTML = usuarios.map(usr => {
+            const badgeBloqueo = usr.estaBloqueado 
+                ? `<span class="status-pill status-bloqueado">Bloqueado</span>` 
+                : `<span class="status-pill status-activo">Activo</span>`;
+                
+            return `
+                <tr>
+                    <td><strong>${usr.nombre}</strong></td>
+                    <td>${usr.email}</td>
+                    <td><span class="status-pill status-pendiente" style="text-transform:uppercase;">${usr.rolNombre || 'Usuario'}</span></td>
+                    <td><small>${usr.vencimientoSuscripcion ? new Date(usr.vencimientoSuscripcion).toLocaleDateString() : 'N/A'}</small></td>
+                    <td>${badgeBloqueo}</td>
+                    <td>
+                        <button onclick="conmutarBloqueoUsuario('${usr.id}', ${usr.estaBloqueado})" class="btn-add" style="background:${usr.estaBloqueado ? '#48c1b5' : '#e94560'}; padding: 6px 12px; font-size:0.8rem;">
+                            ${usr.estaBloqueado ? '<i class="fas fa-unlock"></i> Desbloquear' : '<i class="fas fa-lock"></i> Bloquear'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+window.conmutarBloqueoUsuario = async function(id, estadoActual) {
+    const accion = estadoActual ? 'desbloquear' : 'bloquear';
+    if (!confirm(`¿Seguro que deseas ${accion} este usuario en el sistema?`)) return;
+
+    try {
+        const endpoint = estadoActual ? `${API_BASE}/Usuarios/${id}/desbloquear` : `${API_BASE}/Usuarios/${id}/bloquear`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            listarUsuariosSistema();
+        }
+    } catch (err) { console.error(err); }
+}
+
+/* ============================================================================
+   UTILIDADES COMPLEMENTARIAS
+   ============================================================================ */
+function inicializarFormularios() {
+    const fStaff = document.getElementById('formStaff');
+    if (fStaff) fStaff.addEventListener('submit', guardarEmpleado);
+
+    const fEstacion = document.getElementById('formEstacion');
+    if (fEstacion) fEstacion.addEventListener('submit', guardarEstacion);
+}
+
 window.logout = function() {
-    console.log("🧹 Limpiando sesión...");
-    localStorage.clear(); 
-    window.location.href = 'login.html'; 
-};
-
-// Puentes globales explícitos para asegurar la ejecución desde las celdas de la tabla HTML
-window.gestionarTarjeta = gestionarTarjeta;
-window.cerrarTarjeta = cerrarTarjeta;
-window.descargarQR = descargarQR;
-window.toggleUser = toggleUser;
-window.renovarSuscripcion = renovarSuscripcion;
+    if (confirm("¿Deseas cerrar sesión en Turnify?")) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
+} 

@@ -6,12 +6,9 @@ using System.Security.Claims;
 using System.Text;
 using Turnify.Api.Data;
 using Turnify.Api.Models;
-// Quitamos el DTO de afuera para evitar el choque de nombres
-// using Turnify.Api.Models.DTOs; 
 
 namespace Turnify.Api.Controllers
 {
-    // 🚩 Definimos el DTO aquí arriba para que sea el que mande
     public class InternalLoginDto 
     {
         public string Email { get; set; } = string.Empty;
@@ -34,7 +31,7 @@ namespace Turnify.Api.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] InternalLoginDto login)
         {
-            // 1. Buscamos el usuario (email en minúsculas)
+            // 1. Buscamos el usuario (email)
             var usuario = await _context.usuarios
                 .Include(u => u.Rol)
                 .FirstOrDefaultAsync(u => u.email == login.Email);
@@ -42,17 +39,17 @@ namespace Turnify.Api.Controllers
             // 2. Validación de credenciales
             if (usuario == null || usuario.password_hash != login.Password) 
             {
-                // Soporte para tu cuenta admin
+                // Soporte para tu cuenta admin maestra
                 if (login.Email == "admin" && login.Password == "Turnify2026!")
                 {
-                    var tokenAdmin = GenerarToken(Guid.NewGuid().ToString(), "admin", "Admin", null, null);
+                    var tokenAdmin = GenerarToken(Guid.NewGuid().ToString(), "admin", "Admin", null, null, null);
                     return Ok(new { token = tokenAdmin, user = new { nombre = "Admin", rol = "Admin" } });
                 }
                 
                 return Unauthorized(new { message = "Credenciales incorrectas" });
             }
 
-            // 3. 🚩 AUTO-VINCULACIÓN (Solución al Cliente NULL de Alexandra)
+            // 3. AUTO-VINCULACIÓN (Solución al Cliente NULL de Alexandra)
             var cliente = await _context.clientes
                 .FirstOrDefaultAsync(c => c.usuario_id == usuario.id);
 
@@ -72,16 +69,37 @@ namespace Turnify.Api.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            // 4. Buscamos Proveedor
-            var proveedorId = await _context.proveedores
-                .Where(p => p.UsuarioId == usuario.id) 
-                .Select(p => (Guid?)p.Id)
-                .FirstOrDefaultAsync();
+            // 4. LÓGICA DE NEGOCIO MULTI-ROL INVERTIDA (Dueño vs Colaborador)
+            Guid? proveedorId = null;
+            Guid? empleadoId = null;
 
             var rolNombre = usuario.Rol?.nombre ?? "Cliente";
+
+            // Si el rol es Proveedor (Colaborador/Empleado), buscamos a qué tienda física pertenece
+            if (rolNombre == "Proveedor")
+            {
+                var empleado = await _context.empleados
+                    .FirstOrDefaultAsync(e => e.UsuarioId == usuario.id); // 🚀 Corregido a PascalCase 'UsuarioId'
+
+                if (empleado != null)
+                {
+                    empleadoId = empleado.Id;
+                    proveedorId = empleado.ProveedorId; // 🚀 Corregido a PascalCase 'ProveedorId'
+                }
+            }
+            else // Si es Staff (Dueño de la Barbería/Estética), buscamos su negocio principal de forma directa
+            {
+                var proveedor = await _context.proveedores
+                    .FirstOrDefaultAsync(p => p.UsuarioId == usuario.id);
+                
+                if (proveedor != null)
+                {
+                    proveedorId = proveedor.Id;
+                }
+            }
             
-            // 5. Generamos el Token con el NameIdentifier que pide CitasController
-            var token = GenerarToken(usuario.id.ToString(), usuario.email, rolNombre, cliente?.id, proveedorId);
+            // 5. Generamos el Token con toda la metadata de claims
+            var token = GenerarToken(usuario.id.ToString(), usuario.email, rolNombre, cliente?.id, proveedorId, empleadoId);
 
             return Ok(new { 
                 token = token,
@@ -89,6 +107,7 @@ namespace Turnify.Api.Controllers
                     id = usuario.id,
                     clienteId = cliente?.id, 
                     proveedorId = proveedorId,
+                    empleadoId = empleadoId,
                     nombre = usuario.nombre,
                     rol = rolNombre,
                     email = usuario.email
@@ -96,7 +115,7 @@ namespace Turnify.Api.Controllers
             });
         }
 
-        private string GenerarToken(string userId, string usuarioEmail, string rol, Guid? clienteId, Guid? proveedorId)
+        private string GenerarToken(string userId, string usuarioEmail, string rol, Guid? clienteId, Guid? proveedorId, Guid? empleadoId)
         {
             var key = Encoding.ASCII.GetBytes(_config["Jwt:Key"] ?? "Llave_Super_Secreta_De_Respaldo_32_Chars");
             
@@ -109,6 +128,7 @@ namespace Turnify.Api.Controllers
 
             if (clienteId.HasValue) claims.Add(new Claim("ClienteId", clienteId.Value.ToString()));
             if (proveedorId.HasValue) claims.Add(new Claim("ProveedorId", proveedorId.Value.ToString()));
+            if (empleadoId.HasValue) claims.Add(new Claim("EmpleadoId", empleadoId.Value.ToString()));
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
@@ -123,8 +143,8 @@ namespace Turnify.Api.Controllers
 
             var tokenHandler = new JwtSecurityTokenHandler();
             var token = tokenHandler.CreateToken(tokenDescriptor);
-            
-            return tokenHandler.WriteToken(token);
+    
+ return tokenHandler.WriteToken(token);
         }
     }
 }

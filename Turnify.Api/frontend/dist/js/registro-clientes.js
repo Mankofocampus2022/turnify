@@ -13,7 +13,7 @@ const API_HOST = (window.location.hostname === 'localhost' || window.location.ho
 // 1. CONFIGURACIÓN DE ROLES (GUIDs de tu base de datos SQL Server)
 const ROLES = {
     CLIENTE: "56992f75-6420-4d55-a5f9-9223248c50d7",
-    BARBERO: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7" // Rol de Proveedor/Admin
+    ADMINISTRADOR: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7" // Rol de Proveedor / Administrador del negocio
 };
 
 let currentRole = 'CLIENTE';
@@ -23,7 +23,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const qrProveedorId = urlParams.get('id'); // Si viene de un QR, este ID existirá
 
 /**
- * Función para alternar entre Cliente y Barbero en la UI
+ * Función para alternar entre Cliente y Administrador (Dueño de Negocio) en la UI
  * (Actualizada de forma inclusiva para soportar Barberos y Manicuristas)
  */
 function cambiarRol(rol) {
@@ -35,26 +35,28 @@ function cambiarRol(rol) {
     const btnText = document.getElementById('btnText');
     const btnCliente = document.getElementById('btnSoyCliente');
     const btnBarbero = document.getElementById('btnSoyBarbero');
-    // 🚩 Si es barbero, ocultamos la sección de reserva inmediata (lógica de negocio)
+    // 🚩 Si es Administrador/Dueño, ocultamos la sección de reserva inmediata (lógica de negocio)
     const sectionReserva = document.getElementById('sectionReservaInmediata');
 
-    if (rol === 'BARBERO') {
+    if (rol === 'ADMINISTRADOR' || rol === 'BARBERO') {
+        currentRole = 'ADMINISTRADOR'; // Forzamos el rol al estándar corporativo
         if(groupNegocio) groupNegocio.style.display = 'block';
         if(groupEspecialidad) groupEspecialidad.style.display = 'block'; // 🧠 ADICIÓN: Muestra la especialidad al ser Profesional
         if(sectionReserva) sectionReserva.style.display = 'none';
         if(inputNegocio) inputNegocio.required = true;
-        btnText.innerText = "Registrarme como Profesional"; // 🧠 ADICIÓN: Texto inclusivo para la UI
-        btnBarbero.classList.add('active');
-        btnCliente.classList.remove('active');
+        btnText.innerText = "Registrar mi Negocio"; // 🧠 ADICIÓN: Texto inclusivo para la UI
+        if(btnBarbero) btnBarbero.classList.add('active');
+        if(btnCliente) btnCliente.classList.remove('active');
     } else {
+        currentRole = 'CLIENTE';
         if(groupNegocio) groupNegocio.style.display = 'none';
         if(groupEspecialidad) groupEspecialidad.style.display = 'none'; // 🧠 ADICIÓN: Oculta la especialidad si vuelve a ser Cliente
         // Si hay un QR detectado, volvemos a mostrar la reserva al ser cliente
         if(qrProveedorId && sectionReserva) sectionReserva.style.display = 'block';
         if(inputNegocio) inputNegocio.required = false;
         btnText.innerText = "Registrarme como Cliente";
-        btnCliente.classList.add('active');
-        btnBarbero.classList.remove('active');
+        if(btnCliente) btnCliente.classList.add('active');
+        if(btnBarbero) btnBarbero.classList.remove('active');
     }
 }
 
@@ -67,11 +69,11 @@ function toggleDireccionRegistro() {
     const inputDireccion = document.getElementById('regDireccion');
     
     if (modalidad === 'domicilio') {
-        groupDireccion.style.display = 'block';
-        inputDireccion.required = true;
+        if(groupDireccion) groupDireccion.style.display = 'block';
+        if(inputDireccion) inputDireccion.required = true;
     } else {
-        groupDireccion.style.display = 'none';
-        inputDireccion.required = false;
+        if(groupDireccion) groupDireccion.style.display = 'none';
+        if(inputDireccion) inputDireccion.required = false;
     }
 }
 
@@ -122,7 +124,9 @@ document.getElementById('regFecha')?.addEventListener('change', async (e) => {
         const response = await fetch(`${API_HOST}/api/Citas/disponibilidad?proveedorId=${qrProveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
         if (response.ok) {
             const horas = await response.json();
-            selectHora.innerHTML = horas.map(h => `<option value="${h}">${h.slice(0, 5)}</option>`).join('');
+            if(selectHora) {
+                selectHora.innerHTML = horas.map(h => `<option value="${h}">${h.slice(0, 5)}</option>`).join('');
+            }
         }
     } catch (e) { console.error("Error disponibilidad", e); }
 });
@@ -150,11 +154,11 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
         nombre: document.getElementById('regNombre').value.trim(),
         email: document.getElementById('regEmail').value.trim(),
         password: password,
-        rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.BARBERO,
+        rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.ADMINISTRADOR,
         telefono: document.getElementById('regTelefono').value.trim(),
-        nombreComercial: currentRole === 'BARBERO' ? document.getElementById('regNegocio').value.trim() : "",
+        nombreComercial: currentRole === 'ADMINISTRADOR' ? document.getElementById('regNegocio').value.trim() : "",
         // 🧠 ADICIÓN DINÁMICA: Mapea la selección real de especialidad (Barbero o Manicurista) desde el id="regCategoria"
-        tipoNegocio: currentRole === 'BARBERO' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular"
+        tipoNegocio: currentRole === 'ADMINISTRADOR' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular"
     };
 
     try {
@@ -221,7 +225,7 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
             alert("❌ Error: " + errorMsg);
             
             btnSubmit.disabled = false;
-            btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrarme como Profesional";
+            btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrar mi Negocio";
         }
 
     } catch (error) {

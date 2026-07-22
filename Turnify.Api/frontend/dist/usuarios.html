@@ -2,11 +2,54 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Turnify - Gestión de Usuarios</title>
+    <title>Turnify - Gestión de Usuarios y Directorio</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="css-dashboard.css">
     <link rel="stylesheet" href="css-usuarios.css">
+    
+    <!-- 🚀 HU 001 - Estilos inyectados para las Pestañas y Modales de Formularios -->
+    <style>
+        .tabs-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid rgba(0,0,0,0.05);
+            padding-bottom: 10px;
+            overflow-x: auto;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        .tab-btn:hover { background: rgba(72, 193, 181, 0.1); color: #48c1b5; }
+        .tab-btn.active { background: #48c1b5; color: white; box-shadow: 0 4px 6px rgba(72, 193, 181, 0.3); }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .action-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 15px; }
+        .btn-add { background: #48c1b5; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; }
+        .btn-add:hover { background: #3aa69b; }
+
+        /* Estilos Modales Formularios */
+        .modal-form { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.8); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+        .modal-form-content { background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+        .modal-form-close { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; cursor: pointer; color: #64748b; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #1e293b; font-size: 0.9rem; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; }
+        .btn-submit { width: 100%; background: #1b3d5f; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .btn-submit:hover { background: #122a42; }
+    </style>
 </head>
 <body>
 
@@ -22,7 +65,7 @@
                 <i class="fas fa-chart-line"></i> Resumen
             </a>
             <a href="usuarios.html" class="nav-item active" id="nav-usuarios">
-                <i class="fas fa-users"></i> Usuarios
+                <i class="fas fa-users"></i> Directorio
             </a>
             <a href="servicios.html" class="nav-item" id="nav-servicios">
                 <i class="fas fa-cut"></i> Servicios
@@ -44,62 +87,210 @@
 
     <main class="main-content">
         <div class="header-section">
-            <h1>Control de Usuarios</h1>
-            <p>Administración de cuentas y suscripciones (SuperAdmin)</p>
+            <h1>Directorio de Negocio</h1>
+            <p>Administración de usuarios, personal, sillas y clientes.</p>
         </div>
 
         <hr style="opacity: 0.1; margin: 20px 0;">
 
-        <div class="search-container" style="margin-bottom: 25px; max-width: 400px; margin-left: 0;">
-            <div style="position: relative;">
-                <input type="text" id="inputBusqueda" placeholder="🔍 Buscar barbero por nombre o email..." 
-                       style="width: 100%; padding: 12px 15px 12px 40px; border-radius: 12px; border: 1px solid #e2e8f0; background: white; color: #1b3d5f; font-weight: 500; outline: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <!-- 🚀 SISTEMA DE PESTAÑAS -->
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="switchTab('staff')"><i class="fas fa-user-tie"></i> Mi Personal</button>
+            <button class="tab-btn" onclick="switchTab('estaciones')"><i class="fas fa-chair"></i> Sillas / Estaciones</button>
+            <button class="tab-btn" onclick="switchTab('clientes')"><i class="fas fa-address-book"></i> Mis Clientes</button>
+            <button class="tab-btn" onclick="switchTab('usuarios')"><i class="fas fa-laptop-code"></i> Usuarios (Sistema)</button>
+        </div>
+
+        <!-- 🏢 PESTAÑA: PERSONAL (STAFF) -->
+        <div id="tab-staff" class="tab-content active">
+            <div class="action-header">
+                <div class="search-container" style="max-width: 300px; width: 100%;">
+                    <input type="text" id="buscarStaff" placeholder="🔍 Buscar empleado..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                </div>
+                <button class="btn-add" onclick="abrirModalStaff()"><i class="fas fa-plus"></i> Nuevo Empleado</button>
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th>Tipo Contrato</th>
+                            <th>Valor / Comisión</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaStaff">
+                        <tr><td colspan="6" class="text-center">Cargando personal...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <div class="table-card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Nombre</th>
-                        <th>Email</th>
-                        <th>Rol</th> 
-                        <th>Vencimiento</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaUsuarios">
+        <!-- 🪑 PESTAÑA: ESTACIONES (SILLAS) -->
+        <div id="tab-estaciones" class="tab-content">
+            <div class="action-header">
+                <div class="search-container" style="max-width: 300px; width: 100%;">
+                    <input type="text" id="buscarEstacion" placeholder="🔍 Buscar estación..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                </div>
+                <button class="btn-add" onclick="abrirModalEstacion()"><i class="fas fa-plus"></i> Nueva Estación</button>
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre de la Silla</th>
+                            <th>Descripción</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaEstaciones">
+                        <tr><td colspan="4" class="text-center">Cargando estaciones...</td></tr>
                     </tbody>
-            </table>
+                </table>
+            </div>
         </div>
+
+        <!-- 🙍‍♂️ PESTAÑA: CLIENTES -->
+        <div id="tab-clientes" class="tab-content">
+            <div class="action-header">
+                <div class="search-container" style="max-width: 300px; width: 100%;">
+                    <input type="text" id="buscarCliente" placeholder="🔍 Buscar cliente..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                </div>
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Fecha Registro</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaClientes">
+                        <tr><td colspan="4" class="text-center">Cargando clientes...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 💻 PESTAÑA: USUARIOS DEL SISTEMA (Tu código original) -->
+        <div id="tab-usuarios" class="tab-content">
+            <div class="search-container" style="margin-bottom: 25px; max-width: 400px;">
+                <input type="text" id="inputBusqueda" placeholder="🔍 Buscar usuario por nombre o email..." 
+                       style="width: 100%; padding: 12px 15px 12px 15px; border-radius: 12px; border: 1px solid #e2e8f0; background: white; color: #1b3d5f; font-weight: 500; outline: none;">
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Email</th>
+                            <th>Rol</th> 
+                            <th>Vencimiento</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaUsuarios">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </main>
 </div>
 
+<!-- ================= MODALES DE GESTIÓN ================= -->
+
+<!-- 👤 MODAL: STAFF / EMPLEADOS -->
+<div id="modalStaff" class="modal-form">
+    <div class="modal-form-content">
+        <span class="modal-form-close" onclick="cerrarModalStaff()">&times;</span>
+        <h2 id="modalStaffTitulo" style="margin-bottom: 20px; color: #1b3d5f;">Registrar Empleado</h2>
+        <form id="formStaff">
+            <input type="hidden" id="staffId">
+            <div class="form-group">
+                <label>Nombre Completo</label>
+                <input type="text" id="staffNombre" required placeholder="Ej: Carlos Barbero">
+            </div>
+            <div class="form-group">
+                <label>Teléfono / WhatsApp</label>
+                <input type="tel" id="staffTelefono" required placeholder="Ej: 3001234567">
+            </div>
+            <div class="form-group">
+                <label>Tipo de Contrato</label>
+                <select id="staffTipoContrato" required>
+                    <option value="Porcentaje">Comisión por Porcentaje (%)</option>
+                    <option value="Fijo">Salario Fijo ($)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label id="lblValorContrato">Porcentaje de Comisión (%)</label>
+                <input type="number" id="staffValorContrato" required min="0" step="0.01" placeholder="Ej: 50">
+            </div>
+            
+            <hr style="margin: 20px 0; border: 0; border-top: 1px dashed #cbd5e1;">
+            <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 10px;">
+                <i class="fas fa-info-circle"></i> Opcional: Crear cuenta de acceso para que este empleado vea su propia agenda.
+            </p>
+            
+            <div class="form-group">
+                <label>Email de Acceso (Opcional)</label>
+                <input type="email" id="staffEmail" placeholder="correo@ejemplo.com">
+            </div>
+            <div class="form-group">
+                <label>Contraseña de Acceso (Opcional)</label>
+                <input type="password" id="staffPassword" placeholder="Contraseña segura">
+            </div>
+
+            <button type="submit" class="btn-submit" id="btnGuardarStaff">Guardar Empleado</button>
+        </form>
+    </div>
+</div>
+
+<!-- 🪑 MODAL: ESTACIONES / SILLAS -->
+<div id="modalEstacion" class="modal-form">
+    <div class="modal-form-content">
+        <span class="modal-form-close" onclick="cerrarModalEstacion()">&times;</span>
+        <h2 id="modalEstacionTitulo" style="margin-bottom: 20px; color: #1b3d5f;">Registrar Estación</h2>
+        <form id="formEstacion">
+            <input type="hidden" id="estacionId">
+            <div class="form-group">
+                <label>Nombre de la Silla / Estación</label>
+                <input type="text" id="estacionNombre" required placeholder="Ej: Silla VIP 1">
+            </div>
+            <div class="form-group">
+                <label>Descripción Breve</label>
+                <input type="text" id="estacionDescripcion" placeholder="Ej: Silla de barbero principal cerca de la ventana">
+            </div>
+            <button type="submit" class="btn-submit" id="btnGuardarEstacion">Guardar Estación</button>
+        </form>
+    </div>
+</div>
+
+<!-- 🏷️ MODAL TARJETA QR (Original mantenido) -->
 <div id="modalTarjeta" class="modal-tarjeta">
     <div class="tarjeta-container">
         <span class="close-tarjeta" onclick="cerrarTarjeta()">&times;</span>
         <h3 id="tarjetaNombre">Nombre del Barbero</h3>
         <span id="tarjetaRol">Barbero Profesional</span>
-        
         <hr style="opacity: 0.1; margin: 20px 0;">
-        
         <div id="qrcode"></div>
-        
         <p style="font-size: 0.85rem; opacity: 0.6; margin-bottom: 20px;">
             Escanea para agendar tu cita directamente.
         </p>
-        
         <button class="btn-descargar" onclick="descargarQR()">
             <i class="fas fa-cloud-download-alt"></i> DESCARGAR QR
         </button>
     </div>
 </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    
-    <script src="js/auth-global.js"></script>
-    
-    <script src="js/usuarios.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="js/auth-global.js"></script>
+<script src="js/usuarios.js"></script>
 </body>
 </html>

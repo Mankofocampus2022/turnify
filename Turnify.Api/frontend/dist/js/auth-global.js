@@ -14,7 +14,7 @@ function validarSesionYMenu() {
         token = null;
     }
 
-    // 1. SI NO HAY TOKEN: Patitas a la calle (al login)
+    // 1. SI NO HAY TOKEN: no entra (al login)
     if (!token) {
         // 🚀 EXCEPCIÓN SENIOR PARA GUEST CHECKOUT QR:
         // Si el cliente ingresa de manera anónima a agendar-cita.html trayendo el parámetro ID del proveedor (?id=...),
@@ -115,7 +115,7 @@ function validarSesionYMenu() {
 
 // Cerrar sesión
 window.logout = function() {
-    if (confirm("¿Seguro que quiere abrirse, mi perro?")) {
+    if (confirm("¿Seguro que deseas cerrar sesión? vuelve pronto")) {
         localStorage.clear();
         window.location.href = 'login.html';
     }

@@ -61,38 +61,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sectionCliente = document.getElementById('sectionSeleccionarCliente');
     const sectionProveedor = document.getElementById('sectionSeleccionarProveedor');
     const subtitulo = document.getElementById('subtituloAgendar');
+    
+    // 🚀 HU 001 - MULTI-SILLA: Referencias a los bloques de interfaz correspondientes
+    const sectionStaffEstacion = document.getElementById('sectionStaffEstacion');
+    const sectionBarberoPreferido = document.getElementById('sectionBarberoPreferido');
 
-    if (esCliente) {
+    if (esCliente || qrProveedorId) {
         if (sectionCliente) sectionCliente.style.display = 'none';
-        if (sectionProveedor) sectionProveedor.style.display = 'block';
-        if (subtitulo) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
-        cargarProveedores(token, API_BASE); 
-        // 🛡️ [NUEVO] Cargamos historial para clientes con el ID correcto de la tabla Clientes
-        // 🚩 FIX: Prioridad absoluta al clienteId para evitar el 400 Bad Request
+        if (sectionProveedor) sectionProveedor.style.display = qrProveedorId ? 'none' : 'block';
+        if (sectionStaffEstacion) sectionStaffEstacion.style.display = 'none'; // El cliente externo nunca ve sillas
+        if (sectionBarberoPreferido) sectionBarberoPreferido.style.display = 'block'; // El cliente SI ve staff preferido
+        
+        if (subtitulo && !qrProveedorId) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
+        
+        if (!qrProveedorId) {
+            cargarProveedores(token, API_BASE); 
+        }
+        
+        // 🛡️ Cargamos historial para clientes con el ID correcto de la tabla Clientes
         if (token && (user.clienteId || user.id)) cargarMisCitas(user.clienteId || user.id, token, "cliente", API_BASE);
     } else {
         if (sectionCliente) sectionCliente.style.display = 'block';
         if (sectionProveedor) sectionProveedor.style.display = 'none';
+        if (sectionBarberoPreferido) sectionBarberoPreferido.style.display = 'none'; // El admin usa la sección detallada
+        if (sectionStaffEstacion) sectionStaffEstacion.style.display = 'block'; // Jefes SI ven asignación manual de sillas
         if (subtitulo) subtitulo.innerText = "Registro manual de servicios (Local / Domicilio)";
+        
         if (token) cargarClientes(token, API_BASE);
         const proveedorId = user.proveedorId || user.id;
-        if (token && proveedorId && proveedorId !== '00000000-0000-0000-0000-000000000000') cargarServicios(proveedorId, token, API_BASE);
-        // 🛡️ [NUEVO] Cargamos agenda para profesionales
-        if (token && proveedorId && proveedorId !== '00000000-0000-0000-0000-000000000000') cargarMisCitas(proveedorId, token, "proveedor", API_BASE);
+        
+        if (token && proveedorId && proveedorId !== '00000000-0000-0000-0000-000000000000') {
+            cargarServicios(proveedorId, token, API_BASE);
+            cargarMisCitas(proveedorId, token, "proveedor", API_BASE);
+            
+            // 🚀 HU 001: Cargar Barberos y Sillas disponibles para el panel administrativo del negocio
+            cargarEmpleadosDelNegocio(token, API_BASE);
+            cargarEstacionesDelNegocio(token, API_BASE);
+        }
     }
 
     // 🛡️ [NUEVO OVERRIDE] Forzar visibilidad de agendamiento si entramos por código QR
     if (qrProveedorId) {
-        if (sectionCliente) sectionCliente.style.display = 'none';
-        if (sectionProveedor) sectionProveedor.style.display = 'block';
-        if (!token && subtitulo) {
+        if (subtitulo) {
             subtitulo.innerText = "Cargando información del establecimiento...";
         }
-        
         // Forzamos la carga de proveedores de manera pública (con token nulo o real)
         cargarProveedores(token, API_BASE);
         // Inyectamos de inmediato los servicios del portafolio del QR
         cargarServicios(qrProveedorId, token, API_BASE);
+        // 🚀 Cargar de manera pública los profesionales activos de esta Barbería específica
+        cargarEmpleadosPublico(qrProveedorId, API_BASE);
     }
 
     // 🔥 [KILLER FIX] - VINCULACIÓN DE EVENTOS DE DISPONIBILIDAD
@@ -127,7 +145,6 @@ async function cargarMisCitas(id, token, tipo, API_BASE) {
     if (!container) return;
 
     console.log(`📡 [Fetch] Obteniendo agenda para ${tipo}...`);
-    // 🚩 Blindamos la ruta según el endpoint del CitasController
     const url = tipo === "cliente" ? 
         `${API_BASE}/Citas/historial/${id}` : 
         `${API_BASE}/Citas/hoy`; 
@@ -137,7 +154,6 @@ async function cargarMisCitas(id, token, tipo, API_BASE) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        // 🛡️ BLINDAJE ANTI-CRASH: Validamos si la respuesta es JSON antes de tratar de mapear
         if (resp.ok) {
             const contentType = resp.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
@@ -167,7 +183,7 @@ function renderizarCitas(citas, container, token, API_BASE) {
     }
 
     container.innerHTML = citas.map(c => `
-        <div class="card-cita-sidebar ${c.estado.toLowerCase()}">
+        <div class="card-cita-sidebar ${c.estado ? c.estado.toLowerCase() : 'pendiente'}">
             ${c.estado === 'pendiente' ? `
                 <button class="btn-cancelar-mini" onclick="cancelarCita('${c.id}', '${token}', '${API_BASE}')" title="Cancelar Cita">
                     <i class="fas fa-times-circle"></i>
@@ -177,6 +193,11 @@ function renderizarCitas(citas, container, token, API_BASE) {
             
             <div class="cita-info" style="font-weight: 600; color: #fff;">
                 <i class="fas fa-store"></i> ${c.proveedorNombre || c.ProveedorNombre || "Establecimiento"}
+            </div>
+
+            <div class="cita-info" style="color: #cbd5e1; font-size: 0.75rem; margin-top: 3px;">
+                <i class="fas fa-user-tie"></i> ${c.empleadoAsignado || c.EmpleadoAsignado || 'Sin asignar'}
+                | <i class="fas fa-chair"></i> ${c.estacionAsignada || c.EstacionAsignada || 'Local'}
             </div>
 
             <div class="cita-info">
@@ -226,7 +247,6 @@ async function cancelarCita(id, token, API_BASE) {
  */
 async function cargarProveedores(token, API_BASE) {
     try {
-        // 🚀 ROMPE-CACHÉ: Añadimos ignorePagination=true y un timestamp (?t=...) para traer el 100% de la BD sin cortes
         const resp = await fetch(`${API_BASE}/Proveedores?ignorePagination=true&t=${new Date().getTime()}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}
         });
@@ -234,7 +254,6 @@ async function cargarProveedores(token, API_BASE) {
             const proveedores = await resp.json();
             const selectProv = document.getElementById('citaProveedorId');
             if (selectProv) {
-                // 🚀 FIX VISUAL SUPREMO: Estilos oscuros inline para asegurar legibilidad en cualquier dispositivo
                 selectProv.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Selecciona Profesional --</option>' + 
                     proveedores.map(p => {
                         const idFinal = p.id || p.Id;
@@ -242,25 +261,24 @@ async function cargarProveedores(token, API_BASE) {
                         return `<option value="${idFinal}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${nombreFinal}</option>`;
                     }).join('');
                 
-                // 🛡️ [NUEVO] OBSERVACIÓN EXCEL MATADA: Forzamos el aislamiento estricto de negocio de este QR
                 const urlParams = new URLSearchParams(window.location.search);
                 const qrId = urlParams.get('id');
                 if (qrId) {
                     selectProv.value = qrId;
-                    selectProv.disabled = true; // Impedimos que el cliente altere el ID o vea otros negocios
+                    selectProv.disabled = true; 
                     
-                    // Renombramos dinámicamente el título con el nombre de la barbería/manicurista
                     const provSeleccionado = proveedores.find(p => (p.id || p.Id) === qrId);
                     if (provSeleccionado && document.getElementById('subtituloAgendar')) {
                         const nombreQrFinal = provSeleccionado.nombre_comercial || provSeleccionado.nombreComercial || provSeleccionado.NombreComercial || provSeleccionado.nombre || provSeleccionado.Nombre || "Establecimiento";
                         document.getElementById('subtituloAgendar').innerText = `Agendando cita en: ${nombreQrFinal}`;
                     }
-                    // Forzamos de inmediato la inyección de sus servicios específicos
-                    cargarServicios(qrId, token, API_BASE);
                 }
 
                 selectProv.onchange = () => {
-                    cargarServiciosPorProveedor(API_BASE);
+                    const selectedId = selectProv.value;
+                    cargarServicios(selectedId, token, API_BASE);
+                    // 🚀 Si el cliente cambia manualmente de barbería, le cargamos sus empleados específicos de forma pública
+                    cargarEmpleadosPublico(selectedId, API_BASE);
                     const container = document.getElementById('containerSlots');
                     if (container) container.innerHTML = "";
                 };
@@ -269,21 +287,8 @@ async function cargarProveedores(token, API_BASE) {
     } catch (e) { console.error("🔥 Error proveedores:", e); }
 }
 
-async function cargarServiciosPorProveedor(API_BASE) {
-    const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
-    const selectProv = document.getElementById('citaProveedorId');
-    if (!selectProv) return;
-    
-    const proveedorId = selectProv.value;
-    if (proveedorId) {
-        cargarServicios(proveedorId, token, API_BASE);
-    } else {
-        const selectServicio = document.getElementById('citaServicioId');
-        if (selectServicio) selectServicio.innerHTML = '<option value="">¿Qué servicio realizaremos?</option>';
-    }
-}
-
 async function cargarServicios(proveedorId, token, API_BASE) {
+    if (!proveedorId) return;
     try {
         const resp = await fetch(`${API_BASE}/Servicios/proveedor/${proveedorId}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -293,7 +298,6 @@ async function cargarServicios(proveedorId, token, API_BASE) {
             const servicios = await resp.json();
             const selectServicio = document.getElementById('citaServicioId');
             if (selectServicio) {
-                // 🚀 FIX VISUAL: Inyectamos estilos oscuros inline en las opciones dinámicas de servicios para evitar texto blanco oculto
                 selectServicio.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">Selecciona un servicio</option>' + 
                     servicios.map(s => `<option value="${s.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${s.nombre} ($${s.precio})</option>`).join('');
             }
@@ -310,12 +314,63 @@ async function cargarClientes(token, API_BASE) {
             const clientes = await resp.json();
             const selectCliente = document.getElementById('citaClienteId');
             if (selectCliente) {
-                // 🚀 FIX VISUAL: Inyectamos estilos oscuros inline en las opciones dinámicas de clientes para evitar texto blanco oculto
                 selectCliente.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Buscar Cliente --</option>' + 
                     clientes.map(c => `<option value="${c.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${c.nombre} (${c.telefono})</option>`).join('');
             }
         }
     } catch (e) { console.error("🔥 Error clientes:", e); }
+}
+
+// 🚀 HU 001 - VISTA PÚBLICA: Cargar Barberos Activos usando el nuevo endpoint [AllowAnonymous]
+async function cargarEmpleadosPublico(proveedorId, API_BASE) {
+    if (!proveedorId) return;
+    try {
+        console.log("📡 [Fetch Público] Cargando catálogo de Staff para clientes...");
+        const resp = await fetch(`${API_BASE}/Empleados/activos/${proveedorId}`);
+        if (resp.ok) {
+            const empleados = await resp.json();
+            const selectClienteEmpleado = document.getElementById('citaClienteEmpleadoId');
+            if (selectClienteEmpleado) {
+                selectClienteEmpleado.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Cualquier barbero disponible --</option>' + 
+                    empleados.map(e => `<option value="${e.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${e.nombre}</option>`).join('');
+            }
+        }
+    } catch (e) { console.error("🔥 Error cargando empleados públicos:", e); }
+}
+
+// 🚀 HU 001 - VISTA ADMIN: Carga completa interna para el Dueño
+async function cargarEmpleadosDelNegocio(token, API_BASE) {
+    try {
+        const resp = await fetch(`${API_BASE}/Empleados`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+            const empleados = await resp.json();
+            const selectEmpleado = document.getElementById('citaEmpleadoId');
+            if (selectEmpleado) {
+                const activos = empleados.filter(e => e.activo);
+                selectEmpleado.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Cualquier barbero disponible --</option>' + 
+                    activos.map(e => `<option value="${e.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${e.nombre} (${e.tipoContrato})</option>`).join('');
+            }
+        }
+    } catch (e) { console.error("🔥 Error cargando empleados del negocio:", e); }
+}
+
+async function cargarEstacionesDelNegocio(token, API_BASE) {
+    try {
+        const resp = await fetch(`${API_BASE}/EstacionesTrabajo`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+            const estaciones = await resp.json();
+            const selectEstacion = document.getElementById('citaEstacionId');
+            if (selectEstacion) {
+                const activas = estaciones.filter(e => e.activo);
+                selectEstacion.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Cualquier silla libre --</option>' + 
+                    activas.map(e => `<option value="${e.id}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${e.nombre}</option>`).join('');
+            }
+        }
+    } catch (e) { console.error("🔥 Error cargando estaciones:", e); }
 }
 
 function toggleDireccionCita() {
@@ -335,7 +390,7 @@ function toggleDireccionCita() {
     }
 }
 
-// 🛡️ MOTOR DE DISPONIBILIDAD PRO: Blindado con servicioId
+// 🛡️ MOTOR DE DISPONIBILIDAD PRO
 async function cargarDisponibilidad(API_BASE) {
     const fecha = document.getElementById('citaFecha').value;
     const servicioId = document.getElementById('citaServicioId').value;
@@ -344,17 +399,12 @@ async function cargarDisponibilidad(API_BASE) {
     const urlParamsCheckDisp = new URLSearchParams(window.location.search);
     const qrIdCheckDisp = urlParamsCheckDisp.get('id');
 
-    // 🚀 FIX: Permitimos el cálculo de slots de tiempo si el usuario entra de forma anónima vía QR
     if ((!userStr && !qrIdCheckDisp) || !fecha || !servicioId) return;
 
     const user = userStr ? JSON.parse(userStr) : { id: '00000000-0000-0000-0000-000000000000' };
     const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
-    
     const selectProv = document.getElementById('citaProveedorId');
-    
-    // 🛡️ [NUEVO] Prioridad absoluta al ID del QR para calcular la agenda de forma aislada
-    const urlParams = new URLSearchParams(window.location.search);
-    const qrId = urlParams.get('id');
+    const qrId = urlParamsCheckDisp.get('id');
 
     const proveedorId = qrId || (rol.includes("CLIENTE") ? 
         (selectProv ? selectProv.value : null) : 
@@ -367,8 +417,6 @@ async function cargarDisponibilidad(API_BASE) {
 
     try {
         const resp = await fetch(`${API_BASE}/Citas/disponibilidad?proveedorId=${proveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
-        
-        // 🛡️ BLINDAJE ANTI-JSON-ERROR: No intentamos parsear si no es un JSON válido (ej. Error 400 texto)
         const contentType = resp.headers.get("content-type");
         if (resp.ok && contentType && contentType.includes("application/json")) {
             const slots = await resp.json();
@@ -393,38 +441,33 @@ async function cargarDisponibilidad(API_BASE) {
 
 function seleccionarHora(hora, elemento) {
     document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
-    elemento.classList.add('selected');
+    elemento.classList.add('selected'); // Corrección menor: 'element' a 'elemento'
     const inputHora = document.getElementById('citaHoraSeleccionada');
     if (inputHora) inputHora.value = hora;
 }
 
-// 🛡️ GUARDAR CITA: Blindaje de Token e Identidad (Fix de Mapeo PascalCase y Regex de Nombres)
+// 🛡️ GUARDAR CITA
 async function guardarCita(e, token, user, rol, API_BASE) {
     e.preventDefault();
     
     const inputHora = document.getElementById('citaHoraSeleccionada');
     let hora = inputHora ? inputHora.value : null;
     
-    // 🚀 FIX CRÍTICO: Formateo de hora obligatorio para .NET (HH:mm:ss)
     if (hora && hora.length === 5) {
         hora = `${hora}:00`;
     }
 
     const esCliente = rol.includes("CLIENTE");
-
     const selectCliente = document.getElementById('citaClienteId');
     const selectProv = document.getElementById('citaProveedorId');
     
-    // 🛡️ [NUEVO] Prioridad absoluta al ID del QR en el payload de guardado federado
     const urlParams = new URLSearchParams(window.location.search);
     const qrId = urlParams.get('id');
 
-    // 🚀 [BUG 1 RESTRICTION] - SI UN PROVEEDOR/ADMIN ESCANEA EL QR, NO PUEDE AUTO-AGENDARSE CITAS
     if (token && !esCliente && qrId) {
         return alert("❌ Error de negocio: Un proveedor o administrador no puede solicitar citas para sí mismo. Por favor, cierra sesión o ingresa desde una cuenta de cliente.");
     }
 
-    // 🚀 INYECCIÓN DINÁMICA DE IDENTIDAD
     const clienteIdFinal = qrId ? (user.clienteId || user.id) : (esCliente ? user.clienteId : (selectCliente ? selectCliente.value : null));
     const proveedorIdFinal = qrId || (esCliente ? (selectProv ? selectProv.value : null) : (user.proveedorId || user.id));
 
@@ -434,22 +477,35 @@ async function guardarCita(e, token, user, rol, API_BASE) {
 
     if (!clienteIdFinal || !proveedorIdFinal || !hora) return alert("⚠️ Completa todos los campos.");
 
-    // 🧠 RECOLECCIÓN Y BLINDAJE CONTRA EL REGEX DEL NOMBRE DE INVITADO
     let anonNombre = document.getElementById('citaAnonimoNombre') ? document.getElementById('citaAnonimoNombre').value.trim() : "";
     let anonEmail = document.getElementById('citaAnonimoEmail') ? document.getElementById('citaAnonimoEmail').value.trim() : "";
     let anonWpp = document.getElementById('citaAnonimoWhatsApp') ? document.getElementById('citaAnonimoWhatsApp').value.trim() : "";
 
-    // Si es un cliente anónimo puro que entra por el QR, el paso 1 es estrictamente obligatorio
     if (!token && (!anonNombre || !anonEmail || !anonWpp)) {
         return alert("⚠️ Por favor completa tu Nombre, Correo y WhatsApp en el Paso 1 para poder procesar la reserva.");
     }
 
-    // 🚩 FALLBACK SENIOR: Si el usuario ya está autenticado en su panel, los campos de invitado no existen.
-    // Para evitar enviar un string vacío "" que quiebre el Regex de C#, inyectamos un nombre alfabético plano por defecto.
     if (token && anonNombre === "") {
         anonNombre = "Cliente Registrado Turnify";
         anonEmail = "usuario_autenticado@turnify.com";
         anonWpp = "3000000000";
+    }
+
+    // 🚀 HU 001 - DISCRIMINACIÓN INTELIGENTE DE PREFERENCIA
+    let empleadoIdVal = null;
+    let estacionIdVal = null;
+
+    if (esCliente || qrId) {
+        // Si es cliente, leemos el dropdown público de "Barbero Preferido"
+        const selectFav = document.getElementById('citaClienteEmpleadoId');
+        empleadoIdVal = (selectFav && selectFav.value !== "") ? selectFav.value : null;
+        estacionIdVal = null; // Los clientes no gestionan la asignación física de las sillas
+    } else {
+        // Si es administrador o dueño, leemos la asignación de staff y sillas manuales
+        const empleadoSelect = document.getElementById('citaEmpleadoId');
+        const estacionSelect = document.getElementById('citaEstacionId');
+        empleadoIdVal = (empleadoSelect && empleadoSelect.value !== "") ? empleadoSelect.value : null;
+        estacionIdVal = (estacionSelect && estacionSelect.value !== "") ? estacionSelect.value : null;
     }
 
     const btn = e.target.querySelector('button');
@@ -457,8 +513,6 @@ async function guardarCita(e, token, user, rol, API_BASE) {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Agendando...';
 
-    // 🚩 SOLUCIÓN INTEGRAL AL ERROR 400: Cambiamos las llaves a PascalCase para que el ModelBinder de .NET 
-    // ensamble el objeto directamente contra las propiedades correspondientes de CitasCreateDto.
     const dto = {
         ClienteId: clienteIdFinal,
         ServicioId: document.getElementById('citaServicioId').value,
@@ -467,14 +521,16 @@ async function guardarCita(e, token, user, rol, API_BASE) {
         Modalidad: document.getElementById('citaModalidad').value,
         Direccion: document.getElementById('citaDireccion') ? document.getElementById('citaDireccion').value.trim() : "",
         Observaciones: document.getElementById('citaObservaciones') ? document.getElementById('citaObservaciones').value.trim() : "",
-        
-        // Mapeamos los valores exactos requeridos por las anotaciones de datos de tu API
         MetodoRegistro: qrId ? "QR" : (esCliente ? "Web" : "Manual"),
-        DuracionPactadaMin: 30, // Turno estándar seguro para pasar la regla [Range(1, 1440)]
+        DuracionPactadaMin: 30, 
         
         AnonimoNombre: anonNombre,
         AnonimoEmail: anonEmail,
-        AnonimoWhatsApp: anonWpp
+        AnonimoWhatsApp: anonWpp,
+
+        // 🚀 HU 001: Mapeo de IDs (Envía el preferido por el cliente o la asignación forzada por el Admin)
+        EmpleadoId: empleadoIdVal,
+        EstacionId: estacionIdVal
     };
 
     try {
@@ -496,7 +552,6 @@ async function guardarCita(e, token, user, rol, API_BASE) {
                 alert(`✅ ¡Cita Confirmada!\n\n${data.message}`); 
                 window.location.reload(); 
             } else {
-                // Mapeo detallado por si llega a saltar otra advertencia en las propiedades internas
                 let msgError = data.message || "Error al procesar la solicitud.";
                 if (data.errors) {
                     msgError = Object.values(data.errors).flat().join("\n");
