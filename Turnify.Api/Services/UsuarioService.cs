@@ -43,7 +43,7 @@ namespace Turnify.Api.Services
                     // 1. CREACIÓN DEL USUARIO BASE
                     var usuario = new Usuarios {
                         id = Guid.NewGuid(),
-                        nombre = dto.Nombre?.Trim(),
+                        nombre = dto.Nombre?.Trim() ?? string.Empty,
                         email = emailNormalizado,
                         password_hash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                         rol_id = dto.RolId,
@@ -63,7 +63,7 @@ namespace Turnify.Api.Services
                         _context.clientes.Add(new Clientes {
                             id = Guid.NewGuid(),
                             usuario_id = usuario.id,
-                            nombre = usuario.nombre,
+                            nombre = string.IsNullOrEmpty(usuario.nombre) ? "Cliente" : usuario.nombre,
                             telefono = telefonoLimpio,
                             email = emailNormalizado, // Sincronizado       
                             activo = true,
@@ -74,7 +74,7 @@ namespace Turnify.Api.Services
                         _context.proveedores.Add(new Proveedores {
                             Id = Guid.NewGuid(),
                             UsuarioId = usuario.id,
-                            NombreComercial = dto.NombreComercial ?? $"Barbería de {usuario.nombre}",
+                            NombreComercial = dto.NombreComercial ?? $"Barbería de {(string.IsNullOrEmpty(usuario.nombre) ? "Usuario" : usuario.nombre)}",
                             Tipo = dto.TipoNegocio ?? "Barbería",
                             // 🚩 KILLER FIX: Guardamos el email en la tabla proveedores para la Validación Dual
                             Email = emailNormalizado, 
@@ -136,12 +136,12 @@ namespace Turnify.Api.Services
                 .AsNoTracking() // 🛡️ Bloquea el rastreo en RAM, optimizando el rendimiento en Docker
                 .AsQueryable();
 
-            // Filtrar opcionalmente por nombre, correo o teléfono si viene un criterio en el buscador
+            // Filtrar opcionalmente por nombre, correo o teléfono si viene un criterio en el buscador (Ajuste Nulabilidad CS8602)
             if (!string.IsNullOrEmpty(search))
             {
-                query = query.Where(u => u.nombre.Contains(search) || 
-                                         u.email.Contains(search) || 
-                                         u.telefono.Contains(search));
+                query = query.Where(u => (u.nombre != null && u.nombre.Contains(search)) || 
+                                         (u.email != null && u.email.Contains(search)) || 
+                                         (u.telefono != null && u.telefono.Contains(search)));
             }
 
             // SQL Server exige obligatoriamente un OrderBy antes de aplicar las cláusulas OFFSET y FETCH NEXT (Skip/Take)

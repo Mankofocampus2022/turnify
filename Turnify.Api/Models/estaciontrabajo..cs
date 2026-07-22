@@ -24,6 +24,19 @@ namespace Turnify.Api.Models
         [Column("activo")]
         public bool Activo { get; set; } = true;
 
+        // --- NUEVOS CAMPOS AGREGADOS ---
+        [Column("tipo_cobro")]
+        [StringLength(50)]
+        public string TipoCobro { get; set; } = "Porcentaje";
+
+        [Column("valor_base", TypeName = "decimal(18,2)")]
+        public decimal ValorBase { get; set; } = 0;
+
+        [Column("estado")]
+        [StringLength(20)]
+        public string Estado { get; set; } = "Disponible";
+
+        // --- RELACIÓN ORIGINAL INTACТА ---
         [ForeignKey("ProveedorId")]
         [JsonIgnore]
         public virtual Proveedores? Proveedor { get; set; }

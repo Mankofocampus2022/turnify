@@ -84,9 +84,10 @@ namespace Turnify.Api.Models
         [StringLength(10)]
         public string? CodigoVerificacion { get; set; }
 
+        // --- CORRECCIÓN CS8618: Inicialización limpia para control de concurrencia ---
         [Timestamp]
         [Column("row_version")]
-        public byte[] RowVersion { get; set; }
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
         // --- RELACIONES INTACTAS Y NUEVAS ---
         [ForeignKey("ClienteId")]

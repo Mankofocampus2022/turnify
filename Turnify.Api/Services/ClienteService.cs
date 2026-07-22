@@ -35,8 +35,9 @@ namespace Turnify.Api.Services
             var nuevoCliente = new Clientes
             {
                 id = Guid.NewGuid(),
-                nombre = dto.Nombre,
-                telefono = dto.Telefono,
+                // 🛡️ FIX CS8601: Coalescencia nula para garantizar que no se asigne null
+                nombre = dto.Nombre ?? string.Empty,
+                telefono = dto.Telefono ?? string.Empty,
                 email = dto.Email,
                 usuario_id = dto.UsuarioId,
                 fecha_creacion = DateTime.Now
@@ -52,7 +53,11 @@ namespace Turnify.Api.Services
         {
             var q = _context.clientes.AsQueryable();
             if (!string.IsNullOrEmpty(search)) 
-                q = q.Where(c => c.nombre.Contains(search) || c.telefono.Contains(search));
+            {
+                // Protegemos la búsqueda contra propiedades que puedan ser nulas (Ajuste CS8601)
+                q = q.Where(c => (c.nombre != null && c.nombre.Contains(search)) || 
+                                 (c.telefono != null && c.telefono.Contains(search)));
+            }
             
             return await q.ToListAsync();
         }
@@ -87,7 +92,8 @@ namespace Turnify.Api.Services
 
             if (!string.IsNullOrEmpty(search))
             {
-                query = query.Where(c => c.nombre.Contains(search) || c.telefono.Contains(search));
+                query = query.Where(c => (c.nombre != null && c.nombre.Contains(search)) || 
+                                         (c.telefono != null && c.telefono.Contains(search)));
             }
 
             return await query

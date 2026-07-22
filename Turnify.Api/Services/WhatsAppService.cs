@@ -114,11 +114,11 @@ namespace Turnify.Api.Services
         // =================================================================
         public async Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string textoMensaje)
         {
-            // Sobrecarga pasiva por si se llama al método clásico sin el número del barbero receptor
-            return await ProcesarMensajeEntranteAsync(telefonoCliente, null, textoMensaje);
+            // Sobrecarga pasiva pasando null explícito
+            return await ProcesarMensajeEntranteAsync(telefonoCliente, (string?)null, textoMensaje);
         }
 
-        public async Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string telefonoBarberoReceptor, string textoMensaje)
+        public async Task<string> ProcesarMensajeEntranteAsync(string telefonoCliente, string? telefonoBarberoReceptor, string textoMensaje)
         {
             textoMensaje = textoMensaje.Trim().ToLower();
             var session = _sesionesBot.GetOrAdd(telefonoCliente, _ => new BotSession());
@@ -133,8 +133,8 @@ namespace Turnify.Api.Services
             {
                 var ahoraBogota = GetBogotaTime();
 
-                // 🏢 DETECCIÓN EN CALIENTE DEL PROVEEDOR MULTI-TENANT (Usando la columna 'Telefono' con T mayúscula)
-                Proveedores proveedorContexto = null;
+                // 🏢 DETECCIÓN EN CALIENTE DEL PROVEEDOR MULTI-TENANT
+                Proveedores? proveedorContexto = null;
                 if (!string.IsNullOrEmpty(telefonoBarberoReceptor))
                 {
                     proveedorContexto = await _context.proveedores
@@ -162,7 +162,6 @@ namespace Turnify.Api.Services
                     case PasoBot.WaitingOpcionMenu:
                         if (textoMensaje == "1")
                         {
-                            // 🚀 ATAJO INTELIGENTE: Si el cliente ya está escribiendo al número exclusivo del barbero, nos saltamos los menús globales
                             if (proveedorContexto != null)
                             {
                                 var serviciosDelProveedor = await _context.servicios
@@ -176,7 +175,7 @@ namespace Turnify.Api.Services
                                 }
 
                                 session.ProveedorIdSeleccionado = proveedorContexto.Id;
-                                session.ProveedorNombreSeleccionado = proveedorContexto.NombreComercial;
+                                session.ProveedorNombreSeleccionado = proveedorContexto.NombreComercial ?? "Establecimiento";
 
                                 session.PasoActual = PasoBot.EsperandoServicio;
                                 session.MapaOpciones.Clear(); 
@@ -190,7 +189,6 @@ namespace Turnify.Api.Services
                                 return menuServiciosDirecto;
                             }
 
-                            // Flujo global por defecto si no se detecta número receptor exclusivo
                             session.PasoActual = PasoBot.EsperandoCategoriaServicio;
                             return "💈 **¿Qué tipo de servicio estás buscando hoy?**\n\n" +
                                    "1️⃣ **Barbería** 💈\n" +
@@ -203,7 +201,6 @@ namespace Turnify.Api.Services
                                 .Include(c => c.Servicio)
                                 .Where(c => c.Cliente != null && c.Cliente.telefono == telefonoCliente && c.Estado == "pendiente");
 
-                            // Si está en el WhatsApp del barbero, solo listamos las citas de ese barbero específico
                             if (proveedorContexto != null)
                             {
                                 citasClienteQuery = citasClienteQuery.Where(c => c.ProveedorId == proveedorContexto.Id);
@@ -355,7 +352,7 @@ namespace Turnify.Api.Services
                         if (DateTime.TryParse(textoMensaje, out DateTime fechaSeleccionada))
                         {
                             if (fechaSeleccionada.Date < ahoraBogota.Date)
-                                return "❌ No puedes agendar en days pasados. Ingresa una fecha válida (AAAA-MM-DD):";
+                                return "❌ No puedes agendar en días pasados. Ingresa una fecha válida (AAAA-MM-DD):";
 
                             session.FechaSeleccionada = fechaSeleccionada.Date;
 
@@ -469,11 +466,11 @@ namespace Turnify.Api.Services
                             string modFinal = session.ModalidadSeleccionada.ToUpper();
                             string horaFinalLegible = DateTime.Today.Add(horaSeleccionada).ToString("hh:mm tt");
 
-                            await EnviarMensajeTokenAsync(telefonoCliente, cliente.nombre, tokenGenerado, provFinal);
+                            await EnviarMensajeTokenAsync(telefonoCliente, cliente.nombre ?? "Cliente", tokenGenerado, provFinal);
 
                             session.Reset(); 
 
-                            return $"🎉 ¡Espectacular! Tu cita ha sido agendada con éxito para el día *{nuevaCita.Fecha:dd/MM/yyyy}* bién coordinado a las *{horaFinalLegible}*.\n\n" +
+                            return $"🎉 ¡Espectacular! Tu cita ha sido agendada con éxito para el día *{nuevaCita.Fecha:dd/MM/yyyy}* bien coordinado a las *{horaFinalLegible}*.\n\n" +
                                    $"💇‍♂️ Profesional: **{provFinal}**\n" +
                                    $"✂️ Servicio: *{servFinal}*\n" +
                                    $"📍 Modalidad: *{modFinal}*\n" +

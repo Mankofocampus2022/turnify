@@ -10,14 +10,14 @@ namespace Turnify.Api.Interfaces
         // Obtener todas las estaciones/sillas del negocio
         Task<IEnumerable<EstacionTrabajoResponseDto>> GetAllByProveedorAsync(Guid proveedorId);
 
-        // Obtener una sola estación por ID
-        Task<EstacionTrabajoResponseDto> GetByIdAsync(Guid id, Guid proveedorId);
+        // Obtener una sola estación por ID (Ajuste Nullable para eliminar CS8603)
+        Task<EstacionTrabajoResponseDto?> GetByIdAsync(Guid id, Guid proveedorId);
 
         // Crear una nueva estación
         Task<EstacionTrabajoResponseDto> CreateAsync(Guid proveedorId, EstacionTrabajoCreateDto dto);
 
-        // Actualizar datos de la estación
-        Task<EstacionTrabajoResponseDto> UpdateAsync(Guid id, Guid proveedorId, EstacionTrabajoUpdateDto dto);
+        // Actualizar datos de la estación (Ajuste Nullable para eliminar CS8603)
+        Task<EstacionTrabajoResponseDto?> UpdateAsync(Guid id, Guid proveedorId, EstacionTrabajoUpdateDto dto);
 
         // Activar o desactivar una estación (Soft Control por mantenimiento)
         Task<bool> ToggleEstadoAsync(Guid id, Guid proveedorId);

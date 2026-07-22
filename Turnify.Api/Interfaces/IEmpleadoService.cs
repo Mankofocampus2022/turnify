@@ -10,14 +10,14 @@ namespace Turnify.Api.Interfaces
         // Traer todos los empleados de un negocio específico (Vista Admin - Incluye inactivos)
         Task<IEnumerable<EmpleadoResponseDto>> GetAllByProveedorAsync(Guid proveedorId);
 
-        // Traer un empleado por su ID
-        Task<EmpleadoResponseDto> GetByIdAsync(Guid id, Guid proveedorId);
+        // Traer un empleado por su ID (Ajustado a anulable ? para sincronizar con la implementación)
+        Task<EmpleadoResponseDto?> GetByIdAsync(Guid id, Guid proveedorId);
 
         // Crear el empleado (y opcionalmente su usuario Staff de acceso)
         Task<EmpleadoResponseDto> CreateAsync(Guid proveedorId, EmpleadoCreateDto dto);
 
-        // Modificar los datos o el contrato del empleado
-        Task<EmpleadoResponseDto> UpdateAsync(Guid id, Guid proveedorId, EmpleadoUpdateDto dto);
+        // Modificar los datos o el contrato del empleado (Ajustado a anulable ? para sincronizar con la implementación)
+        Task<EmpleadoResponseDto?> UpdateAsync(Guid id, Guid proveedorId, EmpleadoUpdateDto dto);
 
         // Borrado lógico o desactivación rápida
         Task<bool> ToggleEstadoAsync(Guid id, Guid proveedorId);

@@ -67,10 +67,10 @@ namespace Turnify.Api.Services
             var nuevoServicio = new Servicios
             {
                 Id = Guid.NewGuid(),
-                // 🛡️ MAPEO SINCRONIZADO: DTO (snake_case) -> Modelo (PascalCase)
+                // 🛡️ MAPEO SINCRONIZADO Y PROTEGIDO DE NULOS (Ajuste CS8601)
                 ProveedorId = dto.proveedor_id, 
-                Nombre = dto.nombre?.Trim(),
-                Descripcion = dto.descripcion?.Trim(),
+                Nombre = dto.nombre?.Trim() ?? string.Empty,
+                Descripcion = dto.descripcion?.Trim() ?? string.Empty,
                 DuracionMinutos = dto.duracion_minutos, // 🚩 FIX CS0117: Sincronizado con tu modelo real
                 Precio = dto.precio,
                 Categoria = dto.categoria ?? "Barbería",

@@ -52,7 +52,8 @@ namespace Turnify.Api.Controllers
             // 🚀 Filtrado dinámico en caliente por nombre comercial o categoría
             if (!string.IsNullOrEmpty(search))
             {
-                query = query.Where(p => p.NombreComercial.Contains(search) || p.Categoria.Contains(search));
+                query = query.Where(p => (p.NombreComercial != null && p.NombreComercial.Contains(search)) || 
+                                         (p.Categoria != null && p.Categoria.Contains(search)));
             }
 
             // 🚀 Ordenamos alfabéticamente por Nombre Comercial
@@ -81,7 +82,7 @@ namespace Turnify.Api.Controllers
                     p.TrabajaDomicilio,
                     p.Activo,
                     // 🛡️ FIX TRADUCCIÓN: Estandarizado con coalescencia nula para evitar excepciones HTTP 500 de LINQ
-                    Dueno = p.Usuario.nombre ?? "Usuario no encontrado",
+                    Dueno = p.Usuario != null && p.Usuario.nombre != null ? p.Usuario.nombre : "Usuario no encontrado",
 
                     // 🛠️ RETROCOMPATIBILIDAD SEGURA: Inyectamos únicamente variantes snake_case que no colisionan con el mapeo camelCase
                     usuario_id = p.UsuarioId,

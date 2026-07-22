@@ -181,21 +181,24 @@ app.UseSwaggerUI(c => {
 
 app.UseRequestLocalization(localizationOptions); 
 app.UseMiddleware<ExceptionMiddleware>();
-app.UseCors("AllowTurnify");
 
 // 🌐 1. El Enrutamiento base debe inicializarse primero
 app.UseRouting();
 
-// 🧠 2. Control de ráfagas DDoS (Inmediatamente después de Routing)
+// 🧠 2. Control de ráfagas DDoS
 app.UseRateLimiter();
 
-// 🛡️ 3. AUTENTICACIÓN (Verifica las llaves JWT antes de validar estados o archivos)
+// 🌐 3. CORS para permitir peticiones entre orígenes
+app.UseCors("AllowTurnify");
+
+// 🛡️ 4. AUTENTICACIÓN (Verifica las llaves JWT)
 app.UseAuthentication();
 
-// 🚀 4. MIDDLEWARE DE EXPULSIÓN EN VIVO - BLINDAJE TC-003 (Requiere la identidad del paso anterior)
+// 🚀 5. MIDDLEWARE DE EXPULSIÓN EN VIVO - BLINDAJE TC-003 (Requiere la identidad del paso anterior)
 app.UseMiddleware<LiveEvictionMiddleware>();
 
-// 🛡️ 5. AUTORIZACIÓN (Evalúa los roles corporativos una vez confirmada la validez)
+// 🛡️ 6. AUTORIZACIÓN (Evalúa los roles corporativos una vez confirmada la validez)
+// 🚩 FIX ASP0001: Ubicado exactamente en la secuencia requerida por ASP.NET Core
 app.UseAuthorization();
 
 // --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS DIAGNÓSTICO ---
@@ -244,6 +247,8 @@ if (Directory.Exists(frontendPath))
     app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api"), builder =>
     {
         builder.UseRouting();
+        builder.UseAuthentication();
+        builder.UseAuthorization();
         builder.UseEndpoints(endpoints =>
         {
             endpoints.MapFallbackToFile("login.html", new StaticFileOptions {

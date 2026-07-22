@@ -32,11 +32,11 @@ namespace Turnify.Api.Models
         [JsonPropertyName("telefono")]
         public string telefono { get; set; } = string.Empty;
 
-        [Required] 
+        // 🚩 FIX CS8601: Se permite nulo en la propiedad de entidad para sincronizarse con ClienteCreateDto (Email es opcional)
         [StringLength(150)]
         [Column("email")] 
         [JsonPropertyName("email")]
-        public string email { get; set; } = string.Empty;
+        public string? email { get; set; }
 
         [Column("activo")]
         [JsonPropertyName("activo")]
