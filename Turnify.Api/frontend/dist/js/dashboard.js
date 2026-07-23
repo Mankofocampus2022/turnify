@@ -139,7 +139,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         periodoParamBackend = 'mensual';
     }
 
-    // Formato robusto YYYY-MM-DD sin alteraciones regionales del motor de JS
+    // Formato robusto YYYY-MM-DD sin alterations regionales del motor de JS
     const year = inicio.getFullYear();
     const month = String(inicio.getMonth() + 1).padStart(2, '0');
     const dayStr = String(inicio.getDate()).padStart(2, '0');
@@ -157,17 +157,27 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         if (!userStr) throw new Error("Sesión de usuario perdida.");
         
         const user = JSON.parse(userStr);
+        const tipoUsuario = (user?.tipo || user?.tipoProveedor || user?.tipoUsuario || "").toLowerCase();
+        const esIndependiente = tipoUsuario.includes("independiente") || user?.esIndependiente === true;
         const provId = user?.proveedorId || user?.id;
 
-        if (!provId) return;
+        let requestUrl = "";
+        
+        // 💈 HU-06 & HU-07: Si el usuario es Independiente, invoca el endpoint dedicado
+        if (esIndependiente) {
+            requestUrl = `${API_BASE}/Dashboard/independiente?periodo=${periodoParamBackend}&fecha=${startStr}`;
+        } else {
+            if (!provId) return;
+            requestUrl = `${API_BASE}/Dashboard/resumen/${provId}?periodo=${periodoParamBackend}&fecha=${startStr}`;
+        }
 
-        // Invocamos el endpoint unificado pasándole los parámetros limpios de micro-fechas
-        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=${periodoParamBackend}&fecha=${startStr}`, {
-            signal: signal, // Asignamos el token de aborto seguro
+        const response = await fetch(requestUrl, {
+            signal: signal,
             headers: { 
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'X-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota'
             }
         });
 
@@ -177,7 +187,10 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         }
 
         const data = await response.json();
-        renderizarTablaDashboard(data.proximasCitas || data.citas || [], token, API_BASE);
+        
+        // Mapeo unificado para ambas estructuras de respuesta
+        const citasRespuesta = data.citas || data.proximasCitas || [];
+        renderizarTablaDashboard(citasRespuesta, token, API_BASE);
         actualizarContadoresDashboard(data); 
 
     } catch (error) { 
@@ -193,7 +206,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 }
 
 /**
- * 📝 Renderiza las filas (🛡️ BLINDAJE DE ESTADOS EN ACCIONES)
+ * 📝 Renderiza las filas (🛡️ BLINDAJE DE ESTADOS EN ACCIONES Y BANDERAS DE CLIENTE NUEVO HU-07)
  */
 function renderizarTablaDashboard(citas, token, API_BASE) {
     const tabla = document.getElementById('turnosTable');
@@ -218,11 +231,19 @@ function renderizarTablaDashboard(citas, token, API_BASE) {
             celdaAccion = `<span style="color: #888; font-size: 0.8rem;"><i class="fas fa-clock"></i> Pendiente</span>`;
         }
         
+        // 💈 HU-07 CA1: Inyección visual del distintivo "Cliente Nuevo"
+        const esNuevo = c.esNuevoCliente === true || c.EsNuevoCliente === true;
+        const badgeCliente = esNuevo 
+            ? `<span style="background-color: rgba(72, 193, 181, 0.15); color: #48c1b5; border: 1px solid #48c1b5; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600;"><i class="fas fa-user-plus"></i> Nuevo</span>`
+            : '';
+
+        const nombreCliente = c.cliente || c.Cliente || 'Sin nombre';
+
         return `
             <tr>
                 <td style="color: #48c1b5; font-weight: bold;"><i class="far fa-clock"></i> ${c.hora || c.Hora}</td> 
-                <td>${c.fecha ? c.fecha.split('T')[0] : 'Hoy'}</td>
-                <td><strong>${c.cliente || c.Cliente || 'Sin nombre'}</strong></td>
+                <td>${c.fecha ? String(c.fecha).split('T')[0] : 'Hoy'}</td>
+                <td><strong>${nombreCliente}</strong>${badgeCliente}</td>
                 <td>${c.servicio || c.Servicio || 'Servicio'}</td>
                 <td><span class="status-pill ${badgeClass}">${estado}</span></td>
                 <td>${celdaAccion}</td>
@@ -232,25 +253,42 @@ function renderizarTablaDashboard(citas, token, API_BASE) {
 }
 
 /**
- * 🔢 ACTUALIZACIÓN DE CONTADORES
+ * 🔢 ACTUALIZACIÓN DE CONTADORES (HU-06: SOPORTE PARA INGRESOS BRUTOS Y NUEVOS CLIENTES)
  */
 function actualizarContadoresDashboard(data) {
     const totalCitasEl = document.getElementById('totalCitas') || document.getElementById('total-citas');
     const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos');
     const clientesEl = document.getElementById('nuevosClientes') || document.getElementById('nuevos-clientes');
 
-    const listaCitas = data.proximasCitas || data.citas || [];
+    const listaCitas = data.citas || data.proximasCitas || [];
 
-    if (totalCitasEl) totalCitasEl.innerText = listaCitas.length;
-
-    if (clientesEl) {
-        const clientesUnicos = new Set(listaCitas.map(c => c.clienteId || c.ClienteId || c.cliente || c.Cliente));
-        clientesEl.innerText = listaCitas.length > 0 ? clientesUnicos.size : 0;
+    if (totalCitasEl) {
+        totalCitasEl.innerText = data.totalCitas !== undefined ? data.totalCitas : listaCitas.length;
     }
 
+    // HU-07 CA2: Prioriza la métrica directa de nuevos clientes entregada por el backend
+    if (clientesEl) {
+        if (data.totalNuevosClientes !== undefined) {
+            clientesEl.innerText = data.totalNuevosClientes;
+        } else if (data.nuevosClientesTotales !== undefined) {
+            clientesEl.innerText = data.nuevosClientesTotales;
+        } else {
+            const clientesUnicos = new Set(listaCitas.map(c => c.clienteId || c.ClienteId || c.cliente || c.Cliente));
+            clientesEl.innerText = listaCitas.length > 0 ? clientesUnicos.size : 0;
+        }
+    }
+
+    // HU-06 CA1: Muestra los ingresos 100% brutos reales o proyectados
     if (ingresosEl) {
         let montoCalculado = 0;
-        if (listaCitas.length > 0) {
+
+        if (data.ingresosRealesBrutos !== undefined && data.ingresosRealesBrutos > 0) {
+            montoCalculado = data.ingresosRealesBrutos;
+        } else if (data.ingresosProyectadosBrutos !== undefined) {
+            montoCalculado = data.ingresosProyectadosBrutos;
+        } else if (data.gananciaReal !== undefined) {
+            montoCalculado = data.gananciaReal;
+        } else if (listaCitas.length > 0) {
             montoCalculado = listaCitas.reduce((acc, c) => {
                 const valor = c.precioPactado || c.PrecioPactado || c.precio || c.Precio || 0;
                 const est = (c.estado || c.Estado || "").toLowerCase().trim();
@@ -275,15 +313,27 @@ async function cargarResumenDashboard(token, API_BASE) {
         const userStr = localStorage.getItem('user');
         if (!userStr) return;
         const user = JSON.parse(userStr);
+        const tipoUsuario = (user?.tipo || user?.tipoProveedor || user?.tipoUsuario || "").toLowerCase();
+        const esIndependiente = tipoUsuario.includes("independiente") || user?.esIndependiente === true;
         const provId = user?.proveedorId || user?.id;
-        const response = await fetch(`${API_BASE}/Dashboard/resumen/${provId}?periodo=diario`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+
+        let requestUrl = esIndependiente 
+            ? `${API_BASE}/Dashboard/independiente?periodo=diario`
+            : `${API_BASE}/Dashboard/resumen/${provId}?periodo=diario`;
+
+        const response = await fetch(requestUrl, {
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'X-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota'
+            }
         });
         if (response.ok) {
             const data = await response.json();
             actualizarContadoresDashboard(data);
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("❌ Error cargando resumen global del dashboard:", e); 
+    }
 }
 
 function getEstadoClass(estado) {

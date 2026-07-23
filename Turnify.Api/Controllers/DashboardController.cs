@@ -100,7 +100,6 @@ namespace Turnify.Api.Controllers
 
             object resumen;
             
-            
             // Si vienen mes y año, priorizamos el GetResumenDiarioAsync con esos filtros para evitar el bug de fechas
             if ((periodo.ToLower() == "mensual" || periodo.ToLower() == "mes") && !mes.HasValue)
             {
@@ -152,6 +151,59 @@ namespace Turnify.Api.Controllers
             if (resumen == null) return NotFound(new { message = "No hay datos para este periodo." });
 
             return Ok(resumen);
+        }
+
+        // =========================================================================
+        // 💈 HU-06 & HU-07: MÓDULO EXCLUSIVO PARA PROFESIONAL INDEPENDIENTE
+        // =========================================================================
+
+        /// <summary>
+        /// Obtiene el resumen del panel de control diario para un profesional independiente (HU-06 y HU-07).
+        /// Aislamiento total de datos mediante JWT y cálculo de ingresos 100% brutos sin deducción de comisión.
+        /// </summary>
+        [HttpGet("independiente")]
+        public async Task<IActionResult> GetDashboardIndependiente(
+            [FromQuery] DateTime? fecha = null,
+            [FromQuery] string periodo = "diario",
+            [FromQuery] int? mes = null,
+            [FromQuery] int? anio = null)
+        {
+            // 🛡️ HU-06 (CA4) AISLAMIENTO DE DATOS: Extraer el ID único del claims sin exponer parámetros en la URL
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(usuarioIdClaim)) 
+                return Unauthorized(new { message = "Sesión no válida o no autenticada." });
+
+            var userId = Guid.Parse(usuarioIdClaim);
+
+            // Rescate de identidad del Proveedor
+            var proveedor = await _context.proveedores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UsuarioId == userId || p.Id == userId);
+
+            if (proveedor == null)
+            {
+                return NotFound(new { message = "No se encontró un perfil de profesional independiente configurado para esta cuenta." });
+            }
+
+            // Aplicar la sincronización horaria global con la cabecera X-TimeZone
+            DateTime fechaFiltro = fecha ?? GetLocalToday();
+
+            // Consumo de la capa de servicio para Independientes
+            var resumenIndependiente = await _dashboardService.GetDashboardIndependienteAsync(
+                proveedor.Id, 
+                fechaFiltro, 
+                periodo, 
+                mes, 
+                anio
+            );
+
+            if (resumenIndependiente == null)
+            {
+                return NotFound(new { message = "No se encontraron registros de agenda o métricas para este profesional." });
+            }
+
+            return Ok(resumenIndependiente);
         }
     }
 }

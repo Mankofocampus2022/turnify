@@ -223,5 +223,121 @@ namespace Turnify.Api.Services
                 }).ToList()
             };
         }
+
+        // =========================================================================
+        // 💈 HU-06 & HU-07: MÓDULO EXCLUSIVO PARA PROFESIONAL INDEPENDIENTE
+        // =========================================================================
+        public async Task<object> GetDashboardIndependienteAsync(Guid proveedorId, DateTime fechaBase, string periodo = "diario", int? mes = null, int? anio = null)
+        {
+            if (mes.HasValue && anio.HasValue) periodo = "mes";
+            periodo = periodo?.ToLower() ?? "diario";
+
+            DateTime inicio, fin;
+
+            // 1. Cálculo del rango temporal basado en la fecha local entregada
+            if (periodo == "hoy" || periodo == "diario")
+            {
+                inicio = fechaBase.Date;
+                fin = inicio.AddDays(1);
+            }
+            else if (periodo == "semana")
+            {
+                int diff = (7 + (inicio = fechaBase.Date).DayOfWeek - DayOfWeek.Monday) % 7;
+                inicio = inicio.AddDays(-1 * diff).Date;
+                fin = inicio.AddDays(7);
+            }
+            else
+            {
+                int mesConsulta = mes ?? fechaBase.Month;
+                int anioConsulta = anio ?? fechaBase.Year;
+                inicio = new DateTime(anioConsulta, mesConsulta, 1, 0, 0, 0, DateTimeKind.Unspecified);
+                fin = inicio.AddMonths(1);
+            }
+
+            try
+            {
+                // Identificar al proveedor
+                var prov = await _context.proveedores.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == proveedorId || p.UsuarioId == proveedorId);
+
+                if (prov == null) return new { message = "Profesional independiente no encontrado", totalCitas = 0 };
+                var idReal = prov.Id;
+
+                // 2. Traer todas las citas del período asignadas al proveedor independiente
+                var rawCitas = await _context.citas
+                    .AsNoTracking()
+                    .Where(c => c.ProveedorId == idReal && c.Fecha >= inicio && c.Fecha < fin)
+                    .Select(c => new {
+                        c.Id,
+                        c.Hora,
+                        c.Fecha,
+                        c.PrecioPactado,
+                        c.Estado,
+                        c.ClienteId,
+                        c.CodigoVerificacion,
+                        ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
+                        ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido"
+                    })
+                    .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
+                    .ToListAsync();
+
+                // 3. HU-07 (CA1 & CA2): Identificar cuáles clientes son NUEVOS vs HABITUALES
+                // Extraemos los IDs de los clientes con citas en este periodo
+                var clientesIdsPeriodo = rawCitas
+                    .Where(c => c.Estado != "cancelada" && c.ClienteId != Guid.Empty)
+                    .Select(c => c.ClienteId)
+                    .Distinct()
+                    .ToList();
+
+                // Buscamos si tienen citas PREVIAS a la fecha de inicio del período actual con este proveedor
+                var clientesAntiguosIds = await _context.citas
+                    .AsNoTracking()
+                    .Where(c => c.ProveedorId == idReal && clientesIdsPeriodo.Contains(c.ClienteId) && c.Fecha < inicio && c.Estado != "cancelada")
+                    .Select(c => c.ClienteId)
+                    .Distinct()
+                    .ToListAsync();
+
+                // Convertimos a HashSet para búsqueda ultrarrápida O(1)
+                var setAntiguos = new HashSet<Guid>(clientesAntiguosIds);
+
+                // Mapear el flag de EsNuevoCliente para cada cita
+                var listaCitasIndependiente = rawCitas.Select(c => new {
+                    id = c.Id,
+                    hora = c.Hora.ToString(@"hh\:mm"),
+                    fecha = c.Fecha,
+                    cliente = c.ClienteNombre,
+                    servicio = c.ServicioNombre,
+                    precioPactado = c.PrecioPactado,
+                    estado = c.Estado,
+                    codigoVerificacion = c.CodigoVerificacion,
+                    // HU-07 CA1: El cliente es nuevo si NO tiene citas previas registradas
+                    esNuevoCliente = !setAntiguos.Contains(c.ClienteId)
+                }).ToList();
+
+                // 4. HU-06 (CA1 & CA2): CÁLCULO DE INGRESOS 100% BRUTOS (Sin descuento de comisión)
+                var citasValidas = rawCitas.Where(c => c.Estado != "cancelada").ToList();
+                decimal ingresosProyectadosBrutos = citasValidas.Sum(c => c.PrecioPactado);
+                decimal ingresosRealesBrutos = citasValidas.Where(c => c.Estado == "completada" || c.Estado == "confirmada").Sum(c => c.PrecioPactado);
+
+                // HU-07 CA2: Total de nuevos clientes en el periodo
+                int totalNuevosClientes = listaCitasIndependiente.Where(c => c.estado != "cancelada" && c.esNuevoCliente).Select(c => c.cliente).Distinct().Count();
+
+                return new
+                {
+                    tipoResumen = periodo,
+                    rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (Local Time)",
+                    totalCitas = citasValidas.Count,
+                    ingresosProyectadosBrutos, // HU-06: 100% bruto proyectado
+                    ingresosRealesBrutos,      // HU-06: 100% bruto realizado
+                    totalNuevosClientes,       // HU-07: Conteo total de clientes nuevos
+                    citas = listaCitasIndependiente
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [Error Critical DashboardIndependiente]: {ex.Message}");
+                return new { message = "Error al procesar el dashboard independiente", totalCitas = 0, citas = new List<object>() };
+            }
+        }
     }
 }
