@@ -166,6 +166,8 @@ namespace Turnify.Api.Controllers
         /// Aislamiento total de datos mediante JWT y cálculo de ingresos 100% brutos sin deducción de comisión.
         /// </summary>
         [HttpGet("independiente")]
+        [HttpGet("ResumenIndependiente")]
+        [HttpGet("resumen-independiente")]
         public async Task<IActionResult> GetDashboardIndependiente(
             [FromQuery] DateTime? fecha = null,
             [FromQuery] string periodo = "diario",

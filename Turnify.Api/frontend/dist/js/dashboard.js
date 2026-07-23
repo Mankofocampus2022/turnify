@@ -15,6 +15,56 @@ const API_BASE_GLOBAL = `${API_HOST}/api`;
 // 🧠 CONTROL DE CONCURRENCIA QA SENIOR: Evita que consultas viejas o el auto-refresh sobreescriban los datos actuales
 let dashboardAbortController = null;
 
+/**
+ * 🎨 HELPER DE CLASES DE ESTADO: Mapea estados a sus clases CSS correspondientes
+ */
+function getEstadoClass(estado) {
+    if (!estado) return 'status-pendiente';
+    const est = String(estado).toLowerCase();
+    if (est.includes('completad') || est.includes('confirmad')) return 'status-activo';
+    if (est.includes('cancelad') || est.includes('anulad')) return 'status-bloqueado';
+    return 'status-pendiente'; 
+}
+
+/**
+ * 🛠️ FUNCIÓN DE DETECCIÓN AVANZADA: Determina si el usuario actual es un Proveedor Independiente
+ */
+function evaluarEsIndependiente(userObj, token) {
+    if (!userObj && !token) return false;
+
+    const tipo = String(userObj?.tipo || userObj?.tipoProveedor || userObj?.tipoUsuario || userObj?.tipoModelo || "").toLowerCase();
+    const rol = String(userObj?.rol || userObj?.rolNombre || localStorage.getItem('usuario_rol') || "").toLowerCase();
+    const esFlag = userObj?.esIndependiente === true || userObj?.esProveedorIndependiente === true;
+
+    // 🚀 BLINDAJE CLAVE: Si el rol es "Proveedor" o contiene "independiente", "autonomo", etc.
+    if (esFlag || rol === "proveedor" || rol.includes("independiente") || rol.includes("autonomo") || tipo.includes("independiente")) {
+        return true;
+    }
+
+    // Inspección profunda del Token JWT
+    if (token) {
+        try {
+            const base64Url = token.split('.')[1];
+            if (base64Url) {
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                const tokenData = JSON.parse(jsonPayload);
+
+                const claimRol = String(tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "").toLowerCase();
+                const claimTipo = String(tokenData.tipo || tokenData.tipoProveedor || "").toLowerCase();
+
+                if (claimRol === "proveedor" || claimRol.includes("independiente") || claimTipo.includes("independiente")) {
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo decodificar las claims del Token:", e);
+        }
+    }
+
+    return false;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Puente de Seguridad
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
@@ -28,23 +78,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // 🚩 [BLINDAJE] URL Base Dinámica para evitar fallos de puerto/dominio (Sincronizada globalmente)
     const API_BASE = API_BASE_GLOBAL;
 
-    // 2. Recuperar el nombre real (Blindaje contra el texto "PRUEBA")
+    // 2. Recuperar el nombre real y tipo de usuario (Blindaje contra el texto "PRUEBA")
     const userStr = localStorage.getItem('user');
     let nombreFinal = "Darwin"; // Fallback por defecto
+    let userRoleStr = "Administración / Staff";
+    let esIndependiente = false;
 
     if (userStr) {
         try {
             const userObj = JSON.parse(userStr);
             nombreFinal = userObj.nombre || userObj.Nombre || nombreFinal;
+            
+            // 🚀 Evaluación robusta integrada con soporte para rol "Proveedor"
+            esIndependiente = evaluarEsIndependiente(userObj, token);
+            userRoleStr = esIndependiente ? "Proveedor Independiente" : "Administración / Staff";
+            
+            // 🚀 HU-01 & HU-06: Configurar visibilidad de la columna de asignación
+            const thStaffSilla = document.getElementById('thStaffSilla');
+            if (thStaffSilla) {
+                thStaffSilla.style.display = esIndependiente ? 'none' : 'table-cell';
+            }
         } catch (e) { 
-            console.error("❌ Error parseando objeto de usuario / Error al cargar nombre"); 
+            console.error("❌ Error parseando objeto de usuario / Error al cargar nombre", e); 
         }
     }
 
-    // 3. Inyectar el saludo con el estilo de color (🙋‍♂️ SALUDO CON NOMBRE REAL)
+    // 3. Inyectar el saludo con el estilo de color (🙋‍♂️ SALUDO CON NOMBRE REAL) Y ROL
     const welcomeText = document.getElementById('welcomeText');
     if (welcomeText) {
         welcomeText.innerHTML = `¡Qué más, <span style="color: #48c1b5;">${nombreFinal}</span>!`;
+    }
+
+    const userRoleEl = document.getElementById('userRole');
+    if (userRoleEl) {
+        userRoleEl.innerText = userRoleStr;
     }
 
     // 4. Carga Inicial Automática: Por defecto cargamos 'Hoy'
@@ -126,7 +193,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
     } else if (periodo === 'mañana') {
         inicio.setDate(inicio.getDate() + 1);
         fin.setDate(fin.getDate() + 1);
-        periodoParamBackend = 'diario'; // Mapeo semántico para el controlador .NET
+        periodoParamBackend = 'diario'; 
     } else if (periodo === 'semana') {
         const day = inicio.getDay();
         const diff = inicio.getDate() - day + (day === 0 ? -6 : 1); 
@@ -149,7 +216,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 
     const tablaBody = document.getElementById('turnosTable');
     if (tablaBody) {
-        tablaBody.innerHTML = '<tr><td colspan="6" style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> Cargando agenda...</td></tr>';
+        tablaBody.innerHTML = '<tr><td colspan="7" style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> Cargando agenda...</td></tr>';
     }
 
     try {
@@ -157,9 +224,13 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         if (!userStr) throw new Error("Sesión de usuario perdida.");
         
         const user = JSON.parse(userStr);
-        const tipoUsuario = (user?.tipo || user?.tipoProveedor || user?.tipoUsuario || "").toLowerCase();
-        const esIndependiente = tipoUsuario.includes("independiente") || user?.esIndependiente === true;
+        const esIndependiente = evaluarEsIndependiente(user, token);
         const provId = user?.proveedorId || user?.id;
+
+        const thStaffSilla = document.getElementById('thStaffSilla');
+        if (thStaffSilla) {
+            thStaffSilla.style.display = esIndependiente ? 'none' : 'table-cell';
+        }
 
         let requestUrl = "";
         
@@ -190,8 +261,8 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         
         // Mapeo unificado para ambas estructuras de respuesta
         const citasRespuesta = data.citas || data.proximasCitas || [];
-        renderizarTablaDashboard(citasRespuesta, token, API_BASE);
-        actualizarContadoresDashboard(data); 
+        renderizarTablaDashboard(citasRespuesta, token, API_BASE, esIndependiente);
+        actualizarContadoresDashboard(data, esIndependiente); 
 
     } catch (error) { 
         if (error.name === 'AbortError') {
@@ -200,7 +271,7 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         }
         console.error("🔥 Error al filtrar agenda:", error);
         if (tablaBody) {
-            tablaBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ff5e5e;">Error al conectar con el servicio.</td></tr>`;
+            tablaBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ff5e5e;">Error al conectar con el servicio.</td></tr>`;
         }
     }
 }
@@ -208,12 +279,12 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 /**
  * 📝 Renderiza las filas (🛡️ BLINDAJE DE ESTADOS EN ACCIONES Y BANDERAS DE CLIENTE NUEVO HU-07)
  */
-function renderizarTablaDashboard(citas, token, API_BASE) {
+function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = false) {
     const tabla = document.getElementById('turnosTable');
     if (!tabla) return;
 
     if (!citas || citas.length === 0) {
-        tabla.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ccc;">No hay citas agendadas para este periodo.</td></tr>';
+        tabla.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ccc;">No hay citas agendadas para este periodo.</td></tr>';
         return;
     }
 
@@ -223,9 +294,9 @@ function renderizarTablaDashboard(citas, token, API_BASE) {
         
         // 🚩 LÓGICA DE ACCIONES SEGÚN EL ESTADO REAL
         let celdaAccion = "";
-        if (estado === 'completada' || estado === 'confirmada') {
+        if (estado === 'completada' || estado === 'confirmada' || estado === 'completado') {
             celdaAccion = `<span style="color: #48c1b5; font-size: 0.8rem;"><i class="fas fa-check-circle"></i> Validado</span>`;
-        } else if (estado === 'cancelada') {
+        } else if (estado === 'cancelada' || estado === 'anulada') {
             celdaAccion = `<span style="color: #ff5e5e; font-size: 0.8rem;"><i class="fas fa-exclamation-triangle"></i> Anulada</span>`;
         } else {
             celdaAccion = `<span style="color: #888; font-size: 0.8rem;"><i class="fas fa-clock"></i> Pendiente</span>`;
@@ -234,17 +305,40 @@ function renderizarTablaDashboard(citas, token, API_BASE) {
         // 💈 HU-07 CA1: Inyección visual del distintivo "Cliente Nuevo"
         const esNuevo = c.esNuevoCliente === true || c.EsNuevoCliente === true;
         const badgeCliente = esNuevo 
-            ? `<span style="background-color: rgba(72, 193, 181, 0.15); color: #48c1b5; border: 1px solid #48c1b5; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600;"><i class="fas fa-user-plus"></i> Nuevo</span>`
+            ? `<span class="badge-nuevo-cliente" style="margin-left: 5px;"><i class="fas fa-star"></i> Nuevo</span>`
             : '';
 
         const nombreCliente = c.cliente || c.Cliente || 'Sin nombre';
+        const empleadoNombre = c.empleadoAsignado || c.EmpleadoAsignado || 'Sin Asignar';
+        const estacionNombre = c.estacionAsignada || c.EstacionAsignada || 'Sin Silla';
+
+        // 🚀 HU-01 & HU-03: Etiqueta de esquema de contratación (Comisión o Pago de Silla)
+        const tipoContrato = (c.tipoContratoEmpleado || c.TipoContratoEmpleado || "").toLowerCase();
+        let badgeEsquema = '';
+        if (tipoContrato.includes("silla") || tipoContrato.includes("fijo") || tipoContrato.includes("arriendo")) {
+            badgeEsquema = `<br><span class="badge-silla-fija"><i class="fas fa-chair"></i> Silla Fija</span>`;
+        } else if (tipoContrato.includes("comision") || tipoContrato.includes("porcentaje")) {
+            badgeEsquema = `<br><span class="badge-comision"><i class="fas fa-percentage"></i> Comisión</span>`;
+        }
+
+        // 🚀 HU-01: Celda condicional para asignación
+        const celdaStaffSilla = esIndependiente 
+            ? '' 
+            : `<td class="col-staff-silla" style="display: table-cell; font-size: 0.8rem; color: #cbd5e1;">
+                <div><i class="fas fa-user-tie"></i> <strong>${empleadoNombre}</strong></div>
+                <div><i class="fas fa-chair"></i> ${estacionNombre}</div>
+                ${badgeEsquema}
+               </td>`;
+
+        const fechaTexto = c.fecha ? String(c.fecha).split('T')[0] : 'Hoy';
 
         return `
             <tr>
-                <td style="color: #48c1b5; font-weight: bold;"><i class="far fa-clock"></i> ${c.hora || c.Hora}</td> 
-                <td>${c.fecha ? String(c.fecha).split('T')[0] : 'Hoy'}</td>
+                <td style="color: #48c1b5; font-weight: bold;"><i class="far fa-clock"></i> ${c.hora || c.Hora || '--:--'}</td> 
+                <td>${fechaTexto}</td>
                 <td><strong>${nombreCliente}</strong>${badgeCliente}</td>
                 <td>${c.servicio || c.Servicio || 'Servicio'}</td>
+                ${celdaStaffSilla}
                 <td><span class="status-pill ${badgeClass}">${estado}</span></td>
                 <td>${celdaAccion}</td>
             </tr>
@@ -255,10 +349,11 @@ function renderizarTablaDashboard(citas, token, API_BASE) {
 /**
  * 🔢 ACTUALIZACIÓN DE CONTADORES (HU-06: SOPORTE PARA INGRESOS BRUTOS Y NUEVOS CLIENTES)
  */
-function actualizarContadoresDashboard(data) {
+function actualizarContadoresDashboard(data, esIndependiente = false) {
     const totalCitasEl = document.getElementById('totalCitas') || document.getElementById('total-citas');
     const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos');
     const clientesEl = document.getElementById('nuevosClientes') || document.getElementById('nuevos-clientes');
+    const ingresoNotaEl = document.getElementById('ingresoNota');
 
     const listaCitas = data.citas || data.proximasCitas || [];
 
@@ -273,8 +368,8 @@ function actualizarContadoresDashboard(data) {
         } else if (data.nuevosClientesTotales !== undefined) {
             clientesEl.innerText = data.nuevosClientesTotales;
         } else {
-            const clientesUnicos = new Set(listaCitas.map(c => c.clienteId || c.ClienteId || c.cliente || c.Cliente));
-            clientesEl.innerText = listaCitas.length > 0 ? clientesUnicos.size : 0;
+            const conteoNuevos = listaCitas.filter(c => c.esNuevoCliente === true || c.EsNuevoCliente === true).length;
+            clientesEl.innerText = conteoNuevos;
         }
     }
 
@@ -282,21 +377,48 @@ function actualizarContadoresDashboard(data) {
     if (ingresosEl) {
         let montoCalculado = 0;
 
-        if (data.ingresosRealesBrutos !== undefined && data.ingresosRealesBrutos > 0) {
-            montoCalculado = data.ingresosRealesBrutos;
-        } else if (data.ingresosProyectadosBrutos !== undefined) {
-            montoCalculado = data.ingresosProyectadosBrutos;
-        } else if (data.gananciaReal !== undefined) {
-            montoCalculado = data.gananciaReal;
-        } else if (listaCitas.length > 0) {
-            montoCalculado = listaCitas.reduce((acc, c) => {
-                const valor = c.precioPactado || c.PrecioPactado || c.precio || c.Precio || 0;
-                const est = (c.estado || c.Estado || "").toLowerCase().trim();
-                if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente")) {
-                    return acc + parseFloat(valor);
-                }
-                return acc;
-            }, 0);
+        if (esIndependiente) {
+            // HU-05 & HU-06: 100% de Ingreso Bruto sin deducción
+            if (data.ingresosRealesBrutos !== undefined && data.ingresosRealesBrutos > 0) {
+                montoCalculado = data.ingresosRealesBrutos;
+            } else if (data.ingresosProyectadosBrutos !== undefined) {
+                montoCalculado = data.ingresosProyectadosBrutos;
+            } else if (listaCitas.length > 0) {
+                montoCalculado = listaCitas.reduce((acc, c) => {
+                    const valor = c.precioPactado || c.PrecioPactado || c.precio || c.Precio || 0;
+                    const est = (c.estado || c.Estado || "").toLowerCase().trim();
+                    if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente")) {
+                        return acc + parseFloat(valor);
+                    }
+                    return acc;
+                }, 0);
+            }
+            if (ingresoNotaEl) ingresoNotaEl.innerText = "100% Ingreso Bruto (Sin deducciones)";
+        } else {
+            // HU-02 & HU-04: Descuenta comisiones del staff
+            if (data.ingresoProyectadoNegocio !== undefined) {
+                montoCalculado = data.ingresoProyectadoNegocio;
+            } else if (data.gananciaReal !== undefined) {
+                montoCalculado = data.gananciaReal;
+            } else if (listaCitas.length > 0) {
+                montoCalculado = listaCitas.reduce((acc, c) => {
+                    const valor = parseFloat(c.precioPactado || c.PrecioPactado || c.precio || c.Precio || 0);
+                    const comisionPct = parseFloat(c.porcentajeComision || c.PorcentajeComision || 0);
+                    const tipoContrato = (c.tipoContratoEmpleado || c.TipoContratoEmpleado || "").toLowerCase();
+                    const est = (c.estado || c.Estado || "").toLowerCase().trim();
+
+                    if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente")) {
+                        if (tipoContrato.includes("silla") || tipoContrato.includes("fijo")) {
+                            return acc + valor; // En sillas fijas el negocio recibe el pago completo o no retiene comisión
+                        } else {
+                            const valorComision = valor * (comisionPct / 100);
+                            return acc + (valor - valorComision); // Margen neto del negocio
+                        }
+                    }
+                    return acc;
+                }, 0);
+            }
+            if (ingresoNotaEl) ingresoNotaEl.innerText = "Neto tras comisiones de colaboradores";
         }
 
         ingresosEl.innerText = new Intl.NumberFormat('es-CO', {
@@ -313,8 +435,7 @@ async function cargarResumenDashboard(token, API_BASE) {
         const userStr = localStorage.getItem('user');
         if (!userStr) return;
         const user = JSON.parse(userStr);
-        const tipoUsuario = (user?.tipo || user?.tipoProveedor || user?.tipoUsuario || "").toLowerCase();
-        const esIndependiente = tipoUsuario.includes("independiente") || user?.esIndependiente === true;
+        const esIndependiente = evaluarEsIndependiente(user, token);
         const provId = user?.proveedorId || user?.id;
 
         let requestUrl = esIndependiente 
@@ -329,18 +450,11 @@ async function cargarResumenDashboard(token, API_BASE) {
         });
         if (response.ok) {
             const data = await response.json();
-            actualizarContadoresDashboard(data);
+            actualizarContadoresDashboard(data, esIndependiente);
         }
     } catch (e) { 
         console.error("❌ Error cargando resumen global del dashboard:", e); 
     }
-}
-
-function getEstadoClass(estado) {
-    const est = estado.toLowerCase();
-    if (est.includes('completado') || est.includes('confirmada')) return 'status-activo';
-    if (est.includes('cancelada')) return 'status-bloqueado';
-    return 'status-pendiente'; 
 }
 
 function logout() {
@@ -350,4 +464,7 @@ function logout() {
     }
 }
 
+// Expansión global para eventos inline HTML
 window.cambiarPeriodo = cambiarPeriodo;
+window.logout = logout;
+window.evaluarEsIndependiente = evaluarEsIndependiente;

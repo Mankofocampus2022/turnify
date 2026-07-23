@@ -6,39 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"> 
     <link rel="stylesheet" href="css-dashboard.css">
-    <style>
-        .filter-tabs { display: flex; gap: 10px; margin-top: 10px; }
-        .btn-filter {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(72, 193, 181, 0.3);
-            color: white;
-            padding: 8px 15px;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.3s;
-        }
-        .btn-filter.active {
-            background: #48c1b5;
-            color: #1b3d5f;
-            font-weight: bold;
-        }
-        .btn-filter:hover { background: rgba(72, 193, 181, 0.2); }
-        
-        /* 🛡️ Estilo para el botón de Check-in dentro de la tabla */
-        .btn-checkin {
-            background: #48c1b5;
-            border: none;
-            color: #1b3d5f;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        .btn-checkin:hover { transform: scale(1.05); background: #3aa89d; }
-    </style>
 </head>
 <body>
 
@@ -54,7 +21,7 @@
                 <i class="fas fa-chart-line"></i> Resumen
             </a>
             <a href="usuarios.html" class="nav-item" id="nav-usuarios">
-                <i class="fas fa-users"></i> Usuarios
+                <i class="fas fa-users"></i> Directorio
             </a>
             <a href="servicios.html" class="nav-item" id="nav-servicios">
                 <i class="fas fa-cut"></i> Servicios
@@ -91,14 +58,17 @@
                 <p id="totalCitas" class="number">0</p>
                 <span id="citasTrend" class="trend">En el periodo</span>
             </div>
+            <!-- 🚀 HU 006 / 007 - Métrica de Nuevos Clientes -->
             <div class="stat-card">
                 <h3>Nuevos Clientes</h3>
                 <p id="nuevosClientes" class="number">0</p>
+                <span class="trend" style="color: #f59e0b;"><i class="fas fa-star"></i> Primera visita</span>
             </div>
+            <!-- 🚀 HU 002 / 004 / 005 - Ingresos Proyectados Dinámicos -->
             <div class="stat-card primary">
                 <h3>Ingresos Proyectados</h3>
                 <p id="ingresosMes" class="number">$0</p>
-                <span class="currency">COP</span>
+                <span id="ingresoNota" class="currency">Calculando comisiones...</span>
             </div>
         </section>
 
@@ -121,13 +91,15 @@
                             <th>FECHA</th>
                             <th>CLIENTE</th>
                             <th>SERVICIO</th>
+                            <!-- 🚀 HU 001 - Columna dinámica para Staff/Silla (Oculta para independientes) -->
+                            <th class="col-staff-silla" id="thStaffSilla">ASIGNACIÓN</th>
                             <th>ESTADO</th>
                             <th>ACCIONES</th>
                         </tr>
                     </thead>
                     <tbody id="turnosTable">
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 20px; color: white;">
+                            <td colspan="7" style="text-align: center; padding: 20px; color: white;">
                                 <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
                             </td>
                         </tr>
