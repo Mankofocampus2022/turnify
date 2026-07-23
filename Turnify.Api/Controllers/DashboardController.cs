@@ -16,6 +16,9 @@ namespace Turnify.Api.Controllers
         private readonly IDashboardService _dashboardService;
         private readonly TurnifyDbContext _context; 
 
+        // GUID constante de Rol Staff/Empleado
+        private static readonly Guid ROL_STAFF_ID = Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099");
+
         public DashboardController(IDashboardService dashboardService, TurnifyDbContext context)
         {
             _dashboardService = dashboardService;
@@ -72,14 +75,13 @@ namespace Turnify.Api.Controllers
             // 🛡️ CORRECCIÓN CRÍTICA: Usamos NameIdentifier para rescatar el ID del token
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             
-            if (string.IsNullOrEmpty(usuarioIdClaim)) return Unauthorized(new { message = "Sesión no válida" });
-
-            var userId = Guid.Parse(usuarioIdClaim);
+            if (string.IsNullOrEmpty(usuarioIdClaim) || !Guid.TryParse(usuarioIdClaim, out var userId)) 
+                return Unauthorized(new { message = "Sesión no válida o token corrupto." });
 
             // 🚀 HU 001 - MULTI-SILLA: 1. Identificar si el usuario es STAFF (Empleado)
             var usuario = await _context.usuarios.AsNoTracking().FirstOrDefaultAsync(u => u.id == userId);
             
-            if (usuario != null && usuario.rol_id == Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099"))
+            if (usuario != null && usuario.rol_id == ROL_STAFF_ID)
             {
                 var empleado = await _context.empleados.AsNoTracking().FirstOrDefaultAsync(e => e.UsuarioId == userId);
                 if (empleado == null) return NotFound(new { message = "Perfil de empleado no configurado." });
@@ -91,7 +93,8 @@ namespace Turnify.Api.Controllers
 
             // 🛡️ RESCATE DE IDENTIDAD ORIGINAL: Buscamos el perfil de proveedor amarrado al usuario
             var proveedor = await _context.proveedores
-                .FirstOrDefaultAsync(p => p.UsuarioId == userId);
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UsuarioId == userId || p.Id == userId);
 
             if (proveedor == null)
             {
@@ -132,6 +135,7 @@ namespace Turnify.Api.Controllers
 
             // 🛡️ PUENTE DE IDENTIDAD: Sincronización de IDs
             var proveedorEncontrado = await _context.proveedores
+                .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Id == proveedorId || p.UsuarioId == proveedorId);
 
             var idRealParaServicio = proveedorEncontrado != null ? proveedorEncontrado.Id : proveedorId;
@@ -168,15 +172,13 @@ namespace Turnify.Api.Controllers
             [FromQuery] int? mes = null,
             [FromQuery] int? anio = null)
         {
-            // 🛡️ HU-06 (CA4) AISLAMIENTO DE DATOS: Extraer el ID único del claims sin exponer parámetros en la URL
+            // 🛡️ HU-06 (CA4) AISLAMIENTO DE DATOS: Extraer y validar el Guid del claims
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             
-            if (string.IsNullOrEmpty(usuarioIdClaim)) 
+            if (string.IsNullOrEmpty(usuarioIdClaim) || !Guid.TryParse(usuarioIdClaim, out var userId)) 
                 return Unauthorized(new { message = "Sesión no válida o no autenticada." });
 
-            var userId = Guid.Parse(usuarioIdClaim);
-
-            // Rescate de identidad del Proveedor
+            // Rescate de identidad del Proveedor con AsNoTracking para optimizar lectura
             var proveedor = await _context.proveedores
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UsuarioId == userId || p.Id == userId);

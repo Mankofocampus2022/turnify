@@ -53,7 +53,7 @@ namespace Turnify.Api.Services
             }
             else if (periodo == "semana")
             {
-                int diff = (7 + (inicio = fechaBase.Date).DayOfWeek - DayOfWeek.Monday) % 7;
+                int diff = (7 + (int)(inicio = fechaBase.Date).DayOfWeek - (int)DayOfWeek.Monday) % 7;
                 inicio = inicio.AddDays(-1 * diff).Date;
                 fin = inicio.AddDays(7);
                 inicioPrev = inicio.AddDays(-7);
@@ -178,7 +178,7 @@ namespace Turnify.Api.Services
             // 2. Calcular las fechas locales
             DateTime inicio, fin;
             if (periodo == "hoy" || periodo == "diario") { inicio = fechaBase.Date; fin = inicio.AddDays(1); }
-            else if (periodo == "semana") { int diff = (7 + (inicio = fechaBase.Date).DayOfWeek - DayOfWeek.Monday) % 7; inicio = inicio.AddDays(-1 * diff).Date; fin = inicio.AddDays(7); }
+            else if (periodo == "semana") { int diff = (7 + (int)(inicio = fechaBase.Date).DayOfWeek - (int)DayOfWeek.Monday) % 7; inicio = inicio.AddDays(-1 * diff).Date; fin = inicio.AddDays(7); }
             else { int m = mes ?? fechaBase.Month; int a = anio ?? fechaBase.Year; inicio = new DateTime(a, m, 1, 0, 0, 0, DateTimeKind.Unspecified); fin = inicio.AddMonths(1); }
 
             // 3. Consultar SOLO las citas asignadas a este empleado en el periodo
@@ -242,7 +242,7 @@ namespace Turnify.Api.Services
             }
             else if (periodo == "semana")
             {
-                int diff = (7 + (inicio = fechaBase.Date).DayOfWeek - DayOfWeek.Monday) % 7;
+                int diff = (7 + (int)(inicio = fechaBase.Date).DayOfWeek - (int)DayOfWeek.Monday) % 7;
                 inicio = inicio.AddDays(-1 * diff).Date;
                 fin = inicio.AddDays(7);
             }
@@ -311,7 +311,7 @@ namespace Turnify.Api.Services
                     estado = c.Estado,
                     codigoVerificacion = c.CodigoVerificacion,
                     // HU-07 CA1: El cliente es nuevo si NO tiene citas previas registradas
-                    esNuevoCliente = !setAntiguos.Contains(c.ClienteId)
+                    esNuevoCliente = c.ClienteId != Guid.Empty && !setAntiguos.Contains(c.ClienteId)
                 }).ToList();
 
                 // 4. HU-06 (CA1 & CA2): CÁLCULO DE INGRESOS 100% BRUTOS (Sin descuento de comisión)
