@@ -98,6 +98,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (thStaffSilla) {
                 thStaffSilla.style.display = esIndependiente ? 'none' : 'table-cell';
             }
+
+            // 🛡️ HU-06 CA4: El filtro de puestos solo lo ve el Staff/Administración
+            const containerFiltro = document.getElementById('containerFiltroPuesto');
+            if (containerFiltro) {
+                containerFiltro.style.display = esIndependiente ? 'none' : 'flex';
+            }
         } catch (e) { 
             console.error("❌ Error parseando objeto de usuario / Error al cargar nombre", e); 
         }
@@ -232,6 +238,12 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
             thStaffSilla.style.display = esIndependiente ? 'none' : 'table-cell';
         }
 
+        // 🛡️ HU-06 CA4: Ocultar selector de puesto si es proveedor independiente
+        const containerFiltro = document.getElementById('containerFiltroPuesto');
+        if (containerFiltro) {
+            containerFiltro.style.display = esIndependiente ? 'none' : 'flex';
+        }
+
         let requestUrl = "";
         
         // 💈 HU-06 & HU-07: Si el usuario es Independiente, invoca el endpoint dedicado
@@ -288,7 +300,22 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
         return;
     }
 
-    tabla.innerHTML = citas.map(c => {
+    // 🚀 HU-01 CA1: Filtro por Puesto sólo si es Staff
+    const filtroPuestoEl = document.getElementById('filtroEstacion') || document.getElementById('selectEstacion');
+    const puestoSeleccionado = (filtroPuestoEl && !esIndependiente) ? filtroPuestoEl.value : "todos";
+
+    const citasFiltradas = citas.filter(c => {
+        if (esIndependiente || !filtroPuestoEl || puestoSeleccionado === "todos") return true;
+        const estacion = (c.estacion || c.Estacion || "").toLowerCase();
+        return estacion.includes(puestoSeleccionado.toLowerCase());
+    });
+
+    if (citasFiltradas.length === 0) {
+        tabla.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ccc;">No hay citas registradas para el puesto seleccionado.</td></tr>';
+        return;
+    }
+
+    tabla.innerHTML = citasFiltradas.map(c => {
         const estado = (c.estado || c.Estado || "pendiente").toLowerCase();
         const badgeClass = getEstadoClass(estado);
         
@@ -310,15 +337,21 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
 
         const nombreCliente = c.cliente || c.Cliente || 'Sin nombre';
         const empleadoNombre = c.empleadoAsignado || c.EmpleadoAsignado || 'Sin Asignar';
-        const estacionNombre = c.estacionAsignada || c.EstacionAsignada || 'Sin Silla';
+        const estacionNombre = c.estacionAsignada || c.estacion || c.Estacion || 'Sin Silla';
 
-        // 🚀 HU-01 & HU-03: Etiqueta de esquema de contratación (Comisión o Pago de Silla)
+        // 🚀 HU-01 & HU-03: Etiqueta de esquema de contratación con Alerta de Cobro Silla
         const tipoContrato = (c.tipoContratoEmpleado || c.TipoContratoEmpleado || "").toLowerCase();
+        const precioSilla = c.precioSilla || c.PrecioSilla;
+        const estadoPagoSilla = c.estadoPagoSilla || c.EstadoPagoSilla || "Al día";
+
         let badgeEsquema = '';
         if (tipoContrato.includes("silla") || tipoContrato.includes("fijo") || tipoContrato.includes("arriendo")) {
-            badgeEsquema = `<br><span class="badge-silla-fija"><i class="fas fa-chair"></i> Silla Fija</span>`;
+            const detallePrecio = precioSilla ? `: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(precioSilla)}` : '';
+            badgeEsquema = `<br><span class="badge-silla-fija"><i class="fas fa-chair"></i> Silla Fija${detallePrecio} (${estadoPagoSilla})</span>`;
         } else if (tipoContrato.includes("comision") || tipoContrato.includes("porcentaje")) {
-            badgeEsquema = `<br><span class="badge-comision"><i class="fas fa-percentage"></i> Comisión</span>`;
+            const pct = c.porcentajeComision || c.PorcentajeComision;
+            const detallePct = pct ? ` (${pct}%)` : '';
+            badgeEsquema = `<br><span class="badge-comision"><i class="fas fa-percentage"></i> Comisión${detallePct}</span>`;
         }
 
         // 🚀 HU-01: Celda condicional para asignación

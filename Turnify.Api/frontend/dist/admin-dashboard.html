@@ -74,7 +74,21 @@
 
         <section class="content-section">
             <div class="section-header" style="flex-direction: column; align-items: flex-start; gap: 15px;">
-                <h3 id="sectionTitle">Agenda de Citas</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;">
+                    <h3 id="sectionTitle">Agenda de Citas</h3>
+                    <!-- 🚀 HU 001 CA1: Control de Filtro por Puesto/Silla -->
+                    <div id="containerFiltroPuesto" style="display: flex; align-items: center; gap: 8px;">
+                        <label for="filtroEstacion" style="font-size: 0.85rem; color: #cbd5e1;"><i class="fas fa-chair"></i> Puesto:</label>
+                        <select id="filtroEstacion" onchange="const b = document.querySelector('.btn-filter.active'); if(b) cambiarPeriodo(b.innerText.toLowerCase().includes('hoy')?'hoy':b.innerText.toLowerCase().includes('mañana')?'mañana':b.innerText.toLowerCase().includes('semana')?'semana':'mes', b);" style="background-color: #1e293b; color: white; border: 1px solid #334155; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+                            <option value="todos">Todos los puestos</option>
+                            <option value="Silla 1">Silla 1</option>
+                            <option value="Silla 2">Silla 2</option>
+                            <option value="Silla 3">Silla 3</option>
+                            <option value="Silla 4">Silla 4</option>
+                            <option value="Manicure">Puesto Manicure</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="filter-tabs">
                     <button class="btn-filter active" onclick="cambiarPeriodo('hoy', this)">Hoy</button>
                     <button class="btn-filter" onclick="cambiarPeriodo('mañana', this)">Mañana</button>

@@ -86,9 +86,11 @@ namespace Turnify.Api.Services
                         c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado, c.ClienteId, c.CodigoVerificacion,
                         ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
                         ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
-                        // 🚀 HU 001 - INYECCIÓN UI: Nombre del empleado y estación asignada
+                        // 🚀 HU 001 & HU 003: Inyección UI, Nombre del empleado, estación y esquema de contratación
                         EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
-                        Estacion = c.Estacion != null ? c.Estacion.Nombre : "Local"
+                        Estacion = c.Estacion != null ? c.Estacion.Nombre : "Local",
+                        TipoContratoEmpleado = c.Empleado != null ? c.Empleado.TipoContrato : "comision",
+                        ValorContratoEmpleado = c.Empleado != null ? c.Empleado.ValorContrato : 0
                     })
                     .OrderBy(c => c.Fecha).ThenBy(c => c.Hora)
                     .ToListAsync();
@@ -100,11 +102,41 @@ namespace Turnify.Api.Services
                     .Select(c => new { c.PrecioPactado, c.ClienteId })
                     .ToListAsync();
 
-                // 💰 4. CÁLCULO DE MÉTRICAS ACTUALES
+                // 💰 4. CÁLCULO DE MÉTRICAS ACTUALES & HU-02 (FINANCIERO NEGOCIO)
                 var totalCitas = rawCitas.Count(c => c.Estado != "cancelada");
                 decimal gananciaEstimada = rawCitas.Where(c => c.Estado != "cancelada").Sum(c => c.PrecioPactado);
                 decimal gananciaReal = rawCitas.Where(c => c.Estado == "completada" || c.Estado == "confirmada").Sum(c => c.PrecioPactado);
-                var nuevosClientes = rawCitas.Where(c => c.Estado != "cancelada").Select(c => c.ClienteId).Distinct().Count();
+                
+                // HU-02 CA1 & CA2: Margen neto descontando comisiones a colaboradores
+                decimal ingresoProyectadoNegocio = rawCitas
+                    .Where(c => c.Estado != "cancelada")
+                    .Sum(c => {
+                        var tipo = (c.TipoContratoEmpleado ?? "").ToLower();
+                        if (tipo.Contains("silla") || tipo.Contains("fijo") || tipo.Contains("arriendo"))
+                        {
+                            return c.PrecioPactado; // Silla fija no descuenta comisión por servicio
+                        }
+                        decimal pctComision = c.ValorContratoEmpleado > 0 ? c.ValorContratoEmpleado : 0;
+                        decimal valorComision = c.PrecioPactado * (pctComision / 100);
+                        return c.PrecioPactado - valorComision;
+                    });
+
+                // 💈 HU-07: Identificar clientes nuevos dentro del agendamiento
+                var clientesIdsPeriodo = rawCitas
+                    .Where(c => c.Estado != "cancelada" && c.ClienteId != Guid.Empty)
+                    .Select(c => c.ClienteId)
+                    .Distinct()
+                    .ToList();
+
+                var clientesAntiguosIds = await _context.citas
+                    .AsNoTracking()
+                    .Where(c => c.ProveedorId == idReal && clientesIdsPeriodo.Contains(c.ClienteId) && c.Fecha < inicio && c.Estado != "cancelada")
+                    .Select(c => c.ClienteId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var setAntiguos = new HashSet<Guid>(clientesAntiguosIds);
+                var nuevosClientes = rawCitas.Where(c => c.Estado != "cancelada" && c.ClienteId != Guid.Empty && !setAntiguos.Contains(c.ClienteId)).Select(c => c.ClienteId).Distinct().Count();
                 
                 var completadas = rawCitas.Count(c => c.Estado == "completada" || c.Estado == "confirmada");
                 var inasistencias = rawCitas.Count(c => c.Estado == "no_asistio" || (c.Estado == "pendiente" && c.Fecha < fechaBase.Date));
@@ -132,18 +164,31 @@ namespace Turnify.Api.Services
                     rangoBusqueda = $"{inicio:dd/MM/yyyy} al {fin.AddDays(-1):dd/MM/yyyy} (Local Time)",
                     totalCitas, tendenciaCitas = percClientes,
                     nuevosClientesTotales = nuevosClientes, clientesEnRiesgo,
-                    gananciaReal, gananciaEstimada, crecimientoIngresos = percGanancia,
+                    gananciaReal, gananciaEstimada, 
+                    ingresoProyectadoNegocio, // HU-02
+                    crecimientoIngresos = percGanancia,
                     tasaAsistencia = totalCitas > 0 ? Math.Round((double)completadas / totalCitas * 100, 1) : 0,
                     tasaInasistencia = totalCitas > 0 ? Math.Round((double)inasistencias / totalCitas * 100, 1) : 0,
                     tasaCancelacion = (totalCitas + canceladasCount) > 0 ? Math.Round((double)canceladasCount / (totalCitas + canceladasCount) * 100, 1) : 0,
                     ticketPromedio = totalCitas > 0 ? Math.Round(gananciaEstimada / totalCitas, 0) : 0,
-                    proximasCitas = rawCitas.Select(c => new {
-                        id = c.Id, hora = c.Hora.ToString(@"hh\:mm"), fecha = c.Fecha,
-                        cliente = c.ClienteNombre, servicio = c.ServicioNombre,
-                        precioPactado = c.PrecioPactado, estado = c.Estado, codigoVerificacion = c.CodigoVerificacion,
-                        // 🚀 HU 001 - INYECCIÓN UI: Los mandamos al frontend
-                        empleadoAsignado = c.EmpleadoAsignado,
-                        estacion = c.Estacion
+                    proximasCitas = rawCitas.Select(c => {
+                        var tipoContrato = (c.TipoContratoEmpleado ?? "").ToLower();
+                        bool esSillaFija = tipoContrato.Contains("silla") || tipoContrato.Contains("fijo") || tipoContrato.Contains("arriendo");
+                        
+                        return new {
+                            id = c.Id, hora = c.Hora.ToString(@"hh\:mm"), fecha = c.Fecha,
+                            cliente = c.ClienteNombre, servicio = c.ServicioNombre,
+                            precioPactado = c.PrecioPactado, estado = c.Estado, codigoVerificacion = c.CodigoVerificacion,
+                            empleadoAsignado = c.EmpleadoAsignado,
+                            estacion = c.Estacion,
+                            tipoContratoEmpleado = c.TipoContratoEmpleado,
+                            porcentajeComision = c.ValorContratoEmpleado,
+                            // 🚀 HU-03 CA1 & CA2: Valores y Estado para la alerta de Silla
+                            precioSilla = esSillaFija ? c.ValorContratoEmpleado : (decimal?)null,
+                            estadoPagoSilla = esSillaFija ? "Al día" : null,
+                            // 💈 HU-07 CA1: Banderín visual para el frontend
+                            esNuevoCliente = c.ClienteId != Guid.Empty && !setAntiguos.Contains(c.ClienteId)
+                        };
                     }).ToList(),
                     chartServiciosPopulares = rawCitas.Where(c => c.Estado != "cancelada")
                                                   .GroupBy(c => c.ServicioNombre)
@@ -186,7 +231,7 @@ namespace Turnify.Api.Services
                 .AsNoTracking()
                 .Where(c => c.EmpleadoId == empleadoId && c.Fecha >= inicio && c.Fecha < fin && c.Estado != "cancelada")
                 .Select(c => new {
-                    c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado,
+                    c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado, c.ClienteId,
                     ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "No registrado",
                     ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "No definido"
                 })
@@ -234,7 +279,7 @@ namespace Turnify.Api.Services
 
             DateTime inicio, fin;
 
-            // 1. Cálculo del rango temporal basado en la fecha local entregada
+            // 1. Cálculo del rango temporal basado en la fecha local delivered
             if (periodo == "hoy" || periodo == "diario")
             {
                 inicio = fechaBase.Date;
@@ -282,14 +327,12 @@ namespace Turnify.Api.Services
                     .ToListAsync();
 
                 // 3. HU-07 (CA1 & CA2): Identificar cuáles clientes son NUEVOS vs HABITUALES
-                // Extraemos los IDs de los clientes con citas en este periodo
                 var clientesIdsPeriodo = rawCitas
                     .Where(c => c.Estado != "cancelada" && c.ClienteId != Guid.Empty)
                     .Select(c => c.ClienteId)
                     .Distinct()
                     .ToList();
 
-                // Buscamos si tienen citas PREVIAS a la fecha de inicio del período actual con este proveedor
                 var clientesAntiguosIds = await _context.citas
                     .AsNoTracking()
                     .Where(c => c.ProveedorId == idReal && clientesIdsPeriodo.Contains(c.ClienteId) && c.Fecha < inicio && c.Estado != "cancelada")
@@ -297,10 +340,8 @@ namespace Turnify.Api.Services
                     .Distinct()
                     .ToListAsync();
 
-                // Convertimos a HashSet para búsqueda ultrarrápida O(1)
                 var setAntiguos = new HashSet<Guid>(clientesAntiguosIds);
 
-                // Mapear el flag de EsNuevoCliente para cada cita
                 var listaCitasIndependiente = rawCitas.Select(c => new {
                     id = c.Id,
                     hora = c.Hora.ToString(@"hh\:mm"),
