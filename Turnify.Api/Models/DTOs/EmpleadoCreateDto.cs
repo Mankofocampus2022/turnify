@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace Turnify.Api.Models.DTOs
 {
@@ -23,5 +24,11 @@ namespace Turnify.Api.Models.DTOs
         // Opcional: Si el dueño quiere que el barbero tenga su propio usuario para iniciar sesión
         public string? EmailParaUsuario { get; set; } = string.Empty; 
         public string? PasswordParaUsuario { get; set; } = string.Empty;
+
+        // 🖼️ HU-08: Archivo de imagen adjunto desde el formulario multipart/form-data
+        public IFormFile? Foto { get; set; }
+
+        // Ruta o URL de texto en caso de que se pase una dirección precargada
+        public string? FotoUrl { get; set; }
     }
 }

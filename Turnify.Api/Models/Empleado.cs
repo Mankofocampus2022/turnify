@@ -28,6 +28,11 @@ namespace Turnify.Api.Models
         [Column("telefono")]
         public string? Telefono { get; set; }
 
+        // 🖼️ HU-08 & HU-09: Almacenamiento de ruta/URL de la foto de perfil del colaborador
+        [StringLength(500)]
+        [Column("foto_url")]
+        public string? FotoUrl { get; set; }
+
         // 🧠 BLINDAJE FINANCIERO: "Porcentaje" o "Fijo"
         [Required]
         [StringLength(50)]

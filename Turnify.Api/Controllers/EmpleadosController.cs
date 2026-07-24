@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.IO;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Turnify.Api.Data;
@@ -30,7 +33,8 @@ namespace Turnify.Api.Controllers
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdString)) return null;
 
-            var userId = Guid.Parse(userIdString);
+            if (!Guid.TryParse(userIdString, out var userId)) return null;
+
             var proveedor = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.UsuarioId == userId);
             
             return proveedor?.Id;
@@ -61,9 +65,9 @@ namespace Turnify.Api.Controllers
             return Ok(empleado);
         }
 
-        // ➕ POST: api/empleados
+        // ➕ POST: api/empleados (Soporta JSON o multipart/form-data para HU-08)
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] EmpleadoCreateDto dto)
+        public async Task<IActionResult> Create([FromForm] EmpleadoCreateDto dto)
         {
             var proveedorId = await GetProveedorIdAsync();
             if (proveedorId == null) return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });
@@ -75,14 +79,14 @@ namespace Turnify.Api.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                // Atrapa el error si el correo electrónico ya existe en la base de datos
+                // Atrapa el error si el correo electrónico ya existe en la base de datos o fallo de formato
                 return BadRequest(new { message = ex.Message });
             }
         }
 
-        // 📝 PUT: api/empleados/{id}
+        // 📝 PUT: api/empleados/{id} (Soporta JSON o multipart/form-data para actualización)
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(Guid id, [FromBody] EmpleadoUpdateDto dto)
+        public async Task<IActionResult> Update(Guid id, [FromForm] EmpleadoUpdateDto dto)
         {
             var proveedorId = await GetProveedorIdAsync();
             if (proveedorId == null) return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });
@@ -92,6 +96,60 @@ namespace Turnify.Api.Controllers
             if (empleadoActualizado == null) return NotFound(new { message = "Empleado no encontrado o no pertenece a tu negocio." });
 
             return Ok(empleadoActualizado);
+        }
+
+        // 🖼️ HU-08: POST: api/empleados/{id}/foto (Endpoint dedicado para la subida directa de fotografía)
+        [HttpPost("{id}/foto")]
+        public async Task<IActionResult> UploadFoto(Guid id, IFormFile foto)
+        {
+            var proveedorId = await GetProveedorIdAsync();
+            if (proveedorId == null) return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });
+
+            if (foto == null || foto.Length == 0)
+                return BadRequest(new { message = "Debe adjuntar una imagen válida." });
+
+            // CA3: Validar formatos de imagen permitidos
+            var extensionesPermitidas = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var extension = Path.GetExtension(foto.FileName).ToLowerInvariant();
+
+            if (!extensionesPermitidas.Contains(extension))
+                return BadRequest(new { message = "Formato de imagen no soportado. Use .jpg, .jpeg, .png o .webp" });
+
+            // CA4: Límite de peso (5MB)
+            if (foto.Length > 5 * 1024 * 1024)
+                return BadRequest(new { message = "La imagen supera el peso máximo permitido (5MB)." });
+
+            try
+            {
+                // Crear directorio de destino en wwwroot/uploads/empleados si no existe
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "empleados");
+                if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+                // Nombre único para el archivo
+                var fileName = $"staff_{id}_{Guid.NewGuid()}{extension}";
+                var filePath = Path.Combine(uploadsFolder, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await foto.CopyToAsync(stream);
+                }
+
+                // Generar URL relativa
+                var fotoUrl = $"/uploads/empleados/{fileName}";
+
+                // Actualizar la entidad en BD mediante el servicio o actualización directa
+                var dto = new EmpleadoUpdateDto { FotoUrl = fotoUrl };
+                var empleadoActualizado = await _empleadoService.UpdateAsync(id, proveedorId.Value, dto);
+
+                if (empleadoActualizado == null)
+                    return NotFound(new { message = "Empleado no encontrado o no pertenece a tu negocio." });
+
+                return Ok(new { message = "Fotografía actualizada correctamente.", fotoUrl });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error interno al guardar la fotografía: {ex.Message}" });
+            }
         }
 
         // 🔄 PATCH: api/empleados/{id}/toggle
