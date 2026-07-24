@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace Turnify.Api.Models.DTOs
 {
@@ -21,5 +22,10 @@ namespace Turnify.Api.Models.DTOs
         public decimal ValorContrato { get; set; }
 
         public bool Activo { get; set; }
+
+        // 🖼️ HU-08 & HU-09: Soporte opcional para actualización de fotografía
+        public IFormFile? Foto { get; set; }
+
+        public string? FotoUrl { get; set; }
     }
 }

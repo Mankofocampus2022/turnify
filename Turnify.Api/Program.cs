@@ -191,6 +191,19 @@ app.UseRateLimiter();
 // 🌐 3. CORS para permitir peticiones entre orígenes
 app.UseCors("AllowTurnify");
 
+// 🖼️ HU-08 & HU-09: SERVIDOR DE ARCHIVOS ARCHIVADOS DE FOTOGRAFÍAS (/uploads)
+var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
+if (!Directory.Exists(uploadsPath))
+{
+    Directory.CreateDirectory(uploadsPath);
+}
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads"
+});
+
 // 🛡️ 4. AUTENTICACIÓN (Verifica las llaves JWT)
 app.UseAuthentication();
 
@@ -198,10 +211,9 @@ app.UseAuthentication();
 app.UseMiddleware<LiveEvictionMiddleware>();
 
 // 🛡️ 6. AUTORIZACIÓN (Evalúa los roles corporativos una vez confirmada la validez)
-// 🚩 FIX ASP0001: Ubicado exactamente en la secuencia requerida por ASP.NET Core
 app.UseAuthorization();
 
-// --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS DIAGNÓSTICO ---
+// --- 🏗️ SERVICIO DE ARCHIVOS ESTÁTICOS DIAGNÓSTICO PARA FRONTEND ---
 string rootPath = builder.Environment.ContentRootPath;
 string frontendPath = Path.Combine(rootPath, "frontend");
 
@@ -244,7 +256,7 @@ app.MapControllers();
 // ============================================================================
 if (Directory.Exists(frontendPath))
 {
-    app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api"), builder =>
+    app.MapWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/uploads"), builder =>
     {
         builder.UseRouting();
         builder.UseAuthentication();

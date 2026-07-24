@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Turnify.Api.Data;
 using Turnify.Api.Interfaces;
@@ -19,6 +21,48 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
+        // 🧠 MÉTODO AUXILIAR PRIVADO: Procesa y guarda la imagen del colaborador en disco si viene en el DTO
+        private async Task<string?> ProcessFotoUploadAsync(Guid id, IFormFile? fotoFile, string? fotoUrlOriginal)
+        {
+            // 1. Si enviaron un archivo binario mediante FormData
+            if (fotoFile != null && fotoFile.Length > 0)
+            {
+                var extensionesPermitidas = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+                var extension = Path.GetExtension(fotoFile.FileName).ToLowerInvariant();
+
+                if (!extensionesPermitidas.Contains(extension))
+                {
+                    throw new InvalidOperationException("Formato de imagen no permitido. Use .jpg, .jpeg, .png o .webp.");
+                }
+
+                if (fotoFile.Length > 5 * 1024 * 1024)
+                {
+                    throw new InvalidOperationException("La imagen supera el peso máximo de 5MB.");
+                }
+
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "empleados");
+                if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+                var fileName = $"staff_{id}_{Guid.NewGuid()}{extension}";
+                var filePath = Path.Combine(uploadsFolder, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await fotoFile.CopyToAsync(stream);
+                }
+
+                return $"/uploads/empleados/{fileName}";
+            }
+
+            // 2. Si no enviaron archivo binario pero enviaron una URL de texto precargada
+            if (!string.IsNullOrWhiteSpace(fotoUrlOriginal))
+            {
+                return fotoUrlOriginal;
+            }
+
+            return null;
+        }
+
         // 👥 LISTAR: Obtener todos los empleados de un negocio específico
         public async Task<IEnumerable<EmpleadoResponseDto>> GetAllByProveedorAsync(Guid proveedorId)
         {
@@ -32,6 +76,7 @@ namespace Turnify.Api.Services
                     UsuarioId = e.UsuarioId,
                     Nombre = e.Nombre ?? string.Empty,
                     Telefono = e.Telefono ?? string.Empty,
+                    FotoUrl = e.FotoUrl, // 🖼️ HU-09: Mapeo de la foto
                     TipoContrato = e.TipoContrato ?? string.Empty,
                     ValorContrato = e.ValorContrato,
                     Activo = e.Activo,
@@ -40,7 +85,7 @@ namespace Turnify.Api.Services
                 .ToListAsync();
         }
 
-        // 🔍 CONSULTAR: Obtener un solo empleado por su ID (Ajuste Nullable CS8603)
+        // 🔍 CONSULTAR: Obtener un solo empleado por su ID
         public async Task<EmpleadoResponseDto?> GetByIdAsync(Guid id, Guid proveedorId)
         {
             var empleado = await _context.empleados
@@ -57,6 +102,7 @@ namespace Turnify.Api.Services
                 UsuarioId = empleado.UsuarioId,
                 Nombre = empleado.Nombre ?? string.Empty,
                 Telefono = empleado.Telefono ?? string.Empty,
+                FotoUrl = empleado.FotoUrl, // 🖼️ HU-09: Mapeo de la foto
                 TipoContrato = empleado.TipoContrato ?? string.Empty,
                 ValorContrato = empleado.ValorContrato,
                 Activo = empleado.Activo,
@@ -64,7 +110,7 @@ namespace Turnify.Api.Services
             };
         }
 
-        // ➕ CREAR: Registrar empleado (y opcionalmente crearle su cuenta de acceso Staff)
+        // ➕ CREAR: Registrar empleado (y opcionalmente crearle su cuenta de acceso Staff + Fotografía)
         public async Task<EmpleadoResponseDto> CreateAsync(Guid proveedorId, EmpleadoCreateDto dto)
         {
             Guid? nuevoUsuarioId = null;
@@ -82,7 +128,6 @@ namespace Turnify.Api.Services
                 {
                     id = Guid.NewGuid(),
                     email = dto.EmailParaUsuario,
-                    // Nota: Se asume el uso de BCrypt.Net para la encriptación de contraseñas de tu login
                     password_hash = BCrypt.Net.BCrypt.HashPassword(dto.PasswordParaUsuario),
                     rol_id = Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099") // Rol Semilla 'Staff'
                 };
@@ -91,13 +136,19 @@ namespace Turnify.Api.Services
                 nuevoUsuarioId = nuevoUsuario.id;
             }
 
+            var nuevoEmpleadoId = Guid.NewGuid();
+
+            // 🖼️ HU-08: Procesamiento de la fotografía de perfil
+            string? rutaFotoProcesada = await ProcessFotoUploadAsync(nuevoEmpleadoId, dto.Foto, dto.FotoUrl);
+
             var nuevoEmpleado = new Empleado
             {
-                Id = Guid.NewGuid(),
+                Id = nuevoEmpleadoId,
                 ProveedorId = proveedorId,
                 UsuarioId = nuevoUsuarioId,
                 Nombre = dto.Nombre ?? string.Empty,
                 Telefono = dto.Telefono ?? string.Empty,
+                FotoUrl = rutaFotoProcesada, // Guardamos la ruta física/URL
                 TipoContrato = dto.TipoContrato ?? string.Empty,
                 ValorContrato = dto.ValorContrato,
                 Activo = true
@@ -115,6 +166,7 @@ namespace Turnify.Api.Services
                 UsuarioId = nuevoEmpleado.UsuarioId,
                 Nombre = nuevoEmpleado.Nombre ?? string.Empty,
                 Telefono = nuevoEmpleado.Telefono ?? string.Empty,
+                FotoUrl = nuevoEmpleado.FotoUrl, // 🖼️ Exponemos la ruta guardada
                 TipoContrato = nuevoEmpleado.TipoContrato ?? string.Empty,
                 ValorContrato = nuevoEmpleado.ValorContrato,
                 Activo = nuevoEmpleado.Activo,
@@ -122,7 +174,7 @@ namespace Turnify.Api.Services
             };
         }
 
-        // 📝 ACTUALIZAR: Modificar datos demográficos o condiciones contractuales (Ajuste Nullable CS8603)
+        // 📝 ACTUALIZAR: Modificar datos demográficos, condiciones contractuales o fotografía
         public async Task<EmpleadoResponseDto?> UpdateAsync(Guid id, Guid proveedorId, EmpleadoUpdateDto dto)
         {
             var empleado = await _context.empleados
@@ -131,9 +183,21 @@ namespace Turnify.Api.Services
 
             if (empleado == null) return null;
 
-            empleado.Nombre = dto.Nombre ?? string.Empty;
-            empleado.Telefono = dto.Telefono ?? string.Empty;
-            empleado.TipoContrato = dto.TipoContrato ?? string.Empty;
+            // 🖼️ HU-08: Actualización condicional de la fotografía si se proporciona una nueva
+            if (dto.Foto != null || !string.IsNullOrWhiteSpace(dto.FotoUrl))
+            {
+                var nuevaFotoRuta = await ProcessFotoUploadAsync(id, dto.Foto, dto.FotoUrl);
+                if (!string.IsNullOrEmpty(nuevaFotoRuta))
+                {
+                    empleado.FotoUrl = nuevaFotoRuta;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(dto.Nombre)) empleado.Nombre = dto.Nombre;
+            if (!string.IsNullOrEmpty(dto.Telefono)) empleado.Telefono = dto.Telefono;
+            if (!string.IsNullOrEmpty(dto.TipoContrato)) empleado.TipoContrato = dto.TipoContrato;
+            
+            // 🛠️ FIX BUGS CS1061: Asignación directa segura ya que en EmpleadoUpdateDto son valores concretos (no nullable)
             empleado.ValorContrato = dto.ValorContrato;
             empleado.Activo = dto.Activo;
 
@@ -146,6 +210,7 @@ namespace Turnify.Api.Services
                 UsuarioId = empleado.UsuarioId,
                 Nombre = empleado.Nombre ?? string.Empty,
                 Telefono = empleado.Telefono ?? string.Empty,
+                FotoUrl = empleado.FotoUrl, // 🖼️ Mapeo de la foto actualizada
                 TipoContrato = empleado.TipoContrato ?? string.Empty,
                 ValorContrato = empleado.ValorContrato,
                 Activo = empleado.Activo,
@@ -153,7 +218,7 @@ namespace Turnify.Api.Services
             };
         }
 
-        // 🔄 TOGGLE: Desactivación rápida o reactivación sin destruir registros físicos (Soft Control)
+        // 🔄 TOGGLE: Desactivación rápida o reactivación sin destruir registros físicos
         public async Task<bool> ToggleEstadoAsync(Guid id, Guid proveedorId)
         {
             var empleado = await _context.empleados
@@ -177,9 +242,10 @@ namespace Turnify.Api.Services
                     Id = e.Id,
                     ProveedorId = e.ProveedorId,
                     Nombre = e.Nombre ?? string.Empty,
+                    FotoUrl = e.FotoUrl, // 🖼️ HU-09: El cliente público también ve la foto del colaborador
                     TipoContrato = e.TipoContrato ?? string.Empty,
                     Activo = e.Activo
-                    // No exponemos el teléfono, el salario, ni el email del staff por privacidad hacia el cliente público
+                    // No exponemos teléfono, salario ni email por privacidad
                 })
                 .ToListAsync();
         }
