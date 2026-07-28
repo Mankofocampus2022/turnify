@@ -33,11 +33,26 @@ namespace Turnify.Api.Controllers
 
             var userId = Guid.Parse(usuarioIdClaim);
             
+            // 🚀 RESOLUCIÓN DE MULTI-TENANCY MEJORADA: Soporta Proveedores y Rol Staff/Barberos
+            Guid proveedorId;
+
             var proveedor = await _context.proveedores
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UsuarioId == userId || p.Id == userId);
 
-            var proveedorId = proveedor != null ? proveedor.Id : userId;
+            if (proveedor != null)
+            {
+                proveedorId = proveedor.Id;
+            }
+            else
+            {
+                // Si el usuario logueado es un colaborador (Staff), obtenemos el ProveedorId al que pertenece
+                var empleado = await _context.empleados
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(e => e.UsuarioId == userId);
+
+                proveedorId = empleado != null ? empleado.ProveedorId : userId;
+            }
 
             // 🛡️ FIX CS8602: Filtramos los nulos inmediatamente en la consulta SQL usando Where
             var query = _context.citas

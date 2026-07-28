@@ -6,26 +6,24 @@ namespace Turnify.Api.Models.DTOs
 {
     public class EmpleadoUpdateDto
     {
-        [Required(ErrorMessage = "El nombre del empleado es obligatorio.")]
-        [MaxLength(120)]
-        public string Nombre { get; set; } = string.Empty;
+        [MaxLength(120, ErrorMessage = "El nombre no puede superar los 120 caracteres.")]
+        public string? Nombre { get; set; }
 
-        [MaxLength(20)]
-        public string Telefono { get; set; } = string.Empty;
+        [MaxLength(20, ErrorMessage = "El teléfono no puede superar los 20 caracteres.")]
+        public string? Telefono { get; set; }
 
-        [Required]
-        [MaxLength(50)]
-        public string TipoContrato { get; set; } = string.Empty;
+        [MaxLength(50, ErrorMessage = "El tipo de contrato no puede superar los 50 caracteres.")]
+        public string? TipoContrato { get; set; }
 
-        [Required]
-        [Range(0, 99999999.99)]
+        [Range(0, 99999999.99, ErrorMessage = "El valor del contrato debe ser un número positivo válido.")]
         public decimal ValorContrato { get; set; }
 
-        public bool Activo { get; set; }
+        public bool Activo { get; set; } = true;
 
         // 🖼️ HU-08 & HU-09: Soporte opcional para actualización de fotografía
         public IFormFile? Foto { get; set; }
 
+        [MaxLength(500, ErrorMessage = "La URL de la foto no puede superar los 500 caracteres.")]
         public string? FotoUrl { get; set; }
     }
 }

@@ -22,13 +22,19 @@ namespace Turnify.Api.Models.DTOs
         public decimal ValorContrato { get; set; }
 
         // Opcional: Si el dueño quiere que el barbero tenga su propio usuario para iniciar sesión
+        [EmailAddress(ErrorMessage = "El correo electrónico no tiene un formato válido.")]
+        [MaxLength(150, ErrorMessage = "El correo no puede superar los 150 caracteres.")]
         public string? EmailParaUsuario { get; set; } = string.Empty; 
+
+        [MinLength(6, ErrorMessage = "La contraseña del usuario debe tener al menos 6 caracteres.")]
+        [DataType(DataType.Password)]
         public string? PasswordParaUsuario { get; set; } = string.Empty;
 
         // 🖼️ HU-08: Archivo de imagen adjunto desde el formulario multipart/form-data
         public IFormFile? Foto { get; set; }
 
         // Ruta o URL de texto en caso de que se pase una dirección precargada
+        [MaxLength(500, ErrorMessage = "La URL de la foto no puede superar los 500 caracteres.")]
         public string? FotoUrl { get; set; }
     }
 }

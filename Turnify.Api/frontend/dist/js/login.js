@@ -76,6 +76,7 @@ async function login() {
             // Extraemos y normalizamos el Rol (Manejamos nulls con "")
             const userRole = (data.user.rol || data.user.Rol || data.user.rolNombre || "").toUpperCase();
             localStorage.setItem('usuario_rol', userRole);
+            localStorage.setItem('user_role', userRole); // ➕ AÑADIDO SIN BORRAR NADA: Compatibilidad para lectura de roles en vistas
 
             // 2. Definición de IDs de respaldo (Tus GUIDs de SQL Server)
             const ADMIN_ID = "8854C07C-6E5E-4876-A29A-C7AD5DCFBAB7"; 

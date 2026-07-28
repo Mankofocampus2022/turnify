@@ -21,6 +21,54 @@ namespace Turnify.Api.Services
             _context = context;
         }
 
+        // 🔒 MÉTODO PRIVADO AUXILIAR: Valida firmas mágicas de archivos (MIME Real)
+        private static bool EsImagenValida(IFormFile file)
+        {
+            try
+            {
+                using (var reader = new BinaryReader(file.OpenReadStream()))
+                {
+                    var bytes = reader.ReadBytes(8);
+                    
+                    // JPG/JPEG: FF D8 FF
+                    if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+
+                    // PNG: 89 50 4E 47 0D 0A 1A 0A
+                    if (bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return true;
+
+                    // WEBP: RIFF ... WEBP
+                    if (bytes.Length >= 8 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46) return true;
+
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // 🗑️ MÉTODO PRIVADO AUXILIAR: Elimina la foto física previa si existe en wwwroot
+        private static void EliminarFotoAntigua(string? fotoUrl)
+        {
+            if (string.IsNullOrEmpty(fotoUrl)) return;
+
+            try
+            {
+                var relativePath = fotoUrl.TrimStart('/');
+                var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", relativePath);
+
+                if (File.Exists(fullPath))
+                {
+                    File.Delete(fullPath);
+                }
+            }
+            catch
+            {
+                // Manejo silencioso para no interrumpir el flujo transaccional
+            }
+        }
+
         // 🧠 MÉTODO AUXILIAR PRIVADO: Procesa y guarda la imagen del colaborador en disco si viene en el DTO
         private async Task<string?> ProcessFotoUploadAsync(Guid id, IFormFile? fotoFile, string? fotoUrlOriginal)
         {
@@ -33,6 +81,11 @@ namespace Turnify.Api.Services
                 if (!extensionesPermitidas.Contains(extension))
                 {
                     throw new InvalidOperationException("Formato de imagen no permitido. Use .jpg, .jpeg, .png o .webp.");
+                }
+
+                if (!EsImagenValida(fotoFile))
+                {
+                    throw new InvalidOperationException("El archivo adjunto no es una imagen válida o está corrupto.");
                 }
 
                 if (fotoFile.Length > 5 * 1024 * 1024)
@@ -189,6 +242,11 @@ namespace Turnify.Api.Services
                 var nuevaFotoRuta = await ProcessFotoUploadAsync(id, dto.Foto, dto.FotoUrl);
                 if (!string.IsNullOrEmpty(nuevaFotoRuta))
                 {
+                    // Si ya tenía una foto almacenada localmente y es diferente a la nueva, eliminamos la anterior
+                    if (!string.IsNullOrEmpty(empleado.FotoUrl) && empleado.FotoUrl != nuevaFotoRuta)
+                    {
+                        EliminarFotoAntigua(empleado.FotoUrl);
+                    }
                     empleado.FotoUrl = nuevaFotoRuta;
                 }
             }
@@ -197,7 +255,6 @@ namespace Turnify.Api.Services
             if (!string.IsNullOrEmpty(dto.Telefono)) empleado.Telefono = dto.Telefono;
             if (!string.IsNullOrEmpty(dto.TipoContrato)) empleado.TipoContrato = dto.TipoContrato;
             
-            // 🛠️ FIX BUGS CS1061: Asignación directa segura ya que en EmpleadoUpdateDto son valores concretos (no nullable)
             empleado.ValorContrato = dto.ValorContrato;
             empleado.Activo = dto.Activo;
 
@@ -245,7 +302,6 @@ namespace Turnify.Api.Services
                     FotoUrl = e.FotoUrl, // 🖼️ HU-09: El cliente público también ve la foto del colaborador
                     TipoContrato = e.TipoContrato ?? string.Empty,
                     Activo = e.Activo
-                    // No exponemos teléfono, salario ni email por privacidad
                 })
                 .ToListAsync();
         }

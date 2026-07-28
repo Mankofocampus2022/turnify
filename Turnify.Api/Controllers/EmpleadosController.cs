@@ -40,6 +40,54 @@ namespace Turnify.Api.Controllers
             return proveedor?.Id;
         }
 
+        // 🔒 MÉTODO PRIVADO AUXILIAR: Valida firmas mágicas de archivos (MIME Real)
+        private static bool EsImagenValida(IFormFile file)
+        {
+            try
+            {
+                using (var reader = new BinaryReader(file.OpenReadStream()))
+                {
+                    var bytes = reader.ReadBytes(8);
+                    
+                    // JPG/JPEG: FF D8 FF
+                    if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+
+                    // PNG: 89 50 4E 47 0D 0A 1A 0A
+                    if (bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return true;
+
+                    // WEBP: RIFF ... WEBP
+                    if (bytes.Length >= 8 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46) return true;
+
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // 🗑️ MÉTODO PRIVADO AUXILIAR: Elimina la foto física previa si existe
+        private void EliminarFotoAntigua(string? fotoUrl)
+        {
+            if (string.IsNullOrEmpty(fotoUrl)) return;
+
+            try
+            {
+                var relativePath = fotoUrl.TrimStart('/');
+                var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", relativePath);
+
+                if (System.IO.File.Exists(fullPath))
+                {
+                    System.IO.File.Delete(fullPath);
+                }
+            }
+            catch
+            {
+                // Manejo silencioso para no interrumpir el flujo si el archivo no existía físicamente
+            }
+        }
+
         // 👥 GET: api/empleados
         [HttpGet]
         public async Task<IActionResult> GetAll()
@@ -79,7 +127,6 @@ namespace Turnify.Api.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                // Atrapa el error si el correo electrónico ya existe en la base de datos o fallo de formato
                 return BadRequest(new { message = ex.Message });
             }
         }
@@ -98,6 +145,27 @@ namespace Turnify.Api.Controllers
             return Ok(empleadoActualizado);
         }
 
+        // 🗑️ DELETE: api/empleados/{id} (Solución al Error 405 - Eliminación de Empleado)
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            var proveedorId = await GetProveedorIdAsync();
+            if (proveedorId == null) return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });
+
+            var empleado = await _context.empleados
+                .FirstOrDefaultAsync(e => e.Id == id && e.ProveedorId == proveedorId.Value);
+
+            if (empleado == null) return NotFound(new { message = "Empleado no encontrado o no pertenece a tu negocio." });
+
+            // Limpieza de foto almacenada en disco si existía
+            EliminarFotoAntigua(empleado.FotoUrl);
+
+            _context.empleados.Remove(empleado);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Empleado removido exitosamente." });
+        }
+
         // 🖼️ HU-08: POST: api/empleados/{id}/foto (Endpoint dedicado para la subida directa de fotografía)
         [HttpPost("{id}/foto")]
         public async Task<IActionResult> UploadFoto(Guid id, IFormFile foto)
@@ -108,12 +176,16 @@ namespace Turnify.Api.Controllers
             if (foto == null || foto.Length == 0)
                 return BadRequest(new { message = "Debe adjuntar una imagen válida." });
 
-            // CA3: Validar formatos de imagen permitidos
+            // CA3: Validar extensiones de imagen permitidas
             var extensionesPermitidas = new[] { ".jpg", ".jpeg", ".png", ".webp" };
             var extension = Path.GetExtension(foto.FileName).ToLowerInvariant();
 
             if (!extensionesPermitidas.Contains(extension))
                 return BadRequest(new { message = "Formato de imagen no soportado. Use .jpg, .jpeg, .png o .webp" });
+
+            // 🛡️ Seguridad Avanzada: Validar cabeceras reales del archivo (Magic Numbers)
+            if (!EsImagenValida(foto))
+                return BadRequest(new { message = "El archivo adjunto no es una imagen válida o está corrupto." });
 
             // CA4: Límite de peso (5MB)
             if (foto.Length > 5 * 1024 * 1024)
@@ -121,6 +193,11 @@ namespace Turnify.Api.Controllers
 
             try
             {
+                // Verificar si el empleado existe previamente y obtener su foto actual
+                var empleadoExistente = await _empleadoService.GetByIdAsync(id, proveedorId.Value);
+                if (empleadoExistente == null)
+                    return NotFound(new { message = "Empleado no encontrado o no pertenece a tu negocio." });
+
                 // Crear directorio de destino en wwwroot/uploads/empleados si no existe
                 var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "empleados");
                 if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
@@ -134,15 +211,15 @@ namespace Turnify.Api.Controllers
                     await foto.CopyToAsync(stream);
                 }
 
+                // Limpieza: Borrar foto anterior del servidor si ya existía una
+                EliminarFotoAntigua(empleadoExistente.FotoUrl);
+
                 // Generar URL relativa
                 var fotoUrl = $"/uploads/empleados/{fileName}";
 
-                // Actualizar la entidad en BD mediante el servicio o actualización directa
+                // Actualizar la entidad en BD mediante el servicio
                 var dto = new EmpleadoUpdateDto { FotoUrl = fotoUrl };
                 var empleadoActualizado = await _empleadoService.UpdateAsync(id, proveedorId.Value, dto);
-
-                if (empleadoActualizado == null)
-                    return NotFound(new { message = "Empleado no encontrado o no pertenece a tu negocio." });
 
                 return Ok(new { message = "Fotografía actualizada correctamente.", fotoUrl });
             }
@@ -175,7 +252,6 @@ namespace Turnify.Api.Controllers
 
             var empleadosActivos = await _empleadoService.GetActivosByProveedorAsync(proveedorId);
             
-            // Siempre devolvemos 200 OK, incluso si la lista está vacía, para no romper el frontend
             return Ok(empleadosActivos);
         }
     }

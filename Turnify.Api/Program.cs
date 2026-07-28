@@ -61,7 +61,7 @@ builder.Services.AddCors(options => {
 builder.Services.AddSwaggerGen(c => {
     c.SwaggerDoc("v1", new SwaggerDocInfo { Title = "Turnify API", Version = "v1" });
     c.CustomSchemaIds(type => type.ToString());
- 
+
     var securityScheme = new SwaggerSecurityScheme {
         Name = "JWT Authentication",
         Description = "Ingresa: Bearer {tu_token}",
@@ -192,16 +192,20 @@ app.UseRateLimiter();
 app.UseCors("AllowTurnify");
 
 // 🖼️ HU-08 & HU-09: SERVIDOR DE ARCHIVOS ARCHIVADOS DE FOTOGRAFÍAS (/uploads)
-var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
+// 🛠️ FIX DE RUTA FÍSICA: Se apunta a la raíz 'wwwroot' para mapear correctamente la subcarpeta '/uploads'
+var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+var uploadsPath = Path.Combine(wwwrootPath, "uploads");
+
 if (!Directory.Exists(uploadsPath))
 {
     Directory.CreateDirectory(uploadsPath);
 }
 
+// Servir archivos de la raíz wwwroot para que /uploads/empleados/foto.jpg resuelva perfecto
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(uploadsPath),
-    RequestPath = "/uploads"
+    FileProvider = new PhysicalFileProvider(wwwrootPath),
+    RequestPath = "" // Permite acceso directo relativo desde wwwroot
 });
 
 // 🛡️ 4. AUTENTICACIÓN (Verifica las llaves JWT)
