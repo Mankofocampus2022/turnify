@@ -88,17 +88,17 @@
     <main class="main-content">
         <div class="header-section">
             <h1>Directorio de Negocio</h1>
-            <p>Administración de usuarios, personal, sillas y clientes.</p>
+            <p id="subtituloDirectorio">Administración de usuarios, personal, sillas y clientes.</p>
         </div>
 
         <hr style="opacity: 0.1; margin: 20px 0;">
 
-        <!-- 🚀 SISTEMA DE PESTAÑAS -->
+        <!-- 🚀 SISTEMA DE PESTAÑAS (Identificadores añadidos para control de acceso por roles) -->
         <div class="tabs-container">
-            <button class="tab-btn active" onclick="switchTab('staff')"><i class="fas fa-user-tie"></i> Mi Personal</button>
-            <button class="tab-btn" onclick="switchTab('estaciones')"><i class="fas fa-chair"></i> Sillas / Estaciones</button>
-            <button class="tab-btn" onclick="switchTab('clientes')"><i class="fas fa-address-book"></i> Mis Clientes</button>
-            <button class="tab-btn" onclick="switchTab('usuarios')"><i class="fas fa-laptop-code"></i> Usuarios (Sistema)</button>
+            <button id="tab-btn-staff" class="tab-btn active" onclick="switchTab('staff')"><i class="fas fa-user-tie"></i> Mi Personal</button>
+            <button id="tab-btn-estaciones" class="tab-btn" onclick="switchTab('estaciones')"><i class="fas fa-chair"></i> Sillas / Estaciones</button>
+            <button id="tab-btn-clientes" class="tab-btn" onclick="switchTab('clientes')"><i class="fas fa-address-book"></i> Mis Clientes</button>
+            <button id="tab-btn-usuarios" class="tab-btn" onclick="switchTab('usuarios')"><i class="fas fa-laptop-code"></i> Usuarios (Sistema)</button>
         </div>
 
         <!-- 🏢 PESTAÑA: PERSONAL (STAFF) -->
@@ -177,7 +177,7 @@
             </div>
         </div>
 
-        <!-- 💻 PESTAÑA: USUARIOS DEL SISTEMA (Tu código original) -->
+        <!-- 💻 PESTAÑA: USUARIOS DEL SISTEMA -->
         <div id="tab-usuarios" class="tab-content">
             <div class="search-container" style="margin-bottom: 25px; max-width: 400px;">
                 <input type="text" id="inputBusqueda" placeholder="🔍 Buscar usuario por nombre o email..." 
@@ -289,7 +289,7 @@
     </div>
 </div>
 
-<!-- 🏷️ MODAL TARJETA QR (Original mantenido) -->
+<!-- 🏷️ MODAL TARJETA QR -->
 <div id="modalTarjeta" class="modal-tarjeta">
     <div class="tarjeta-container">
         <span class="close-tarjeta" onclick="cerrarTarjeta()">&times;</span>

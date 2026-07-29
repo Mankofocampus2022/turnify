@@ -6,10 +6,7 @@ using Turnify.Api.Models.DTOs;
 using Turnify.Api.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 
 namespace Turnify.Api.Controllers
 {
@@ -32,7 +29,7 @@ namespace Turnify.Api.Controllers
     {
         private readonly ICitaService _citaService;
         private readonly IDashboardService _dashboardService;
-        private readonly TurnifyDbContext _context; // 🛡️ [NUEVO] Inyección de base de datos para reparaciones en caliente
+        private readonly TurnifyDbContext _context; // 🛡️ Inyección de base de datos para reparaciones en caliente
         
         public CitasController(ICitaService citaService, IDashboardService dashboardService, TurnifyDbContext context) 
         {
@@ -47,13 +44,10 @@ namespace Turnify.Api.Controllers
         {
             try 
             {
-                // 🌐 En lugar de usar parches fijos o asumir que el Docker está local,
-                // calculamos el momento absoluto usando DateTimeOffset de manera universal.
-                var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
                 var tzId = isWindows ? "SA Pacific Standard Time" : "America/Bogota";
                 var targetZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
                 
-                // Convierte de forma exacta basándose en el reloj universal de la API de .NET
                 return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, targetZone).Date;
             }
             catch 
@@ -63,7 +57,7 @@ namespace Turnify.Api.Controllers
             }
         }
 
-        // --- 📅 1. AGENDA DE HOY (Filtro Estricto Bogota Time) ---
+        // --- 📅 1. AGENDA DE HOY (Filtro Estricto Bogota Time & Isolation HU-12) ---
         [HttpGet("hoy")]
         public async Task<IActionResult> GetCitasHoy()
         {
@@ -71,7 +65,6 @@ namespace Turnify.Api.Controllers
             if (string.IsNullOrEmpty(userIdClaim)) 
                 return Unauthorized(new { message = "Sesión no válida o expirada" });
 
-            // 🛡️ Blindaje: Guid.TryParse evita excepciones si el token viene corrupto
             if (!Guid.TryParse(userIdClaim, out Guid userId))
                 return BadRequest(new { message = "Identificador de usuario malformado." });
 
@@ -86,7 +79,6 @@ namespace Turnify.Api.Controllers
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized(new { message = "Sesión no válida" });
 
-            // 🚩 FIX BUG 01: Reemplazamos DateTime.Today por la fecha normalizada de Bogotá para evitar desfases de Docker UTC
             var hoyBogota = GetBogotaToday();
             var fechaInicio = inicio ?? hoyBogota;
             var fechaFin = fin ?? hoyBogota;
@@ -101,15 +93,27 @@ namespace Turnify.Api.Controllers
             return Ok(agenda);
         }
 
-        // 📈 --- 3. ANALÍTICA AVANZADA (Intacta con Seguridad Reforzada) ---
+        // 📈 --- 3. ANALÍTICA AVANZADA (Aislamiento de métricas de negocio HU-12) ---
         [HttpGet("analitica-avanzada")]
         public async Task<IActionResult> GetAnaliticaAvanzada([FromQuery] Guid proveedorId, [FromQuery] string periodo = "mes", [FromQuery] DateTime? fecha = null)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            
-            // 🛡️ Blindaje: Solo el dueño de la data o Admin pueden ver analítica sensible
+            var esIndependienteClaim = User.FindFirst("EsIndependiente")?.Value;
+            bool isIndependiente = bool.TryParse(esIndependienteClaim, out var ind) && ind;
+
+            // 🛡️ HU-12: Un proveedor dependiente no debe consultar métricas globales del local
+            if (User.IsInRole(Roles.RoleNames.ProveedorDependiente))
+            {
+                var miProveedorIdClaim = User.FindFirst("ProveedorId")?.Value;
+                if (miProveedorIdClaim != proveedorId.ToString())
+                {
+                    return Forbid();
+                }
+            }
+
             bool esDuenio = !string.IsNullOrEmpty(userIdClaim) && userIdClaim.Equals(proveedorId.ToString(), StringComparison.OrdinalIgnoreCase);
-            if (proveedorId != Guid.Empty && !esDuenio && !User.IsInRole("Admin"))
+            
+            if (proveedorId != Guid.Empty && !esDuenio && !User.IsInRole(Roles.RoleNames.Administrador) && !User.IsInRole(Roles.RoleNames.Staff) && !isIndependiente)
                 return Forbid();
 
             var analitica = await _dashboardService.GetResumenDiarioAsync(proveedorId, fecha, periodo);
@@ -124,7 +128,8 @@ namespace Turnify.Api.Controllers
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized();
 
-            if (userIdClaim != proveedorId.ToString() && !User.IsInRole("Admin")) return Forbid();
+            if (userIdClaim != proveedorId.ToString() && !User.IsInRole(Roles.RoleNames.Administrador) && !User.IsInRole(Roles.RoleNames.Staff)) 
+                return Forbid();
 
             var datos = await _citaService.GetCitasRangoAsync(proveedorId, inicio, fin);
             return Ok(datos);
@@ -142,11 +147,10 @@ namespace Turnify.Api.Controllers
             {
                 // 🛡️ BLINDAJE JWT: Mapeo inteligente de ClienteID vs UsuarioID
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                var clienteIdClaim = User.FindFirst("ClienteId")?.Value; // 🚩 Nueva claim inyectada en el login
+                var clienteIdClaim = User.FindFirst("ClienteId")?.Value;
 
-                if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole("Cliente"))
+                if (!string.IsNullOrEmpty(userIdClaim) && User.IsInRole(Roles.RoleNames.Cliente))
                 {
-                    // 🚩 FIX MAESTRO: Priorizamos el ID de la tabla Clientes si está en el token
                     if (!string.IsNullOrEmpty(clienteIdClaim) && Guid.TryParse(clienteIdClaim, out Guid realClientId))
                     {
                         dto.ClienteId = realClientId;
@@ -159,8 +163,8 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
-                // 🚀 [BUG 1 RESTRICTION] - UN PROVEEDOR O ADMINISTRADOR NO PUEDE PEDIR CITAS COMO CLIENTE
-                if (!string.IsNullOrEmpty(userIdClaim) && !User.IsInRole("Cliente"))
+                // 🚀 RESTICCIÓN: PROVEEDOR / STAFF NO PUEDEN AGENDARSE A SÍ MISMOS COMO CLIENTES
+                if (!string.IsNullOrEmpty(userIdClaim) && !User.IsInRole(Roles.RoleNames.Cliente))
                 {
                     if (dto.ClienteId == Guid.Empty && string.IsNullOrEmpty(dto.AnonimoNombre))
                     {
@@ -168,11 +172,9 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
-                // 🚀 [BUG 2 FIX] - GUEST CHECKOUT QR (ANTI COLESIONAMIENTO DE NULLS DE BD ANTIGUA)
+                // 🚀 GUEST CHECKOUT QR (ANTI-COLISIONAMIENTO DE NULLS DE BD)
                 if (dto.ClienteId == Guid.Empty && (!string.IsNullOrEmpty(dto.AnonimoNombre) || !string.IsNullOrEmpty(dto.AnonimoEmail) || !string.IsNullOrEmpty(dto.AnonimoWhatsApp)))
                 {
-                    // 🧠 MASTER SOLID FIX: Evitamos evaluar directamente strings de entrada contra campos que contengan NULL en SQL Server.
-                    // Forzamos la sanitización perimetral en la consulta antes de proyectar con el Select.
                     var emailTarget = (dto.AnonimoEmail ?? string.Empty).Trim().ToLower();
                     var wppTarget = (dto.AnonimoWhatsApp ?? string.Empty).Trim().ToLower();
 
@@ -213,7 +215,7 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
-                // 🚀 [KILLER FIX QR/ADMIN] AUTO-CREACIÓN EN CALIENTE DEL PERFIL DE CLIENTE
+                // 🚀 AUTO-CREACIÓN EN CALIENTE DEL PERFIL DE CLIENTE
                 if (dto.ClienteId != Guid.Empty)
                 {
                     var clientExists = await _context.clientes.AnyAsync(c => c.id == dto.ClienteId || c.usuario_id == dto.ClienteId);
@@ -228,7 +230,7 @@ namespace Turnify.Api.Controllers
                             email = !string.IsNullOrEmpty(userForClient?.email) ? userForClient.email : "qr_test@turnify.com",
                             activo = true,
                             fecha_creacion = DateTime.UtcNow,
-                            usuario_id = userForClient != null ? dto.ClienteId : (Guid?)null
+                            usuario_id = userForClient != null ? dto.ClienteId : null
                         };
                         _context.clientes.Add(newCliente);
                         await _context.SaveChangesAsync();
@@ -236,7 +238,6 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
-                // 🚩 OBSERVACIONES Y CAMPOS INTACTOS: Pasamos la estafeta al CitaService conservando todo el payload
                 var result = await _citaService.AgendarCitaAutomaticaAsync(dto);
                 if (!result.Success) 
                     return BadRequest(new { message = result.Message });
@@ -250,7 +251,6 @@ namespace Turnify.Api.Controllers
             }
             catch (Exception ex)
             {
-                // 🛡️ BLINDAJE: Si ocurre un error, nos dirá exactamente qué pasó en la BD
                 Console.WriteLine($"❌ [Turnify Critical Error] {ex.Message}");
                 return StatusCode(500, new { message = "Error interno al agendar: " + ex.Message });
             }
@@ -278,13 +278,12 @@ namespace Turnify.Api.Controllers
         {
             if (proveedorId == Guid.Empty) return BadRequest(new { message = "ID de proveedor inválido." });
             
-            // 🚩 FIX BUG 01: Forzamos que si el front no manda fecha, use hoy Colombia y no UTC medianoche
             var fechaConsulta = fecha ?? GetBogotaToday();
             var agenda = await _citaService.GetAgendaDiaAsync(proveedorId, fechaConsulta);
             return Ok(agenda);
         }
 
-        // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO CON VALIDACIÓN DINÁMICA) ---
+        // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO) ---
         [HttpGet("disponibilidad")]
         [AllowAnonymous] 
         public async Task<IActionResult> GetDisponibilidad([FromQuery] Guid proveedorId, [FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
@@ -292,7 +291,6 @@ namespace Turnify.Api.Controllers
             if (proveedorId == Guid.Empty || servicioId == Guid.Empty)
                 return BadRequest(new { message = "Proveedor y Servicio son requeridos para calcular el túnel de tiempo." });
 
-            // 🚩 FIX SENSE: Alineamos la consulta de slots libres a la zona horaria colombiana por defecto
             var fechaConsulta = fecha ?? GetBogotaToday();
             var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fechaConsulta);
             
@@ -301,7 +299,6 @@ namespace Turnify.Api.Controllers
                 return Ok(new List<string>()); 
             }
 
-            // 🛡️ CORRECCIÓN SENIOR: Mapeamos los TimeSpan explícitamente a strings en formato "hh:mm"
             var formattedSlots = slots.Select(s => s.ToString(@"hh\:mm")).ToList();
             return Ok(formattedSlots);
         }
@@ -330,8 +327,7 @@ namespace Turnify.Api.Controllers
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var clienteIdClaim = User.FindFirst("ClienteId")?.Value;
             
-            // 🛡️ Seguridad: Un cliente NO puede husmear el historial de otros IDs
-            if (User.IsInRole("Cliente"))
+            if (User.IsInRole(Roles.RoleNames.Cliente))
             {
                 bool esPropio = userIdClaim == clienteId.ToString() || clienteIdClaim == clienteId.ToString();
                 if (!esPropio) return Forbid();
@@ -344,7 +340,7 @@ namespace Turnify.Api.Controllers
             return Ok(historial);
         }
 
-        // --- 📍 10. UBICACIÓN (Blindada and optimizada) ---
+        // --- 📍 10. UBICACIÓN (Blindada y optimizada) ---
         [HttpGet("{id}/ubicacion")]
         public async Task<IActionResult> GetUbicacionDomicilio(Guid id)
         {
@@ -366,7 +362,7 @@ namespace Turnify.Api.Controllers
             });
         }
 
-        // --- 💎 11. [NUEVO] DETALLE DE CITA (Blindado) ---
+        // --- 💎 11. DETALLE DE CITA (Blindado) ---
         [HttpGet("{id}")]
         public async Task<IActionResult> GetDetalleCita(Guid id)
         {

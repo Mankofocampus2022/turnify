@@ -40,6 +40,9 @@ namespace Turnify.Api.Data
             // 🚀 HU 001: Precisión para el valor del contrato/pago silla/comisión
             modelBuilder.Entity<Empleado>().Property(e => e.ValorContrato).HasPrecision(18, 2);
 
+            // 🚀 HU-09 & HU-12: Precisión para la comisión de proveedores dependientes
+            modelBuilder.Entity<Proveedores>().Property(p => p.PorcentajeComision).HasPrecision(5, 2);
+
             // ============================================================================
             // 2. MAPEO DE NOMBRES DE TABLAS (MINÚSCULAS Y SNAKE_CASE)
             // ============================================================================
@@ -94,7 +97,8 @@ namespace Turnify.Api.Data
 
                 entity.HasOne(u => u.Proveedor)
                       .WithOne(p => p.Usuario)
-                      .HasForeignKey<Proveedores>(p => p.UsuarioId);
+                      .HasForeignKey<Proveedores>(p => p.UsuarioId)
+                      .IsRequired(false); // Permite proveedores sin un usuario asignado obligatorio
             });
 
             // 🛡️ BLINDAJE PARA CLIENTES
@@ -103,11 +107,11 @@ namespace Turnify.Api.Data
                 entity.Property(c => c.usuario_id).HasColumnName("usuario_id");
             });
 
-            // 🛡️ BLINDAJE PARA PROVEEDORES
+            // 🛡️ BLINDAJE Y EXTENSIÓN PARA PROVEEDORES (HU-08 a HU-12)
             modelBuilder.Entity<Proveedores>(entity => {
                 entity.ToTable("proveedores");
                 entity.Property(p => p.Id).HasColumnName("id");
-                entity.Property(p => p.UsuarioId).HasColumnName("usuario_id");
+                entity.Property(p => p.UsuarioId).HasColumnName("usuario_id").IsRequired(false);
                 
                 entity.Property(p => p.NombreComercial).HasColumnName("nombre_comercial");
                 entity.Property(p => p.Direccion).HasColumnName("direccion");
@@ -116,6 +120,18 @@ namespace Turnify.Api.Data
                 
                 entity.Property(p => p.Telefono).HasColumnName("telefono").HasMaxLength(20).IsRequired(false);
                 entity.Property(p => p.Email).HasColumnName("email").HasMaxLength(150).IsRequired(false); 
+
+                // 🚀 NUEVO MAPEO: Módulo de fotos, rol independiente y dependencias de Staff
+                entity.Property(p => p.FotoUrl).HasColumnName("foto_url").HasMaxLength(500).IsRequired(false);
+                entity.Property(p => p.EsIndependiente).HasColumnName("es_independiente").HasDefaultValue(false);
+                entity.Property(p => p.StaffId).HasColumnName("staff_id").IsRequired(false);
+                entity.Property(p => p.PorcentajeComision).HasColumnName("porcentaje_comision").HasDefaultValue(0.00m);
+
+                // Relación opcional con el Staff/Dueño (Si el proveedor es dependiente)
+                entity.HasOne(p => p.Staff)
+                      .WithMany()
+                      .HasForeignKey(p => p.StaffId)
+                      .OnDelete(DeleteBehavior.SetNull); // Si el Staff borra su cuenta, el registro del dependiente queda huérfano sin crashear la BD
             });
 
             // ============================================================================
@@ -186,7 +202,9 @@ namespace Turnify.Api.Data
                 new Roles { id = Guid.Parse("56992F75-6420-4D55-A5F9-9223248C50D7"), nombre = "Cliente" },
                 new Roles { id = Guid.Parse("8854C07C-6E5E-4876-A29A-C7AD5DCFBAB7"), nombre = "Proveedor" },
                 new Roles { id = Guid.Parse("6DE2A606-416E-4588-B4EB-CC20856CD80A"), nombre = "SuperAdministrador" },
-                new Roles { id = Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099"), nombre = "Staff" } // Rol Empleado / Colaborador
+                new Roles { id = Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099"), nombre = "Staff" }, // Rol Empleado / Colaborador
+                new Roles { id = Guid.Parse("11B2C3D4-E5F6-7890-A1B2-C3D4E5F60010"), nombre = "ProveedorDependiente" }, // 🚀 HU-09: Colaborador en local
+                new Roles { id = Guid.Parse("22C3D4E5-F6A7-8901-B2C3-D4E5F6A70020"), nombre = "ProveedorIndependiente" }  // 🚀 HU-10: Profesional a domicilio
             );
 
             modelBuilder.Entity<PlanSuscripcion>().HasData(

@@ -6,6 +6,62 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="css-registro.css?v=2.1">
+    <style>
+        /* 🚀 Estilos Inyectados para Carga Circular de Foto (HU-10 - CA2) */
+        .photo-upload-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 15px 0;
+            padding: 15px;
+            border: 2px dashed #48c1b5;
+            border-radius: 12px;
+            background: #f8fafc;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .photo-upload-container:hover {
+            border-color: #319795;
+            background: #f0fdf4;
+        }
+
+        .photo-preview-circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #48c1b5;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+            background-color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            font-size: 2.5rem;
+            overflow: hidden;
+        }
+
+        .photo-preview-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .role-selector-3col {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+
+        .role-selector-3col button {
+            padding: 10px 5px;
+            font-size: 0.85rem;
+        }
+    </style>
 </head>
 <body>
 <div class="register-wrapper">
@@ -17,14 +73,34 @@
             
             <h2>Únete a Turnify</h2>
             
-            <div class="role-selector">
+            <!-- 🚀 Selector de 3 Roles (Cliente, Dueño de Negocio, Profesional Independiente) (HU-10) -->
+            <div class="role-selector role-selector-3col">
                 <button type="button" id="btnSoyCliente" class="active" onclick="cambiarRol('CLIENTE')">Soy Cliente</button>
-                <button type="button" id="btnSoyBarbero" onclick="cambiarRol('ADMINISTRADOR')">Soy Dueño de Negocio</button>
+                <button type="button" id="btnSoyBarbero" onclick="cambiarRol('ADMINISTRADOR')">Dueño Local</button>
+                <button type="button" id="btnSoyIndependiente" onclick="cambiarRol('INDEPENDIENTE')">Independiente</button>
             </div>
         </div>
 
-        <form id="formRegistroCliente" class="form-grid">
+        <form id="formRegistroCliente" class="form-grid" enctype="multipart/form-data">
             
+            <!-- 🚀 Carga de Foto de Rostro Obligatoria para Profesional Independiente (HU-10 - CA2) -->
+            <div id="groupFotoRostro" class="input-group full-width" style="display: none;">
+                <label><i class="fas fa-camera"></i> Foto de Perfil / Rostro (Obligatorio)</label>
+                <div class="photo-upload-container">
+                    <div class="photo-preview-circle" id="previewContainer">
+                        <i class="fas fa-user-circle" id="iconPlaceholder"></i>
+                        <img id="imgPreview" src="" alt="Vista previa" style="display: none;">
+                    </div>
+                    <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">
+                        Sube una foto clara de tu rostro (Máx. 3MB: JPG, PNG, WEBP)
+                    </p>
+                    <input type="file" id="regFotoRostro" accept="image/jpeg,image/png,image/webp" style="display: none;" onchange="previewFoto(this)">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('regFotoRostro').click()" style="padding: 6px 12px; font-size: 0.85rem; cursor: pointer;">
+                        <i class="fas fa-upload"></i> Seleccionar Imagen
+                    </button>
+                </div>
+            </div>
+
             <div class="input-group full-width">
                 <label><i class="fas fa-user"></i> Nombre completo</label>
                 <input type="text" id="regNombre" placeholder="Ej: Darwin Ocampo" required>
@@ -51,6 +127,12 @@
             <div id="groupNegocio" class="input-group full-width" style="display: none;">
                 <label><i class="fas fa-store"></i> Nombre de tu Negocio / Establecimiento</label>
                 <input type="text" id="regNegocio" placeholder="Ej: Barbería El Don o Salón Belleza">
+            </div>
+
+            <!-- 🚀 Campo Adicional de Descripción para Independientes (HU-10) -->
+            <div id="groupDescripcion" class="input-group full-width" style="display: none;">
+                <label><i class="fas fa-align-left"></i> Breve descripción de tus servicios a domicilio</label>
+                <input type="text" id="regDescripcion" placeholder="Ej: Especialista en cortes modernos y barba a domicilio">
             </div>
 
             <div id="sectionReservaInmediata" class="full-width" style="display: none;">
@@ -115,6 +197,38 @@
         </div>
     </div>
 </div>
+
+<script>
+    // 🚀 Helper Visual Inyectado para Preview de Foto (HU-10 - CA2)
+    function previewFoto(input) {
+        const preview = document.getElementById('imgPreview');
+        const icon = document.getElementById('iconPlaceholder');
+
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+
+            // Validar peso de 3MB
+            if (file.size > 3 * 1024 * 1024) {
+                alert("La foto de perfil no debe superar los 3 MB.");
+                input.value = "";
+                preview.style.display = "none";
+                icon.style.display = "block";
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = "block";
+                icon.style.display = "none";
+            }
+            reader.readAsDataURL(file);
+        } else {
+            preview.style.display = "none";
+            icon.style.display = "block";
+        }
+    }
+</script>
 
 <script src="js/registro-clientes.js"></script>
 </body>

@@ -14,10 +14,11 @@ namespace Turnify.Api.Models
         [JsonPropertyName("id")]
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        [Required]
+        // 🧠 BLINDAJE HU-10 / HU-12: Nullable para permitir proveedores dependientes 
+        // o mapeos directos sin obligar una cuenta de usuario exclusiva por cada perfil.
         [Column("usuario_id")]
         [JsonPropertyName("usuario_id")]
-        public Guid UsuarioId { get; set; }
+        public Guid? UsuarioId { get; set; }
 
         [Required]
         [Column("tipo")]
@@ -81,14 +82,58 @@ namespace Turnify.Api.Models
         [JsonPropertyName("fecha_actualizacion")]
         public DateTime? FechaActualizacion { get; set; }
 
-        
+
+        // =========================================================================
+        // 🚀 NUEVOS CAMPOS REQUERIDOS (HU-08, HU-09, HU-10, HU-12)
+        // =========================================================================
+
+        /// <summary>
+        /// HU-08 & HU-11: Ruta relativa de la foto de perfil o avatar guardada en servidor.
+        /// Ejemplo: /uploads/proveedores/a8f3b2c1-foto.jpg
+        /// </summary>
+        [Column("foto_url")]
+        [JsonPropertyName("foto_url")]
+        public string? FotoUrl { get; set; }
+
+        /// <summary>
+        /// HU-10 & HU-12: Indica si opera como profesional independiente (100% ganancias brutas).
+        /// Si es false, se trata de un proveedor dependiente o local comercial.
+        /// </summary>
+        [Column("es_independiente")]
+        [JsonPropertyName("es_independiente")]
+        public bool EsIndependiente { get; set; } = false;
+
+        /// <summary>
+        /// HU-10 & HU-12: Clave foránea opcional que apunta al Staff / Dueño del negocio.
+        /// Será null si el profesional es independiente (EsIndependiente = true).
+        /// </summary>
+        [Column("staff_id")]
+        [JsonPropertyName("staff_id")]
+        public Guid? StaffId { get; set; }
+
+        /// <summary>
+        /// HU-09 & HU-12: Porcentaje de comisión asignado para el dependiente.
+        /// Para independientes se establece por defecto en 0.00 (ganancia directa total).
+        /// </summary>
+
+        [Column("porcentaje_comision", TypeName = "decimal(5,2)")]
+        [JsonPropertyName("porcentaje_comision")]
+        public decimal PorcentajeComision { get; set; } = 0.00m;
+
 
         // --- 🚩 RELACIONES DE IDENTIDAD (El Blindaje Maestro) ---
 
         [ForeignKey("UsuarioId")]
         [JsonIgnore] // Evita ciclos en el login
         public virtual Usuarios? Usuario { get; set; }
-        
+
+        /// <summary>
+        /// HU-12: Relación de navegación opcional hacia el Staff/Dueño del establecimiento.
+        /// </summary>
+        [ForeignKey("StaffId")]
+        [JsonIgnore]
+        public virtual Usuarios? Staff { get; set; }
+
         [JsonPropertyName("horarios")]
         public virtual ICollection<HorariosAtencion> Horarios { get; set; } = new List<HorariosAtencion>();
         

@@ -51,7 +51,7 @@ namespace Turnify.Api.Controllers
             var rolClaim = User.FindFirst(ClaimTypes.Role)?.Value;
             
             var isAdmin = rolClaim != null && (rolClaim.ToLower().Contains("admin") || rolClaim.ToLower().Contains("super"));
-            var isStaff = rolClaim != null && rolClaim.Equals("Staff", StringComparison.OrdinalIgnoreCase);
+            var isStaff = rolClaim != null && rolClaim.Equals(Roles.RoleNames.Staff, StringComparison.OrdinalIgnoreCase);
 
             IQueryable<Usuarios> query = _context.usuarios.Include(u => u.Rol);
 
@@ -76,6 +76,13 @@ namespace Turnify.Api.Controllers
                         .Select(e => e.UsuarioId!.Value)
                         .ToListAsync();
 
+                    // Capturar también proveedores dependientes asignados por StaffId (HU-09 / HU-12)
+                    var proveedoresDependientesUserIds = await _context.proveedores
+                        .AsNoTracking()
+                        .Where(p => p.StaffId == proveedor.Id && p.UsuarioId != null)
+                        .Select(p => p.UsuarioId!.Value)
+                        .ToListAsync();
+
                     // 2. Capturamos los usuario_id de los Clientes que agendaron en su búnker
                     var clientesUserIds = await _context.clientes
                         .AsNoTracking()
@@ -85,7 +92,11 @@ namespace Turnify.Api.Controllers
                         .ToListAsync();
 
                     // Unificamos el listado para el directorio administrativo
-                    var totalListIds = empleadosUserIds.Concat(clientesUserIds).Distinct().ToList();
+                    var totalListIds = empleadosUserIds
+                        .Concat(proveedoresDependientesUserIds)
+                        .Concat(clientesUserIds)
+                        .Distinct()
+                        .ToList();
 
                     // Incluimos al propio dueño en el listado para evitar auto-exclusión
                     totalListIds.Add(userId);
@@ -165,12 +176,15 @@ namespace Turnify.Api.Controllers
                         _logger.LogInformation("✅ [Turnify] Cliente creado automáticamente para: {Email}", usuarioConRol.email);
                     }
 
-                    // RESOLUCIÓN DE RELACIONES SEGÚN ROL INVERTIDO
+                    // RESOLUCIÓN DE RELACIONES SEGÚN ROL INVERTIDO (HU-08 a HU-12)
                     Guid? proveedorId = null;
                     Guid? empleadoId = null;
-                    var rolNombre = usuarioConRol.Rol?.nombre ?? "Cliente";
+                    bool esIndependiente = false;
+                    string? fotoUrl = null;
 
-                    if (rolNombre == "Proveedor") // Es un Colaborador / Barbero / Operario
+                    var rolNombre = usuarioConRol.Rol?.nombre ?? Roles.RoleNames.Cliente;
+
+                    if (rolNombre == Roles.RoleNames.Proveedor || rolNombre == Roles.RoleNames.ProveedorDependiente) 
                     {
                         var emp = await _context.empleados.FirstOrDefaultAsync(e => e.UsuarioId == usuarioConRol.id);
                         if (emp != null)
@@ -178,18 +192,30 @@ namespace Turnify.Api.Controllers
                             empleadoId = emp.Id;
                             proveedorId = emp.ProveedorId;
                         }
+                        else
+                        {
+                            var prov = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuarioConRol.id);
+                            if (prov != null)
+                            {
+                                proveedorId = prov.Id;
+                                esIndependiente = prov.EsIndependiente;
+                                fotoUrl = prov.FotoUrl;
+                            }
+                        }
                     }
-                    else // Es el Dueño (Staff)
+                    else // Es el Dueño (Staff) o Independiente
                     {
                         var prov = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuarioConRol.id);
                         if (prov != null)
                         {
                             proveedorId = prov.Id;
+                            esIndependiente = prov.EsIndependiente;
+                            fotoUrl = prov.FotoUrl;
                         }
                     }
 
                     // Generamos token inyectando de forma segura los claims mapeados
-                    var token = GenerarTokenJWT(usuarioConRol, cliente?.id, proveedorId, empleadoId);
+                    var token = GenerarTokenJWT(usuarioConRol, cliente?.id, proveedorId, empleadoId, esIndependiente, fotoUrl);
 
                     _logger.LogInformation("--- ✅ Login Exitoso Unificado: {Email} ---", usuarioConRol.email);
 
@@ -202,7 +228,9 @@ namespace Turnify.Api.Controllers
                             empleadoId = empleadoId, 
                             nombre = usuarioConRol.nombre, 
                             email = usuarioConRol.email, 
-                            rol = rolNombre
+                            rol = rolNombre,
+                            esIndependiente = esIndependiente,
+                            fotoUrl = fotoUrl
                         } 
                     });
                 }
@@ -226,8 +254,8 @@ namespace Turnify.Api.Controllers
             
             if (dto == null) return BadRequest(new { message = "Datos inválidos." });
 
-            var adminRoleGuid = Guid.Parse("6DE2A606-416E-4588-B4EB-CC20856CD80A");
-            var superAdminRoleGuid = Guid.Parse("6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43");
+            var adminRoleGuid = Roles.RoleIds.SuperAdministrador;
+            var superAdminRoleGuid = Roles.RoleIds.Administrador;
 
             if (dto.RolId == adminRoleGuid || dto.RolId == superAdminRoleGuid)
             {
@@ -386,8 +414,14 @@ namespace Turnify.Api.Controllers
             return u == null ? NotFound() : Ok(u); 
         }
 
-        // 🚩 GENERAR TOKEN - COMPATIBILIDAD EXPANDIDA CON CLAIM DE EMPLEADO
-        private string GenerarTokenJWT(Usuarios usuario, Guid? clienteId = null, Guid? proveedorId = null, Guid? empleadoId = null)
+        // 🚩 GENERAR TOKEN - COMPATIBILIDAD EXPANDIDA CON CLAIMS DE EMPLEADO, INDEPENDIENTE Y FOTO (HU-12)
+        private string GenerarTokenJWT(
+            Usuarios usuario, 
+            Guid? clienteId = null, 
+            Guid? proveedorId = null, 
+            Guid? empleadoId = null,
+            bool esIndependiente = false,
+            string? fotoUrl = null)
         {
             var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") 
                 ?? _config["Jwt:Key"] 
@@ -403,12 +437,14 @@ namespace Turnify.Api.Controllers
             var claims = new List<Claim> { 
                 new Claim(ClaimTypes.NameIdentifier, usuario.id.ToString()), 
                 new Claim(ClaimTypes.Name, usuario.nombre ?? ""), 
-                new Claim(ClaimTypes.Role, usuario.Rol?.nombre ?? "Usuario") 
+                new Claim(ClaimTypes.Role, usuario.Rol?.nombre ?? Roles.RoleNames.Cliente),
+                new Claim("EsIndependiente", esIndependiente.ToString().ToLower())
             };
 
             if (clienteId.HasValue) claims.Add(new Claim("ClienteId", clienteId.Value.ToString()));
             if (proveedorId.HasValue) claims.Add(new Claim("ProveedorId", proveedorId.Value.ToString()));
             if (empleadoId.HasValue) claims.Add(new Claim("EmpleadoId", empleadoId.Value.ToString())); 
+            if (!string.IsNullOrEmpty(fotoUrl)) claims.Add(new Claim("FotoUrl", fotoUrl));
 
             var tokenDescriptor = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"] ?? "Turnify.Api",

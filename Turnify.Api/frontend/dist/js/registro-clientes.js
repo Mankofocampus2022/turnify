@@ -1,19 +1,19 @@
 /* ============================================================
-   TURNIFY - MOTOR DE REGISTRO INTELIGENTE 
+   TURNIFY - MOTOR DE REGISTRO INTELIGENTE (MULTI-ROL + HU-10)
    ============================================================ */
 
-// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente. Si entras desde localhost usa el puerto 5000, 
-// si entras desde otra IP de la red local (ej: pruebas desde el celular) o dominio, reconfigura el endpoint automáticamente.
+// 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta el host en caliente.
 const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:5000'
     : (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)
         ? `${window.location.protocol}//${window.location.hostname}:5000`
         : window.location.origin);
 
-// 1. CONFIGURACIÓN DE ROLES (GUIDs de tu base de datos SQL Server)
+// 1. CONFIGURACIÓN DE ROLES (GUIDs y Claves de Sistema)
 const ROLES = {
     CLIENTE: "56992f75-6420-4d55-a5f9-9223248c50d7",
-    ADMINISTRADOR: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7" // Rol de Proveedor / Administrador del negocio
+    ADMINISTRADOR: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7", // Rol de Proveedor / Administrador del negocio
+    INDEPENDIENTE: "PROVEEDOR_INDEPENDIENTE"
 };
 
 let currentRole = 'CLIENTE';
@@ -23,45 +23,68 @@ const urlParams = new URLSearchParams(window.location.search);
 const qrProveedorId = urlParams.get('id'); // Si viene de un QR, este ID existirá
 
 /**
- * Función para alternar entre Cliente y Administrador (Dueño de Negocio) en la UI
- * (Actualizada de forma inclusiva para soportar Barberos y Manicuristas)
+ * Función para alternar entre Cliente, Administrador e Independiente en la UI (HU-10)
  */
 function cambiarRol(rol) {
     currentRole = rol;
     
     const groupNegocio = document.getElementById('groupNegocio');
-    const groupEspecialidad = document.getElementById('groupEspecialidad'); // 🧠 ADICIÓN: Captura el contenedor de categoría
+    const groupEspecialidad = document.getElementById('groupEspecialidad');
+    const groupFotoRostro = document.getElementById('groupFotoRostro');
+    const groupDescripcion = document.getElementById('groupDescripcion');
     const inputNegocio = document.getElementById('regNegocio');
     const btnText = document.getElementById('btnText');
     const btnCliente = document.getElementById('btnSoyCliente');
     const btnBarbero = document.getElementById('btnSoyBarbero');
-    // 🚩 Si es Administrador/Dueño, ocultamos la sección de reserva inmediata (lógica de negocio)
+    const btnIndependiente = document.getElementById('btnSoyIndependiente');
     const sectionReserva = document.getElementById('sectionReservaInmediata');
 
-    if (rol === 'ADMINISTRADOR' || rol === 'BARBERO') {
-        currentRole = 'ADMINISTRADOR'; // Forzamos el rol al estándar corporativo
+    // Resetear estados activos de los botones
+    if(btnCliente) btnCliente.classList.remove('active');
+    if(btnBarbero) btnBarbero.classList.remove('active');
+    if(btnIndependiente) btnIndependiente.classList.remove('active');
+
+    if (rol === 'INDEPENDIENTE') {
+        currentRole = 'INDEPENDIENTE';
+        if(groupNegocio) groupNegocio.style.display = 'none';
+        if(groupEspecialidad) groupEspecialidad.style.display = 'block';
+        if(groupFotoRostro) groupFotoRostro.style.display = 'block';
+        if(groupDescripcion) groupDescripcion.style.display = 'block';
+        if(sectionReserva) sectionReserva.style.display = 'none';
+        if(inputNegocio) inputNegocio.required = false;
+        
+        btnText.innerText = "Registrarme como Independiente";
+        if(btnIndependiente) btnIndependiente.classList.add('active');
+
+    } else if (rol === 'ADMINISTRADOR' || rol === 'BARBERO') {
+        currentRole = 'ADMINISTRADOR';
         if(groupNegocio) groupNegocio.style.display = 'block';
-        if(groupEspecialidad) groupEspecialidad.style.display = 'block'; // 🧠 ADICIÓN: Muestra la especialidad al ser Profesional
+        if(groupEspecialidad) groupEspecialidad.style.display = 'block';
+        if(groupFotoRostro) groupFotoRostro.style.display = 'none';
+        if(groupDescripcion) groupDescripcion.style.display = 'none';
         if(sectionReserva) sectionReserva.style.display = 'none';
         if(inputNegocio) inputNegocio.required = true;
-        btnText.innerText = "Registrar mi Negocio"; // 🧠 ADICIÓN: Texto inclusivo para la UI
+        
+        btnText.innerText = "Registrar mi Negocio";
         if(btnBarbero) btnBarbero.classList.add('active');
-        if(btnCliente) btnCliente.classList.remove('active');
+
     } else {
         currentRole = 'CLIENTE';
         if(groupNegocio) groupNegocio.style.display = 'none';
-        if(groupEspecialidad) groupEspecialidad.style.display = 'none'; // 🧠 ADICIÓN: Oculta la especialidad si vuelve a ser Cliente
-        // Si hay un QR detectado, volvemos a mostrar la reserva al ser cliente
+        if(groupEspecialidad) groupEspecialidad.style.display = 'none';
+        if(groupFotoRostro) groupFotoRostro.style.display = 'none';
+        if(groupDescripcion) groupDescripcion.style.display = 'none';
+        
         if(qrProveedorId && sectionReserva) sectionReserva.style.display = 'block';
         if(inputNegocio) inputNegocio.required = false;
+        
         btnText.innerText = "Registrarme como Cliente";
         if(btnCliente) btnCliente.classList.add('active');
-        if(btnBarbero) btnBarbero.classList.remove('active');
     }
 }
 
 /**
- * 🚩 NUEVO: Lógica de Domicilio (Ocultar/Mostrar dirección)
+ * 🚩 Lógica de Domicilio (Ocultar/Mostrar dirección)
  */
 function toggleDireccionRegistro() {
     const modalidad = document.getElementById('regModalidad').value;
@@ -78,12 +101,11 @@ function toggleDireccionRegistro() {
 }
 
 /**
- * 🚩 NUEVO: Cargar Servicios del Proveedor si viene por QR
+ * 🚩 Cargar Servicios del Proveedor si viene por QR
  */
 async function inicializarFlujoQR() {
     if (!qrProveedorId) return;
 
-    // Mostramos la sección del "Boss"
     const sectionReserva = document.getElementById('sectionReservaInmediata');
     const divNegocio = document.getElementById('negocioDetected');
     const txtNegocio = document.getElementById('nombreNegocioQR');
@@ -92,7 +114,6 @@ async function inicializarFlujoQR() {
     if(divNegocio) divNegocio.style.display = 'block';
 
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_HOST}/api/Servicios/proveedor/${qrProveedorId}`);
         if (response.ok) {
             const servicios = await response.json();
@@ -101,7 +122,6 @@ async function inicializarFlujoQR() {
                 selectServicio.innerHTML = servicios.map(s => `<option value="${s.id}">${s.nombre} - $${s.precio}</option>`).join('');
             }
             
-            // También intentamos traer el nombre del negocio para el banner
             const respProv = await fetch(`${API_HOST}/api/Proveedores/${qrProveedorId}`);
             if(respProv.ok) {
                 const prov = await respProv.json();
@@ -120,7 +140,6 @@ document.getElementById('regFecha')?.addEventListener('change', async (e) => {
     if (!fecha || !servicioId) return;
 
     try {
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
         const response = await fetch(`${API_HOST}/api/Citas/disponibilidad?proveedorId=${qrProveedorId}&servicioId=${servicioId}&fecha=${fecha}`);
         if (response.ok) {
             const horas = await response.json();
@@ -132,7 +151,7 @@ document.getElementById('regFecha')?.addEventListener('change', async (e) => {
 });
 
 /**
- * Manejador principal del Registro (CON SOPORTE DE RESERVA)
+ * Manejador principal del Registro (CON SOPORTE DE PROFESIONAL INDEPENDIENTE HU-10)
  */
 document.getElementById('formRegistroCliente').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -146,31 +165,95 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
         return;
     }
 
+    // 🚀 HU-10 CA2: Validación de Foto Obligatoria para Profesional Independiente
+    if (currentRole === 'INDEPENDIENTE') {
+        const inputFoto = document.getElementById('regFotoRostro');
+        if (!inputFoto || !inputFoto.files || inputFoto.files.length === 0) {
+            alert("⚠️ La foto del rostro es obligatoria para registrarte como Profesional Independiente.");
+            return;
+        }
+    }
+
     btnSubmit.disabled = true;
     btnSubmit.innerText = "Procesando Registro...";
 
-    // 📦 1. DATOS DE USUARIO - 🛡️ BLINDAJE PARA EVITAR ERROR 400
-    const registroData = {
-        nombre: document.getElementById('regNombre').value.trim(),
-        email: document.getElementById('regEmail').value.trim(),
-        password: password,
-        rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.ADMINISTRADOR,
-        telefono: document.getElementById('regTelefono').value.trim(),
-        nombreComercial: currentRole === 'ADMINISTRADOR' ? document.getElementById('regNegocio').value.trim() : "",
-        // 🧠 ADICIÓN DINÁMICA: Mapea la selección real de especialidad (Barbero o Manicurista) desde el id="regCategoria"
-        tipoNegocio: currentRole === 'ADMINISTRADOR' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular"
-    };
-
     try {
-        // PASO A: REGISTRAR EL USUARIO
-        // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
+        // =========================================================================
+        // 🚀 CASO A: REGISTRO DE PROFESIONAL INDEPENDIENTE (HU-10) -> Endpoint Form-Data
+        // =========================================================================
+        if (currentRole === 'INDEPENDIENTE') {
+            const formData = new FormData();
+            formData.append('Nombre', document.getElementById('regNombre').value.trim());
+            formData.append('Email', document.getElementById('regEmail').value.trim());
+            formData.append('Password', password);
+            formData.append('Telefono', document.getElementById('regTelefono').value.trim());
+            formData.append('Categoria', document.getElementById('regCategoria')?.value || "Barbero");
+            formData.append('Descripcion', document.getElementById('regDescripcion')?.value.trim() || "");
+            formData.append('Direccion', "Atención a domicilio");
+            formData.append('Ciudad', "Bogotá");
+            
+            const fileInput = document.getElementById('regFotoRostro');
+            if (fileInput.files.length > 0) {
+                formData.append('FotoRostro', fileInput.files[0]);
+            }
+
+            const response = await fetch(`${API_HOST}/api/Auth/registro-independiente`, {
+                method: 'POST',
+                body: formData
+            });
+
+            let result = { message: "No se pudo completar el registro de independiente." };
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                result = await response.json();
+            } else {
+                const textFallback = await response.text();
+                result.message = textFallback || result.message;
+            }
+
+            if (response.ok) {
+                // 🚀 CA4: Guardar Token e Iniciar Sesión Automáticamente
+                if (result.token) {
+                    localStorage.setItem('turnify_token', result.token);
+                    localStorage.setItem('turnify_user', JSON.stringify(result.user));
+                    alert("🚀 ¡Bienvenido a Turnify! Registro exitoso como Profesional Independiente.");
+                    window.location.href = 'index.html'; // Redirección directa al Dashboard
+                    return;
+                }
+                
+                alert("🚀 Registro completado. Por favor inicia sesión.");
+                window.location.href = 'login.html';
+            } else {
+                let errorMsg = result.message || "Error al registrar profesional independiente.";
+                if(result.errors) {
+                    errorMsg = Object.values(result.errors).flat().join("\n");
+                }
+                alert("❌ Error: " + errorMsg);
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = "Registrarme como Independiente";
+            }
+            return;
+        }
+
+        // =========================================================================
+        // 📦 CASO B: REGISTRO STANDARD (CLIENTE / ADMINISTRADOR DE NEGOCIO)
+        // =========================================================================
+        const registroData = {
+            nombre: document.getElementById('regNombre').value.trim(),
+            email: document.getElementById('regEmail').value.trim(),
+            password: password,
+            rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.ADMINISTRADOR,
+            telefono: document.getElementById('regTelefono').value.trim(),
+            nombreComercial: currentRole === 'ADMINISTRADOR' ? document.getElementById('regNegocio').value.trim() : "",
+            tipoNegocio: currentRole === 'ADMINISTRADOR' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular"
+        };
+
         const response = await fetch(`${API_HOST}/api/Usuarios/registrar`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(registroData)
         });
 
-        // 🛡️ BLINDAJE ANTI-CRASH DE QA: Validamos si la respuesta es JSON real antes de parsear para evitar bloqueos
         let result = { message: "No se pudo completar el registro." };
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
@@ -181,10 +264,9 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
         }
 
         if (response.ok) {
-            // 🚩 CORRECCIÓN CRÍTICA: El backend devuelve 'usuarioId' directamente en el objeto result
             const clienteId = result.usuarioId || result.id;
 
-            // PASO B: SI ES FLUJO QR, AGENDAMOS DE UNA VEZ
+            // PASO B.1: SI ES FLUJO QR, AGENDAMOS DE UNA VEZ
             if (qrProveedorId && currentRole === 'CLIENTE' && clienteId) {
                 btnSubmit.innerText = "Agendando tu cita...";
                 
@@ -199,7 +281,6 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
                     metodoRegistro: "QR" 
                 };
 
-                // 🚩 FIX DE URL DOCKER: Reemplazado localhost por la constante dinámica centralizada
                 const resCita = await fetch(`${API_HOST}/api/Citas/agendar`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -217,7 +298,6 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
             
             window.location.href = 'login.html';
         } else {
-            // 🛡️ CAPTURA DE ERRORES DE VALIDACIÓN (Si el backend manda un 400 con detalles)
             let errorMsg = result.message || "No se pudo completar el registro.";
             if(result.errors) {
                 errorMsg = Object.values(result.errors).flat().join("\n");
@@ -230,7 +310,7 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
 
     } catch (error) {
         console.error("🚨 Error:", error);
-        alert("🔌 Error de conexión.");
+        alert("🔌 Error de conexión con el servidor.");
         btnSubmit.disabled = false;
         btnSubmit.innerText = "Reintentar Registro";
     }

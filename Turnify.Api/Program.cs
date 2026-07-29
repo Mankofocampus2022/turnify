@@ -191,8 +191,8 @@ app.UseRateLimiter();
 // 🌐 3. CORS para permitir peticiones entre orígenes
 app.UseCors("AllowTurnify");
 
-// 🖼️ HU-08 & HU-09: SERVIDOR DE ARCHIVOS ARCHIVADOS DE FOTOGRAFÍAS (/uploads)
-// 🛠️ FIX DE RUTA FÍSICA: Se apunta a la raíz 'wwwroot' para mapear correctamente la subcarpeta '/uploads'
+// 🖼️ HU-08, HU-09 & HU-11: SERVIDOR DE ARCHIVOS Y MULTIMEDIA (/uploads)
+// 🛠️ FIX DE RUTA FÍSICA: Apunta a 'wwwroot' e inyecta políticas de CACHÉ ESTÁTICA por 30 días (HU-11 - CA3)
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 var uploadsPath = Path.Combine(wwwrootPath, "uploads");
 
@@ -201,11 +201,15 @@ if (!Directory.Exists(uploadsPath))
     Directory.CreateDirectory(uploadsPath);
 }
 
-// Servir archivos de la raíz wwwroot para que /uploads/empleados/foto.jpg resuelva perfecto
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(wwwrootPath),
-    RequestPath = "" // Permite acceso directo relativo desde wwwroot
+    RequestPath = "", // Acceso directo relativo a archivos de wwwroot (ej: /uploads/proveedores/foto.jpg)
+    OnPrepareResponse = ctx =>
+    {
+        // CA3 (HU-11): Control de caché pública en clientes/navegadores por 30 días
+        ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=2592000");
+    }
 });
 
 // 🛡️ 4. AUTENTICACIÓN (Verifica las llaves JWT)
@@ -233,7 +237,7 @@ if (Directory.Exists(frontendPath))
     var files = Directory.GetFiles(frontendPath, "*.html");
     Console.WriteLine($"--- 📄 Archivos HTML disponibles en Docker ({files.Length}): ---");
     foreach (var file in files) {
-        Console.WriteLine($"   -> {Path.GetFileName(file)}");
+        Console.WriteLine($"    -> {Path.GetFileName(file)}");
     }
 
     var fileOptions = new DefaultFilesOptions();
