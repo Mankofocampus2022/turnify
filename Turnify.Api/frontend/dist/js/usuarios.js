@@ -26,16 +26,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // 🛡️ CONTROL DE ACCESO POR ROLES Y DATOS (RBAC DINÁMICO)
-    const rolRaw = (localStorage.getItem('usuario_rol') || localStorage.getItem('user_role') || '').toUpperCase();
-    
-    // Si el rol es explícitamente Staff/Barbero/Manicurista
-    const esStaffColaborador = rolRaw.includes('STAFF') || 
-                               rolRaw.includes('BARBERO') || 
-                               rolRaw.includes('MANICURISTA') || 
-                               rolRaw.includes('EMPLEADO');
+    // 🛡️ CONTROL DE ACCESO POR ROLES Y BANDERAS (RBAC DINÁMICO SENIOR)
+    const esIndependienteRaw = localStorage.getItem('es_independiente') || localStorage.getItem('turnify_es_independiente');
+    const esIndependiente = esIndependienteRaw === 'true';
 
-    if (esStaffColaborador) {
+    // 🚩 SI ES PROVEEDOR INDEPENDIENTE REAL: Ocultamos la gestión de equipo y abrimos en Clientes
+    if (esIndependiente) {
         tienePersonalOEquipo = false;
         ocultarPestañasRestringidas();
         const sub = document.getElementById('subtituloDirectorio');
@@ -44,9 +40,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         inicializarFormularios();
         switchTab('clientes');
     } else {
+        // 🚀 SI ES STAFF / ADMINISTRACIÓN / BÚNKER: Se garantizan todas las pestañas visibles para operar
+        tienePersonalOEquipo = true;
         inicializarFormularios();
-        // 🚀 VERIFICACIÓN EN API: Si es un Proveedor Independiente (sin empleados), oculta las pestañas
-        await verificarEstructuraNegocio();
+        switchTab('staff');
     }
 
     // Manejo dinámico de etiquetas en formulario de empleados según tipo de contrato
@@ -143,61 +140,43 @@ function ocultarPestañasRestringidas() {
 
 // 🧠 VERIFICA SI EL PROVEEDOR TIENE EQUIPO O ES INDEPENDIENTE
 async function verificarEstructuraNegocio() {
-    try {
-        const response = await fetch(`${API_BASE}/Empleados`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-            const empleados = await response.json();
-            if (empleados && empleados.length > 0) {
-                // Si tiene empleados registrados, habilita las pestañas normalmente
-                tienePersonalOEquipo = true;
-                switchTab('staff');
-                return;
-            }
-        }
-    } catch (err) {
-        console.error("Error al consultar estructura del negocio:", err);
+    const esIndependienteRaw = localStorage.getItem('es_independiente') || localStorage.getItem('turnify_es_independiente');
+    if (esIndependienteRaw === 'true') {
+        tienePersonalOEquipo = false;
+        ocultarPestañasRestringidas();
+        switchTab('clientes');
+    } else {
+        tienePersonalOEquipo = true;
+        switchTab('staff');
     }
-
-    // Si NO tiene empleados (Proveedor independiente / Manicurista sin equipo), OCULTA LAS PESTAÑAS Y VA DIRECTO A CLIENTES
-    tienePersonalOEquipo = false;
-    ocultarPestañasRestringidas();
-    switchTab('clientes');
 }
 
 /* ============================================================================
    🧠 CONTROL DE PESTAÑAS (TABS)
    ============================================================================ */
 window.switchTab = function(tabName) {
-    // Si el usuario no tiene personal o es independiente, se le bloquea el acceso a otras pestañas
     if (!tienePersonalOEquipo && (tabName === 'staff' || tabName === 'estaciones' || tabName === 'usuarios')) {
         tabName = 'clientes';
     }
 
     currentTab = tabName;
     
-    // Cambiar clases activas en los botones
     const botones = document.querySelectorAll('.tab-btn');
     botones.forEach(btn => btn.classList.remove('active'));
     
-    // Encontrar el botón clickeado por su atributo onclick
     const botonActivo = Array.from(botones).find(btn => btn.getAttribute('onclick')?.includes(`'${tabName}'`));
     if (botonActivo) botonActivo.classList.add('active');
 
-    // Cambiar visibilidad de los contenedores de contenido
     const contenidos = document.querySelectorAll('.tab-content');
     contenidos.forEach(cont => cont.classList.remove('active'));
 
     const contenidoActivo = document.getElementById(`tab-${tabName}`);
     if (contenidoActivo) contenidoActivo.classList.add('active');
 
-    // Mantiene ocultas las pestañas prohibidas
     if (!tienePersonalOEquipo) {
         ocultarPestañasRestringidas();
     }
 
-    // Cargar los datos específicos de la pestaña seleccionada
     cargarDatosPestaña(tabName);
 }
 
@@ -277,6 +256,8 @@ async function listarPersonal() {
                     </button>
                 `;
 
+            const emailMostrar = emp.emailUsuarioVinculado || emp.email || 'Sin email de acceso';
+
             return `
                 <tr>
                     <td>
@@ -284,7 +265,7 @@ async function listarPersonal() {
                             ${obtenerAvatarHtml(emp.nombre, emp.fotoUrl || emp.foto)}
                             <div>
                                 <strong>${emp.nombre}</strong><br>
-                                <small style="opacity:0.6;">${emp.email || 'Sin email de acceso'}</small>
+                                <small style="opacity:0.6;">${emailMostrar}</small>
                             </div>
                         </div>
                     </td>
@@ -353,7 +334,7 @@ window.editarEmpleado = async function(id) {
         document.getElementById('staffTelefono').value = emp.telefono || '';
         document.getElementById('staffTipoContrato').value = emp.tipoContrato || 'Fijo';
         document.getElementById('staffValorContrato').value = emp.valorContrato || 0;
-        document.getElementById('staffEmail').value = emp.email || '';
+        document.getElementById('staffEmail').value = emp.emailUsuarioVinculado || emp.email || '';
 
         document.getElementById('staffTipoContrato').dispatchEvent(new Event('change'));
 
@@ -408,20 +389,48 @@ async function subirFotoEmpleado(idEmpleado) {
 async function guardarEmpleado(e) {
     e.preventDefault();
     const btn = document.getElementById('btnGuardarStaff');
-    const origText = btn.innerText;
-    btn.disabled = true;
-    btn.innerText = 'Procesando...';
+    const origText = btn ? btn.innerText : 'Guardar Empleado';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Procesando...';
+    }
 
-    const idExistente = document.getElementById('staffId').value;
+    const idExistente = document.getElementById('staffId') ? document.getElementById('staffId').value : '';
+    const tipoContratoRaw = document.getElementById('staffTipoContrato') ? document.getElementById('staffTipoContrato').value : 'Fijo';
+    const valorContratoNum = parseFloat(document.getElementById('staffValorContrato') ? document.getElementById('staffValorContrato').value : 0) || 0;
+
+    let tipoContratoFinal = 'Porcentaje';
+    if (tipoContratoRaw.toLowerCase().includes('fijo')) {
+        tipoContratoFinal = 'Fijo';
+    }
+
+    const nombreVal = document.getElementById('staffNombre') ? document.getElementById('staffNombre').value.trim() : '';
+    const telefonoVal = document.getElementById('staffTelefono') ? document.getElementById('staffTelefono').value.trim() : '';
+    const emailVal = document.getElementById('staffEmail') ? document.getElementById('staffEmail').value.trim() : '';
+    const passVal = document.getElementById('staffPassword') ? document.getElementById('staffPassword').value : '';
 
     const payload = {
-        Nombre: document.getElementById('staffNombre').value.trim(),
-        Telefono: document.getElementById('staffTelefono').value.trim(),
-        TipoContrato: document.getElementById('staffTipoContrato').value,
-        ValorContrato: parseFloat(document.getElementById('staffValorContrato').value),
-        Email: document.getElementById('staffEmail').value.trim() || null,
-        Password: document.getElementById('staffPassword').value || null
+        nombre: nombreVal,
+        Nombre: nombreVal,
+        telefono: telefonoVal,
+        Telefono: telefonoVal,
+        tipoContrato: tipoContratoFinal,
+        TipoContrato: tipoContratoFinal,
+        valorContrato: valorContratoNum,
+        ValorContrato: valorContratoNum,
+        porcentajeComision: tipoContratoFinal === 'Porcentaje' ? valorContratoNum : null,
+        PorcentajeComision: tipoContratoFinal === 'Porcentaje' ? valorContratoNum : null
     };
+
+    if (emailVal !== '') {
+        payload.emailParaUsuario = emailVal;
+        payload.EmailParaUsuario = emailVal;
+    }
+
+    if (passVal !== '') {
+        payload.passwordParaUsuario = passVal;
+        payload.PasswordParaUsuario = passVal;
+    }
 
     try {
         const esEdicion = !!idExistente;
@@ -442,7 +451,7 @@ async function guardarEmpleado(e) {
             const idEmpleado = idExistente || empleadoGuardado.id || empleadoGuardado.Id;
 
             if (archivoFotoEmpleado && idEmpleado) {
-                btn.innerText = 'Subiendo imagen...';
+                if (btn) btn.innerText = 'Subiendo imagen...';
                 await subirFotoEmpleado(idEmpleado);
             }
 
@@ -450,14 +459,30 @@ async function guardarEmpleado(e) {
             cerrarModalStaff();
             listarPersonal();
         } else {
-            const errData = await response.json();
-            alert(`⚠️ Error: ${errData.message || 'No se pudo guardar el empleado.'}`);
+            let errorMsg = 'No se pudo guardar el empleado.';
+            try {
+                const errData = await response.json();
+                if (errData.errors) {
+                    errorMsg = Object.entries(errData.errors)
+                        .map(([campo, msgs]) => `• ${campo}: ${msgs.join(', ')}`)
+                        .join('\n');
+                } else if (errData.message) {
+                    errorMsg = errData.message;
+                }
+            } catch (pErr) {
+                errorMsg = await response.text();
+            }
+
+            alert(`⚠️ Error al guardar empleado:\n${errorMsg}`);
         }
     } catch (err) {
+        console.error("🚨 Error de red:", err);
         alert('❌ Error crítico de red al guardar el personal.');
     } finally {
-        btn.disabled = false;
-        btn.innerText = origText;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = origText;
+        }
     }
 }
 
@@ -480,8 +505,39 @@ window.eliminarEmpleado = async function(id) {
 }
 
 /* ============================================================================
-   🪑 FLUJO 2: SILLAS / ESTACIONES DE TRABAJO
+   🪑 FLUJO 2: SILLAS / ESTACIONES DE TRABAJO (HU-001-B Y HU-001-C)
    ============================================================================ */
+
+/**
+ * 🎨 Helper Visual de Estado y Vencimiento (HU-001-C)
+ */
+function renderizarBadgeVencimiento(fechaVencimiento, activo) {
+    if (!activo || !fechaVencimiento) {
+        return `<span class="badge badge-vencido">🔴 Vencida / Inactiva</span>`;
+    }
+
+    const fechaObj = new Date(fechaVencimiento);
+    const hoy = new Date();
+    
+    // Diferencia en días
+    const diffTime = fechaObj.getTime() - hoy.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    const fechaFormateada = fechaObj.toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+
+    if (diffDays <= 0) {
+        return `<span class="badge badge-vencido" title="Venció el ${fechaFormateada}">🔴 Vencida</span>`;
+    } else if (diffDays <= 3) {
+        return `<span class="badge badge-por-vencer" title="Vence el ${fechaFormateada}">🟡 Por Vencer (${diffDays}d)</span>`;
+    } else {
+        return `<span class="badge badge-activa" title="Vence el ${fechaFormateada}">🟢 Activa (${fechaFormateada})</span>`;
+    }
+}
+
 async function listarEstaciones() {
     const tbody = document.getElementById('tablaEstaciones');
     if (!tbody) return;
@@ -494,30 +550,49 @@ async function listarEstaciones() {
         
         const estaciones = await response.json();
         if (estaciones.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No hay estaciones configuradas.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No hay estaciones configuradas.</td></tr>';
             return;
         }
 
         tbody.innerHTML = estaciones.map(est => {
+            const nombreSilla = est.nombre || est.nombreSilla || 'Silla Sin Nombre';
+            const tipoCobro = est.tipoCobro || 'Porcentaje';
+            const valorBase = est.valorBase || 0;
+            const valorTexto = tipoCobro === 'Porcentaje' ? `${valorBase}%` : `$${valorBase.toLocaleString('es-CO')}`;
+            const periodicidad = est.periodicidad ? `<small style="display:block; opacity:0.7;">${est.periodicidad}</small>` : '';
+
+            const badgeEstadoHtml = renderizarBadgeVencimiento(est.fechaVencimiento, est.activo);
+
             const accionesHtml = !tienePersonalOEquipo 
                 ? `<span style="opacity:0.5; font-size:0.85rem;"><i class="fas fa-lock"></i> Solo Lectura</span>`
                 : `
-                    <button class="btn-filter" onclick="eliminarEstacion('${est.id}')" style="background:#e94560; color:white; border:none; padding:5px 10px; border-radius:5px; cursor:pointer;">
+                    <button class="btn-pay-action" onclick="abrirModalActivar('${est.id}', '${nombreSilla.replace(/'/g, "\\'")}', ${valorBase})" title="Registrar Pago / Activar">
+                        <i class="fas fa-cash-register"></i> Activar
+                    </button>
+                    <button class="btn-filter" onclick="eliminarEstacion('${est.id}')" style="background:#e94560; color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; margin-left:4px;" title="Eliminar">
                         <i class="fas fa-trash"></i>
                     </button>
                 `;
 
             return `
                 <tr>
-                    <td><strong><i class="fas fa-chair" style="color:#48c1b5;"></i> ${est.nombreSilla}</strong></td>
-                    <td>${est.descripcion || 'Sin descripción'}</td>
-                    <td><span class="status-pill ${est.activa ? 'status-activo' : 'status-bloqueado'}">${est.activa ? 'Disponible' : 'Mantenimiento'}</span></td>
+                    <td><strong><i class="fas fa-chair" style="color:#48c1b5;"></i> ${nombreSilla}</strong></td>
+                    <td>
+                        <span class="status-pill status-pendiente">${tipoCobro}</span>
+                        <strong style="margin-left:5px;">${valorTexto}</strong>
+                    </td>
+                    <td>
+                        ${badgeEstadoHtml}
+                        ${periodicidad}
+                    </td>
+                    <td><span class="status-pill ${est.activo ? 'status-activo' : 'status-bloqueado'}">${est.estado || (est.activo ? 'Disponible' : 'Inactiva')}</span></td>
                     <td>${accionesHtml}</td>
                 </tr>
             `;
         }).join('');
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#e94560;">Error de comunicación.</td></tr>';
+        console.error(err);
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#e94560;">Error de comunicación con el servidor.</td></tr>';
     }
 }
 
@@ -540,11 +615,13 @@ window.cerrarModalEstacion = function() {
 async function guardarEstacion(e) {
     e.preventDefault();
     const btn = document.getElementById('btnGuardarEstacion');
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
 
     const payload = {
-        NombreSilla: document.getElementById('estacionNombre').value.trim(),
-        Descripcion: document.getElementById('estacionDescripcion').value.trim()
+        nombre: document.getElementById('estacionNombre').value.trim(),
+        tipoCobro: document.getElementById('estacionTipoCobro')?.value || "Porcentaje",
+        valorBase: parseFloat(document.getElementById('estacionValorBase')?.value || 0),
+        estado: document.getElementById('estacionEstado')?.value || "Disponible"
     };
 
     try {
@@ -558,15 +635,78 @@ async function guardarEstacion(e) {
         });
 
         if (response.ok) {
+            alert('🎉 Estación de trabajo creada con éxito.');
             cerrarModalEstacion();
             listarEstaciones();
         } else {
-            alert('Error al mapear la estación.');
+            alert('❌ Error al guardar la estación de trabajo.');
         }
     } catch (err) {
         console.error(err);
     } finally {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
+    }
+}
+
+/* ============================================================================
+   💳 ACTIVACIÓN Y REGISTRO DE PAGO DE SILLAS (HU-001-B)
+   ============================================================================ */
+window.abrirModalActivar = function(id, nombre, tarifaSugerida) {
+    document.getElementById('actSillaId').value = id;
+    document.getElementById('actSillaNombre').value = nombre;
+    document.getElementById('actMonto').value = tarifaSugerida || 0;
+    document.getElementById('actComprobante').value = '';
+    document.getElementById('modalActivarSilla').style.display = 'flex';
+}
+
+window.cerrarModalActivar = function() {
+    document.getElementById('modalActivarSilla').style.display = 'none';
+}
+
+window.procesarActivacionSilla = async function(e) {
+    e.preventDefault();
+
+    const id = document.getElementById('actSillaId').value;
+    const btnSubmit = document.getElementById('btnConfirmarAct');
+
+    const payload = {
+        metodoPago: document.getElementById('actMetodoPago').value,
+        periodo: document.getElementById('actPeriodo').value,
+        monto: parseFloat(document.getElementById('actMonto').value) || 0,
+        comprobante: document.getElementById('actComprobante').value.trim()
+    };
+
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerText = "Procesando...";
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/EstacionesTrabajo/${id}/activar`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            alert("🚀 ¡Silla activada y renovada con éxito!");
+            cerrarModalActivar();
+            listarEstaciones();
+        } else {
+            const err = await response.json();
+            alert("❌ Error: " + (err.message || "No se pudo activar la silla"));
+        }
+    } catch (error) {
+        console.error("Error al activar silla:", error);
+        alert("🔌 Error de conexión con el servidor.");
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = '<i class="fas fa-check-circle"></i> Confirmar Activación';
+        }
     }
 }
 
@@ -587,7 +727,7 @@ window.eliminarEstacion = async function(id) {
 }
 
 /* ============================================================================
-   Wait FLUJO 3: MIS CLIENTES (WEB REGISTRADOS)
+   FLUJO 3: MIS CLIENTES (WEB REGISTRADOS)
    ============================================================================ */
 async function listarClientes() {
     const tbody = document.getElementById('tablaClientes');

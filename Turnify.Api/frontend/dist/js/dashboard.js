@@ -30,18 +30,35 @@ function getEstadoClass(estado) {
  * 🛠️ FUNCIÓN DE DETECCIÓN AVANZADA: Determina si el usuario actual es un Proveedor Independiente
  */
 function evaluarEsIndependiente(userObj, token) {
-    if (!userObj && !token) return false;
+    // 🚩 PRIORIDAD MÁXIMA: Verificación explícita de bandera guardada en localStorage
+    const flagLocal = localStorage.getItem('es_independiente') || localStorage.getItem('turnify_es_independiente');
+    if (flagLocal === 'false') return false;
+    if (flagLocal === 'true') return true;
+
+    // 🚩 PRIORIDAD SECUNDARIA: Verificación en el objeto user de la sesión
+    if (userObj) {
+        if (userObj.esIndependiente === false || userObj.EsIndependiente === false) {
+            return false;
+        }
+        if (userObj.esIndependiente === true || userObj.EsIndependiente === true) {
+            return true;
+        }
+    }
+
+    const rol = String(userObj?.rol || userObj?.rolNombre || localStorage.getItem('usuario_rol') || "").toLowerCase();
+    
+    // Si el rol es explícitamente Staff, Administración o Admin, NUNCA es independiente
+    if (rol.includes("staff") || rol.includes("admin") || rol.includes("administrador")) {
+        return false;
+    }
 
     const tipo = String(userObj?.tipo || userObj?.tipoProveedor || userObj?.tipoUsuario || userObj?.tipoModelo || "").toLowerCase();
-    const rol = String(userObj?.rol || userObj?.rolNombre || localStorage.getItem('usuario_rol') || "").toLowerCase();
-    const esFlag = userObj?.esIndependiente === true || userObj?.esProveedorIndependiente === true;
 
-    // 🚀 BLINDAJE CLAVE: Si el rol es "Proveedor" o contiene "independiente", "autonomo", etc.
-    if (esFlag || rol === "proveedor" || rol.includes("independiente") || rol.includes("autonomo") || tipo.includes("independiente")) {
+    if (rol.includes("independiente") || rol.includes("autonomo") || tipo.includes("independiente")) {
         return true;
     }
 
-    // Inspección profunda del Token JWT
+    // Inspección profunda del Token JWT como recurso final
     if (token) {
         try {
             const base64Url = token.split('.')[1];
@@ -50,12 +67,13 @@ function evaluarEsIndependiente(userObj, token) {
                 const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
                 const tokenData = JSON.parse(jsonPayload);
 
-                const claimRol = String(tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "").toLowerCase();
-                const claimTipo = String(tokenData.tipo || tokenData.tipoProveedor || "").toLowerCase();
+                const claimEsInd = tokenData.EsIndependiente || tokenData.esIndependiente || tokenData["EsIndependiente"];
+                if (claimEsInd === "false" || claimEsInd === false) return false;
+                if (claimEsInd === "true" || claimEsInd === true) return true;
 
-                if (claimRol === "proveedor" || claimRol.includes("independiente") || claimTipo.includes("independiente")) {
-                    return true;
-                }
+                const claimRol = String(tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "").toLowerCase();
+                if (claimRol.includes("staff") || claimRol.includes("admin")) return false;
+                if (claimRol.includes("independiente")) return true;
             }
         } catch (e) {
             console.warn("⚠️ No se pudo decodificar las claims del Token:", e);

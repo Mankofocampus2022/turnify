@@ -16,11 +16,11 @@ const API_URL = `${API_HOST}/api/Servicios`;
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Sincronización de Identidad
     const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
+    const rol = (localStorage.getItem('usuario_rol') || localStorage.getItem('user_role') || "").toUpperCase();
     const userStr = localStorage.getItem('user'); // 🚩 Traemos el objeto completo de respaldo
     
     // 🛡️ BLINDAJE: Limpiamos el ID de posibles strings basura
-    let pIdRaw = localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
+    let pIdRaw = localStorage.getItem('turnify_proveedor_id') || localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
     let proveedorId = (pIdRaw === "null" || pIdRaw === "undefined") ? null : pIdRaw;
     
     if (!token) {
@@ -46,12 +46,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 🛡️ BLINDAJE: Aseguramos que el ID rescatado quede guardado para las peticiones
     if (proveedorId) {
+        localStorage.setItem('turnify_proveedor_id', proveedorId);
         localStorage.setItem('proveedor_id', proveedorId);
+        localStorage.setItem('proveedorId', proveedorId);
     }
 
     // 2. VALIDACIÓN FLEXIBLE DE ROLES
     const rolNormalizado = rol.trim();
     const esAdmin = rolNormalizado.includes("ADMIN") || 
+                    rolNormalizado.includes("STAFF") || 
                     rolNormalizado.includes("6A7FA68F") || 
                     rolNormalizado.includes("6DE2A606") ||
                     rolNormalizado.includes("SUPERADMIN");
@@ -66,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    console.log("✅ Acceso concedido como:", esAdmin ? "Admin" : "Profesional (" + rolNormalizado + ")");
+    console.log("✅ Acceso concedido como:", esAdmin ? "Admin / Staff" : "Profesional (" + rolNormalizado + ")");
     cargarServicios();
     
     const form = document.getElementById('formServicio');
@@ -75,12 +78,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 1. CARGAR SERVICIOS (Lógica de filtrado con Blindaje Senior)
 async function cargarServicios() {
-    const token = localStorage.getItem('turnify_token');
-    const proveedorId = localStorage.getItem('proveedor_id');
-    const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase().trim();
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    let proveedorId = localStorage.getItem('turnify_proveedor_id') || localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
+    const rol = (localStorage.getItem('usuario_rol') || localStorage.getItem('user_role') || "").toUpperCase().trim();
 
-    const esAdmin = rol.includes("ADMIN") || rol.includes("SUPERADMIN") || rol.includes("6A7FA68F");
+    const esAdmin = rol.includes("ADMIN") || rol.includes("STAFF") || rol.includes("SUPERADMIN") || rol.includes("6A7FA68F");
     
+    // Fallback por si el proveedorId estaba guardado en user
+    if (!proveedorId) {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            try {
+                const u = JSON.parse(userStr);
+                proveedorId = u.proveedorId || u.ProveedorId || u.id;
+            } catch (e) {}
+        }
+    }
+
     // 🛡️ BLINDAJE: Evitamos peticiones si no hay contexto de ID
     if (!esAdmin && !proveedorId) return;
 
@@ -169,7 +183,7 @@ function renderizarTabla(servicios) {
 
 // 3. EDITAR SERVICIO (Blindado con Mapping Inverso)
 async function editarServicio(id) {
-    const token = localStorage.getItem('turnify_token');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
     try {
         const res = await fetch(`${API_URL}/${id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -199,7 +213,7 @@ async function editarServicio(id) {
 // 4. ELIMINAR SERVICIO (Blindado)
 async function eliminarServicio(id) {
     if (!confirm("⚠️ ¿Estás seguro de que quieres borrar este servicio? Esta acción no se puede deshacer.")) return;
-    const token = localStorage.getItem('turnify_token');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
     try {
         const res = await fetch(`${API_URL}/${id}`, {
             method: 'DELETE',
@@ -217,9 +231,19 @@ async function eliminarServicio(id) {
 // 5. GUARDAR (CREAR O EDITAR) - 🛡️ BLINDAJE DE NEGOCIO
 async function guardarServicio(e) {
     e.preventDefault();
-    const token = localStorage.getItem('turnify_token');
-    let pId = localStorage.getItem('proveedor_id');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    let pId = localStorage.getItem('turnify_proveedor_id') || localStorage.getItem('proveedor_id') || localStorage.getItem('proveedorId');
     
+    if (!pId) {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            try {
+                const u = JSON.parse(userStr);
+                pId = u.proveedorId || u.ProveedorId || u.id;
+            } catch (err) {}
+        }
+    }
+
     // 🛡️ REGLA DE ORO: Si no hay proveedor_id, el Backend rechazará la creación
     if (!pId || pId === "null" || pId === "undefined") {
         alert("🚨 Error de sesión crítica: No se encontró tu ID de proveedor. Por favor, reinicia sesión.");

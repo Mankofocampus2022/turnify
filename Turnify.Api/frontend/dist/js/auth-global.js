@@ -32,7 +32,7 @@ function validarSesionYMenu() {
     }
 
     // 🚀 INTEGRACIÓN MULTI-CLAVE DE IDENTIDAD: Recuperamos el rol desde la clave directa o el objeto user parseado
-    let rolRaw = localStorage.getItem('usuario_rol') || localStorage.getItem('role') || "";
+    let rolRaw = localStorage.getItem('usuario_rol') || localStorage.getItem('user_role') || localStorage.getItem('role') || "";
     const userStr = localStorage.getItem('user');
 
     if (!rolRaw && userStr) {
@@ -46,14 +46,24 @@ function validarSesionYMenu() {
 
     const rol = String(rolRaw).toUpperCase().trim();
 
+    // 🚩 LECTURA DE LA BANDERA ES_INDEPENDIENTE
+    const esIndependienteRaw = localStorage.getItem('es_independiente') || localStorage.getItem('turnify_es_independiente');
+    const esIndependiente = esIndependienteRaw === 'true';
+
     // GUIDs transaccionales de control de la base de datos SQL Server
     const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";
     const ADMIN_GUID = "6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43";
 
-    // 🧠 AJUSTE ADAPTATIVO: Soporta tanto el texto plano como los identificadores GUID reales de la BD
-    const esCliente = rol.includes("CLIENTE") && rol !== SUPER_ADMIN_GUID && rol !== ADMIN_GUID;
-    // 🚩 NUEVO: Detectamos si es un profesional (Barbero/Admin/Proveedor)
-    const esProfesional = rol.includes("BARBERO") || rol.includes("PROVEEDOR") || rol.includes("ADMIN") || rol === SUPER_ADMIN_GUID || rol === ADMIN_GUID;
+    // 🧠 AJUSTE ADAPTATIVO: Soporta tanto el texto plano como los identificadores GUID reales de la BD + STAFF
+    const esCliente = rol.includes("CLIENTE") && rol !== SUPER_ADMIN_GUID && rol !== ADMIN_GUID && !rol.includes("STAFF") && !rol.includes("PROVEEDOR");
+    
+    // 🚩 NUEVO: Detectamos si es un profesional / gestión (Barbero/Admin/Proveedor/Staff)
+    const esProfesional = rol.includes("BARBERO") || 
+                          rol.includes("PROVEEDOR") || 
+                          rol.includes("ADMIN") || 
+                          rol.includes("STAFF") || 
+                          rol === SUPER_ADMIN_GUID || 
+                          rol === ADMIN_GUID;
 
     // 2. 🛡️ BLOQUEO DE ACCESO DIRECTO (URL)
     // Lista negra para clientes: No pueden ver nada administrativo
@@ -91,26 +101,32 @@ function validarSesionYMenu() {
         // El cliente solo debe ver su opción de agendar
         if (navAgendar) navAgendar.style.display = 'flex';
     } else {
-        // ✅ ACCESO PARA BARBEROS/ADMINS (Profesionales)
+        // ✅ ACCESO PARA BARBEROS/ADMINS/STAFF (Profesionales)
         if (navResumen) navResumen.style.display = 'flex';
         if (navReportes) navReportes.style.display = 'flex';
         if (navConfig) navConfig.style.display = 'flex';
         
-        // 🚩 AJUSTE: El barbero ahora debe ver Servicios para gestionarlos
+        // 🚩 AJUSTE: El barbero/staff ahora debe ver Servicios para gestionarlos
         if (navServicios) navServicios.style.display = 'flex';
         
-        // 🚩 AJUSTE: El barbero/admin ve Usuarios para mirar sus clientes
+        // 🚩 AJUSTE: El barbero/admin/staff ve Usuarios para mirar sus clientes
         // Solo ocultamos si no tiene ninguno de los roles de gestión
         if (navUsuarios) {
-            const puedeVerUsuarios = rol.includes("SUPERADMIN") || rol.includes("BARBERO") || rol.includes("ADMIN") || rol.includes("PROVEEDOR") || rol === SUPER_ADMIN_GUID || rol === ADMIN_GUID;
+            const puedeVerUsuarios = rol.includes("SUPERADMIN") || 
+                                     rol.includes("BARBERO") || 
+                                     rol.includes("ADMIN") || 
+                                     rol.includes("PROVEEDOR") || 
+                                     rol.includes("STAFF") || 
+                                     rol === SUPER_ADMIN_GUID || 
+                                     rol === ADMIN_GUID;
             navUsuarios.style.display = puedeVerUsuarios ? 'flex' : 'none';
         }
 
-        // El barbero también puede agendar citas manualmente
+        // El barbero/staff también puede agendar citas manualmente
         if (navAgendar) navAgendar.style.display = 'flex';
     }
 
-    console.log("🛡️ Lupe Guard: Blindaje activo para", rol);
+    console.log("🛡️ Lupe Guard: Blindaje activo para", rol, "| esIndependiente:", esIndependiente);
 }
 
 // Cerrar sesión

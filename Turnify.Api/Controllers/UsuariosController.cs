@@ -49,9 +49,11 @@ namespace Turnify.Api.Controllers
 
             var userId = Guid.Parse(usuarioIdClaim);
             var rolClaim = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            string staffRoleName = Roles.RoleNames.Staff;
             
             var isAdmin = rolClaim != null && (rolClaim.ToLower().Contains("admin") || rolClaim.ToLower().Contains("super"));
-            var isStaff = rolClaim != null && rolClaim.Equals(Roles.RoleNames.Staff, StringComparison.OrdinalIgnoreCase);
+            var isStaff = rolClaim != null && rolClaim.Equals(staffRoleName, StringComparison.OrdinalIgnoreCase);
 
             IQueryable<Usuarios> query = _context.usuarios.Include(u => u.Rol);
 
@@ -69,14 +71,14 @@ namespace Turnify.Api.Controllers
 
                 if (proveedor != null)
                 {
-                    // 1. Capturamos los UsuarioId de sus Empleados/Colaboradores contratados (Evitando advertencia CS8629)
+                    // 1. Capturamos los UsuarioId de sus Empleados/Colaboradores contratados
                     var empleadosUserIds = await _context.empleados
                         .AsNoTracking()
                         .Where(e => e.ProveedorId == proveedor.Id && e.UsuarioId != null)
                         .Select(e => e.UsuarioId!.Value)
                         .ToListAsync();
 
-                    // Capturar también proveedores dependientes asignados por StaffId (HU-09 / HU-12)
+                    // Capturar también proveedores dependientes asignados por StaffId
                     var proveedoresDependientesUserIds = await _context.proveedores
                         .AsNoTracking()
                         .Where(p => p.StaffId == proveedor.Id && p.UsuarioId != null)
@@ -133,11 +135,12 @@ namespace Turnify.Api.Controllers
         // ============================================================
         [HttpPost("login")]
         [AllowAnonymous] 
-        public async Task<IActionResult> Login([FromBody] Turnify.Api.Models.DTOs.LoginDto dto)
+        public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
             _logger.LogInformation("--- 📩 Intento de Login Alterno: {Email} ---", dto?.Email ?? "NULO");
 
-            if (dto == null) return BadRequest(new { message = "Cuerpo de petición nulo." });
+            if (dto == null || string.IsNullOrWhiteSpace(dto.Email)) 
+                return BadRequest(new { message = "Cuerpo de petición nulo o credenciales vacías." });
 
             try 
             {
@@ -182,15 +185,37 @@ namespace Turnify.Api.Controllers
                     bool esIndependiente = false;
                     string? fotoUrl = null;
 
-                    var rolNombre = usuarioConRol.Rol?.nombre ?? Roles.RoleNames.Cliente;
+                    string defaultRoleCliente = Roles.RoleNames.Cliente;
+                    string roleStaff = Roles.RoleNames.Staff;
+                    string roleProveedor = Roles.RoleNames.Proveedor;
+                    string roleProveedorDep = Roles.RoleNames.ProveedorDependiente;
 
-                    if (rolNombre == Roles.RoleNames.Proveedor || rolNombre == Roles.RoleNames.ProveedorDependiente) 
+                    var rolNombre = usuarioConRol.Rol?.nombre ?? defaultRoleCliente;
+
+                    // 🔧 FIX: Jerarquía estricta según el Rol real del usuario
+                    if (rolNombre.Equals(roleStaff, StringComparison.OrdinalIgnoreCase))
                     {
+                        // 1. Si el Rol es STAFF (Dueño/Búnker), SIEMPRE es esIndependiente = false
+                        esIndependiente = false;
+
+                        var prov = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuarioConRol.id);
+                        if (prov != null)
+                        {
+                            proveedorId = prov.Id;
+                            fotoUrl = prov.FotoUrl;
+                        }
+                    }
+                    else if (rolNombre.Equals(roleProveedor, StringComparison.OrdinalIgnoreCase) || 
+                             rolNombre.Equals(roleProveedorDep, StringComparison.OrdinalIgnoreCase)) 
+                    {
+                        // 2. Si es Barbero/Colaborador
                         var emp = await _context.empleados.FirstOrDefaultAsync(e => e.UsuarioId == usuarioConRol.id);
                         if (emp != null)
                         {
                             empleadoId = emp.Id;
                             proveedorId = emp.ProveedorId;
+                            fotoUrl = emp.FotoUrl;
+                            esIndependiente = false;
                         }
                         else
                         {
@@ -203,8 +228,9 @@ namespace Turnify.Api.Controllers
                             }
                         }
                     }
-                    else // Es el Dueño (Staff) o Independiente
+                    else 
                     {
+                        // 3. Demás roles (Clientes / Admins)
                         var prov = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuarioConRol.id);
                         if (prov != null)
                         {
@@ -244,18 +270,19 @@ namespace Turnify.Api.Controllers
         }
 
         // ============================================================
-        // 3. REGISTRAR - CON CONTROL DE INYECCIÓN (Intacto)
+        // 3. REGISTRAR - CON CONTROL DE INYECCIÓN (Corregido a Guid)
         // ============================================================
         [HttpPost("registrar")]
         [AllowAnonymous]
-        public async Task<IActionResult> Registrar([FromBody] Turnify.Api.Models.DTOs.UsuarioRegistroDTO dto)
+        public async Task<IActionResult> Registrar([FromBody] UsuarioRegistroDTO dto)
         {
             _logger.LogInformation("--- 📝 Intento de registro para: {Email} ---", dto?.Email);
             
             if (dto == null) return BadRequest(new { message = "Datos inválidos." });
 
-            var adminRoleGuid = Roles.RoleIds.SuperAdministrador;
-            var superAdminRoleGuid = Roles.RoleIds.Administrador;
+            // 🔹 FIX CS0029 & CS0019: Uso de Guid y constantes del modelo Roles
+            Guid adminRoleGuid = Roles.RoleIds.SuperAdministrador;
+            Guid superAdminRoleGuid = Roles.RoleIds.Administrador;
 
             if (dto.RolId == adminRoleGuid || dto.RolId == superAdminRoleGuid)
             {
@@ -286,7 +313,7 @@ namespace Turnify.Api.Controllers
         // ============================================================
         [HttpPost("forgot-password")]
         [AllowAnonymous]
-        public async Task<IActionResult> ForgotPassword([FromBody] Turnify.Api.Models.DTOs.ForgotPasswordDto dto)
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
             var usuario = await _context.usuarios.FirstOrDefaultAsync(u => u.email == dto.Email);
             if (usuario == null) return BadRequest(new { message = "El correo no existe." });
@@ -300,7 +327,7 @@ namespace Turnify.Api.Controllers
 
         [HttpPost("reset-password")]
         [AllowAnonymous]
-        public async Task<IActionResult> ResetPassword([FromBody] Turnify.Api.Models.DTOs.ResetPasswordDto dto)
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
         {
             if (dto == null) return BadRequest(new { message = "Datos de petición nulos." });
 
@@ -373,7 +400,7 @@ namespace Turnify.Api.Controllers
                 var proveedoresCount = await _context.proveedores.CountAsync(); 
                 return Ok(new { usuariosCount, proveedoresCount, ingresosMensuales = 0 });
             }
-            catch (Exception ) { return StatusCode(500, new { message = "Error" }); }
+            catch (Exception) { return StatusCode(500, new { message = "Error" }); }
         }
 
         [HttpPut("renovar/{id:guid}")]
@@ -434,10 +461,12 @@ namespace Turnify.Api.Controllers
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             
+            string roleCliente = Roles.RoleNames.Cliente;
+
             var claims = new List<Claim> { 
                 new Claim(ClaimTypes.NameIdentifier, usuario.id.ToString()), 
                 new Claim(ClaimTypes.Name, usuario.nombre ?? ""), 
-                new Claim(ClaimTypes.Role, usuario.Rol?.nombre ?? Roles.RoleNames.Cliente),
+                new Claim(ClaimTypes.Role, usuario.Rol?.nombre ?? roleCliente),
                 new Claim("EsIndependiente", esIndependiente.ToString().ToLower())
             };
 

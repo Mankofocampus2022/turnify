@@ -21,7 +21,7 @@ namespace Turnify.Api.Services
 
         public async Task<(bool Success, string Message, Guid? UsuarioId)> RegistrarAsync(UsuarioRegistroDTO dto)
         {
-            // 🛡️ Estrategia de ejecución para manejar reintentos en SQL (Manteniendo tu lógica)
+            // 🛡️ Estrategia de ejecución para manejar reintentos en SQL
             var strategy = _context.Database.CreateExecutionStrategy();
 
             return await strategy.ExecuteAsync<(bool Success, string Message, Guid? UsuarioId)>(async () =>
@@ -54,34 +54,59 @@ namespace Turnify.Api.Services
                     };
                     _context.usuarios.Add(usuario);
 
-                    // 2. IDENTIFICACIÓN DE ROLES (GUIDs oficiales)
-                    var idCliente = Guid.Parse("56992f75-6420-4d55-a5f9-9223248c50d7");
-                    var idProveedor = Guid.Parse("8854c07c-6e5e-4876-a29a-c7ad5dcfbab7");
+                    // 2. IDENTIFICACIÓN DE ROLES OFICIALES SEGÚN BASE DE DATOS
+                    var idCliente = Roles.RoleIds.Cliente;               // 56992f75-6420-4d55-a5f9-9223248c50d7
+                    var idProveedor = Roles.RoleIds.Proveedor;           // 8854c07c-6e5e-4876-a29a-c7ad5dcfbab7
+                    var idStaff = Roles.RoleIds.Staff;                   // 99A2B3C4-E5F6-4789-90AB-C1D2E3F40099
+                    var idSuperAdmin = Roles.RoleIds.SuperAdministrador; // 6DE2A606-416E-4588-B4EB-CC20856CD80A
+                    var idAdmin = Roles.RoleIds.Administrador;          // 6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43
 
-                    // 3. ESPECIALIZACIÓN DE PERFIL (Blindaje contra nulos y sincronización dual)
-                    if (dto.RolId == idCliente) {
+                    // 3. ESPECIALIZACIÓN DE PERFIL (Solución al Bug del Rol Staff)
+                    if (dto.RolId == idCliente) 
+                    {
                         _context.clientes.Add(new Clientes {
                             id = Guid.NewGuid(),
                             usuario_id = usuario.id,
                             nombre = string.IsNullOrEmpty(usuario.nombre) ? "Cliente" : usuario.nombre,
                             telefono = telefonoLimpio,
-                            email = emailNormalizado, // Sincronizado       
+                            email = emailNormalizado,      
                             activo = true,
                             fecha_creacion = DateTime.UtcNow
                         });
                     }
-                    else if (dto.RolId == idProveedor) {
+                    // 🚀 FIX: Si se registra como STAFF (Dueño de Búnker / Administrador de local)
+                    else if (dto.RolId == idStaff)
+                    {
+                        _context.proveedores.Add(new Proveedores {
+                            Id = Guid.NewGuid(),
+                            UsuarioId = usuario.id,
+                            NombreComercial = dto.NombreComercial ?? $"Búnker de {(string.IsNullOrEmpty(usuario.nombre) ? "Staff" : usuario.nombre)}",
+                            Tipo = dto.TipoNegocio ?? "Barbería",
+                            Categoria = "Local Comercial / Búnker",
+                            Email = emailNormalizado, 
+                            Telefono = telefonoLimpio,
+                            Activo = true,
+                            FechaCreacion = DateTime.UtcNow,
+                            Direccion = "Pendiente de configuración",
+                            EsIndependiente = false, // Staff/Dueño Administra Local
+                            StaffId = null,          // Es la cabeza del local
+                            PorcentajeComision = 0.00m
+                        });
+                    }
+                    // Si se registra como PROVEEDOR (Barbero o Colaborador)
+                    else if (dto.RolId == idProveedor) 
+                    {
                         _context.proveedores.Add(new Proveedores {
                             Id = Guid.NewGuid(),
                             UsuarioId = usuario.id,
                             NombreComercial = dto.NombreComercial ?? $"Barbería de {(string.IsNullOrEmpty(usuario.nombre) ? "Usuario" : usuario.nombre)}",
                             Tipo = dto.TipoNegocio ?? "Barbería",
-                            // 🚩 KILLER FIX: Guardamos el email en la tabla proveedores para la Validación Dual
                             Email = emailNormalizado, 
                             Telefono = telefonoLimpio,
                             Activo = true,
                             FechaCreacion = DateTime.UtcNow,
-                            Direccion = "Pendiente de configuración"
+                            Direccion = "Pendiente de configuración",
+                            EsIndependiente = dto.EsIndependiente
                         });
                     }
 
@@ -116,7 +141,7 @@ namespace Turnify.Api.Services
             return await _context.usuarios.CountAsync(u => u.activo == true);
         }
 
-        // --- MÉTODOS CRUD (Manteniendo tu estructura original intacta) ---
+        // --- MÉTODOS CRUD (Estructura intacta) ---
         public async Task<Usuarios?> GetUsuarioByIdAsync(Guid id) => await _context.usuarios.Include(u => u.Rol).FirstOrDefaultAsync(u => u.id == id);
         public async Task<bool> ActualizarAsync(Usuarios u) { _context.Entry(u).State = EntityState.Modified; return await _context.SaveChangesAsync() > 0; }
         public async Task<bool> EliminarLogicoAsync(Guid id) { var u = await _context.usuarios.FindAsync(id); if (u == null) return false; u.activo = false; return await _context.SaveChangesAsync() > 0; }
@@ -124,19 +149,17 @@ namespace Turnify.Api.Services
         public async Task<IEnumerable<Usuarios>> GetAllUsuariosAsync() => await _context.usuarios.Include(u => u.Rol).ToListAsync();
 
         // ============================================================================
-        // 🚀 [NUEVO] MOTOR DE PAGINACIÓN DE PROVEEDORES (Mitigación OBS-01)
+        // 🚀 MOTOR DE PAGINACIÓN DE PROVEEDORES
         // ============================================================================
         public async Task<IEnumerable<Usuarios>> GetProveedoresPaginadosAsync(int page, int pageSize, string? search)
         {
-            // Control defensivo para evitar desbordamientos de paginación nula o negativa
             if (page <= 0) page = 1;
             if (pageSize <= 0) pageSize = 10;
 
             var query = _context.usuarios
-                .AsNoTracking() // 🛡️ Bloquea el rastreo en RAM, optimizando el rendimiento en Docker
+                .AsNoTracking()
                 .AsQueryable();
 
-            // Filtrar opcionalmente por nombre, correo o teléfono si viene un criterio en el buscador (Ajuste Nulabilidad CS8602)
             if (!string.IsNullOrEmpty(search))
             {
                 query = query.Where(u => (u.nombre != null && u.nombre.Contains(search)) || 
@@ -144,7 +167,6 @@ namespace Turnify.Api.Services
                                          (u.telefono != null && u.telefono.Contains(search)));
             }
 
-            // SQL Server exige obligatoriamente un OrderBy antes de aplicar las cláusulas OFFSET y FETCH NEXT (Skip/Take)
             return await query
                 .OrderBy(u => u.nombre)
                 .Skip((page - 1) * pageSize)

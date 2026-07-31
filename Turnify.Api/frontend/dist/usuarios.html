@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="css-dashboard.css">
     <link rel="stylesheet" href="css-usuarios.css">
     
-    <!-- 🚀 HU 001 - Estilos inyectados para las Pestañas y Modales de Formularios -->
+    <!-- 🚀 HU 001 - Estilos inyectados para las Pestañas, Badges y Modales de Formularios -->
     <style>
         .tabs-container {
             display: flex;
@@ -49,6 +49,32 @@
         .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; }
         .btn-submit { width: 100%; background: #1b3d5f; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px; }
         .btn-submit:hover { background: #122a42; }
+
+        /* 🎨 Badges Visuales de Vencimiento de Estaciones (HU-001-C) */
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border-radius: 20px;
+            text-align: center;
+        }
+        .badge-activa { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+        .badge-por-vencer { background: #fef9c3; color: #a16207; border: 1px solid #fef08a; }
+        .badge-vencido { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+        
+        .btn-pay-action {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+        .btn-pay-action:hover { background: #059669; }
     </style>
 </head>
 <body>
@@ -128,7 +154,7 @@
             </div>
         </div>
 
-        <!-- 🪑 PESTAÑA: ESTACIONES (SILLAS) -->
+        <!-- 🪑 PESTAÑA: ESTACIONES (SILLAS) - ACTUALIZADA HU-001-C -->
         <div id="tab-estaciones" class="tab-content">
             <div class="action-header">
                 <div class="search-container" style="max-width: 300px; width: 100%;">
@@ -141,13 +167,14 @@
                     <thead>
                         <tr>
                             <th>Nombre de la Silla</th>
-                            <th>Descripción</th>
+                            <th>Tipo / Valor Base</th>
+                            <th>Vencimiento / Periodicidad</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tablaEstaciones">
-                        <tr><td colspan="4" class="text-center">Cargando estaciones...</td></tr>
+                        <tr><td colspan="5" class="text-center">Cargando estaciones...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -269,22 +296,99 @@
     </div>
 </div>
 
-<!-- 🪑 MODAL: ESTACIONES / SILLAS -->
+<!-- 🪑 MODAL: ESTACIONES / SILLAS (NUEVO REGISTRO / EDICIÓN) -->
 <div id="modalEstacion" class="modal-form">
     <div class="modal-form-content">
         <span class="modal-form-close" onclick="cerrarModalEstacion()">&times;</span>
-        <h2 id="modalEstacionTitulo" style="margin-bottom: 20px; color: #1b3d5f;">Registrar Estación</h2>
+        <h2 id="modalEstacionTitulo" style="margin-bottom: 20px; color: #1b3d5f;">Registrar Estación / Silla</h2>
         <form id="formEstacion">
             <input type="hidden" id="estacionId">
+            
             <div class="form-group">
                 <label>Nombre de la Silla / Estación</label>
-                <input type="text" id="estacionNombre" required placeholder="Ej: Silla VIP 1">
+                <input type="text" id="estacionNombre" required placeholder="Ej: Silla Principal VIP 1">
             </div>
+
             <div class="form-group">
-                <label>Descripción Breve</label>
-                <input type="text" id="estacionDescripcion" placeholder="Ej: Silla de barbero principal cerca de la ventana">
+                <label>Tipo de Cobro / Esquema</label>
+                <select id="estacionTipoCobro" required>
+                    <option value="Porcentaje">Porcentaje de Comisión (%)</option>
+                    <option value="Arriendo Fijo">Cuota de Arriendo Fija ($)</option>
+                    <option value="Mixto">Esquema Mixto ($ + %)</option>
+                </select>
             </div>
+
+            <div class="form-group">
+                <label>Valor Base ($ o %)</label>
+                <input type="number" id="estacionValorBase" required min="0" step="100" placeholder="Ej: 150000">
+            </div>
+
+            <div class="form-group">
+                <label>Estado Inicial</label>
+                <select id="estacionEstado">
+                    <option value="Disponible">Disponible</option>
+                    <option value="Mantenimiento">En Mantenimiento</option>
+                </select>
+            </div>
+
             <button type="submit" class="btn-submit" id="btnGuardarEstacion">Guardar Estación</button>
+        </form>
+    </div>
+</div>
+
+<!-- 💳 MODAL: ACTIVACIÓN TEMPORAL Y REGISTRO DE PAGO POR SILLA (HU-001-B) -->
+<div id="modalActivarSilla" class="modal-form">
+    <div class="modal-form-content">
+        <span class="modal-form-close" onclick="cerrarModalActivar()">&times;</span>
+        <h2 style="margin-bottom: 10px; color: #1b3d5f;">
+            <i class="fas fa-cash-register"></i> Registrar Pago y Activar Silla
+        </h2>
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 20px;">
+            Activa la disponibilidad de agendamiento para esta estación seleccionando el periodo pagado.
+        </p>
+
+        <form id="formActivarSilla" onsubmit="procesarActivacionSilla(event)">
+            <input type="hidden" id="actSillaId">
+            
+            <div class="form-group">
+                <label><i class="fas fa-chair"></i> Silla / Estación</label>
+                <input type="text" id="actSillaNombre" readonly style="background: #f1f5f9; color: #475569; font-weight: 600;">
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-wallet"></i> Método de Pago</label>
+                <select id="actMetodoPago" required>
+                    <option value="Efectivo">Efectivo 💵</option>
+                    <option value="Nequi">Nequi 📲</option>
+                    <option value="Daviplata">Daviplata 🔴</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-calendar-plus"></i> Periodo de Activación</label>
+                <select id="actPeriodo" required>
+                    <option value="1 Semana">1 Semana (7 Días)</option>
+                    <option value="15 Días">15 Días</option>
+                    <option value="1 Mes" selected>1 Mes (30 Días)</option>
+                    <option value="1 Trimestre">1 Trimestre (90 Días)</option>
+                    <option value="1 Semestre">1 Semestre (180 Días)</option>
+                    <option value="1 Año">1 Año (365 Días)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-dollar-sign"></i> Monto Abonado ($)</label>
+                <input type="number" id="actMonto" placeholder="Ej: 150000" min="0" step="1000">
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-receipt"></i> Comprobante / Referencia / Notas</label>
+                <input type="text" id="actComprobante" placeholder="Ej: Transf. Nequi #123456 o Recibo de caja">
+            </div>
+
+            <button type="submit" id="btnConfirmarAct" class="btn-submit" style="background: #10b981;">
+                <i class="fas fa-check-circle"></i> Confirmar Activación
+            </button>
         </form>
     </div>
 </div>

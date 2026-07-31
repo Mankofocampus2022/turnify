@@ -21,5 +21,9 @@ namespace Turnify.Api.Interfaces
 
         // Activar o desactivar una estación (Soft Control por mantenimiento)
         Task<bool> ToggleEstadoAsync(Guid id, Guid proveedorId);
+
+        // 🚀 NUEVO MÉTODO AGREGADO (HU-001-B):
+        // Registro de pago manual y cálculo acumulativo de la fecha de vencimiento
+        Task<EstacionTrabajoResponseDto?> ActivarEstacionAsync(Guid id, Guid proveedorId, EstacionTrabajoActivarDto dto);
     }
 }

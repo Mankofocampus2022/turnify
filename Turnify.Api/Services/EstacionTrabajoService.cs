@@ -31,15 +31,17 @@ namespace Turnify.Api.Services
                     ProveedorId = e.ProveedorId,
                     Nombre = e.Nombre,
                     Activo = e.Activo,
-                    // --- NUEVOS CAMPOS ---
                     TipoCobro = e.TipoCobro,
                     ValorBase = e.ValorBase,
-                    Estado = e.Estado
+                    Estado = e.Estado,
+                    // --- CAMPOS DE ACTIVACIÓN TEMPORAL (HU-001-C) ---
+                    FechaVencimiento = e.FechaVencimiento,
+                    Periodicidad = e.Periodicidad
                 })
                 .ToListAsync();
         }
 
-        // 🔍 CONSULTAR: Obtener una sola estación por su ID (Ajuste Nullable CS8613/CS8603)
+        // 🔍 CONSULTAR: Obtener una sola estación por su ID
         public async Task<EstacionTrabajoResponseDto?> GetByIdAsync(Guid id, Guid proveedorId)
         {
             var estacion = await _context.estaciones_trabajo
@@ -54,10 +56,12 @@ namespace Turnify.Api.Services
                 ProveedorId = estacion.ProveedorId,
                 Nombre = estacion.Nombre,
                 Activo = estacion.Activo,
-                // --- NUEVOS CAMPOS ---
                 TipoCobro = estacion.TipoCobro,
                 ValorBase = estacion.ValorBase,
-                Estado = estacion.Estado
+                Estado = estacion.Estado,
+                // --- CAMPOS DE ACTIVACIÓN TEMPORAL (HU-001-C) ---
+                FechaVencimiento = estacion.FechaVencimiento,
+                Periodicidad = estacion.Periodicidad
             };
         }
 
@@ -68,12 +72,13 @@ namespace Turnify.Api.Services
             {
                 Id = Guid.NewGuid(),
                 ProveedorId = proveedorId,
-                Nombre = dto.Nombre,
+                Nombre = string.IsNullOrWhiteSpace(dto.Nombre) ? "Silla Principal" : dto.Nombre.Trim(),
                 Activo = true, // Por defecto se registra disponible
-                // --- NUEVOS CAMPOS ---
                 TipoCobro = string.IsNullOrWhiteSpace(dto.TipoCobro) ? "Porcentaje" : dto.TipoCobro,
                 ValorBase = dto.ValorBase,
-                Estado = string.IsNullOrWhiteSpace(dto.Estado) ? "Disponible" : dto.Estado
+                Estado = string.IsNullOrWhiteSpace(dto.Estado) ? "Disponible" : dto.Estado,
+                FechaVencimiento = dto.FechaVencimiento,
+                Periodicidad = dto.Periodicidad
             };
 
             _context.estaciones_trabajo.Add(nuevaEstacion);
@@ -85,14 +90,15 @@ namespace Turnify.Api.Services
                 ProveedorId = nuevaEstacion.ProveedorId,
                 Nombre = nuevaEstacion.Nombre,
                 Activo = nuevaEstacion.Activo,
-                // --- NUEVOS CAMPOS ---
                 TipoCobro = nuevaEstacion.TipoCobro,
                 ValorBase = nuevaEstacion.ValorBase,
-                Estado = nuevaEstacion.Estado
+                Estado = nuevaEstacion.Estado,
+                FechaVencimiento = nuevaEstacion.FechaVencimiento,
+                Periodicidad = nuevaEstacion.Periodicidad
             };
         }
 
-        // 📝 ACTUALIZAR: Modificar el nombre o la disponibilidad de la estación (Ajuste Nullable CS8613/CS8603)
+        // 📝 ACTUALIZAR: Modificar el nombre o la disponibilidad de la estación
         public async Task<EstacionTrabajoResponseDto?> UpdateAsync(Guid id, Guid proveedorId, EstacionTrabajoUpdateDto dto)
         {
             var estacion = await _context.estaciones_trabajo
@@ -100,10 +106,9 @@ namespace Turnify.Api.Services
 
             if (estacion == null) return null;
 
-            estacion.Nombre = dto.Nombre;
+            estacion.Nombre = string.IsNullOrWhiteSpace(dto.Nombre) ? estacion.Nombre : dto.Nombre.Trim();
             estacion.Activo = dto.Activo;
 
-            // --- NUEVOS CAMPOS ---
             if (!string.IsNullOrWhiteSpace(dto.TipoCobro))
                 estacion.TipoCobro = dto.TipoCobro;
 
@@ -120,10 +125,11 @@ namespace Turnify.Api.Services
                 ProveedorId = estacion.ProveedorId,
                 Nombre = estacion.Nombre,
                 Activo = estacion.Activo,
-                // --- NUEVOS CAMPOS ---
                 TipoCobro = estacion.TipoCobro,
                 ValorBase = estacion.ValorBase,
-                Estado = estacion.Estado
+                Estado = estacion.Estado,
+                FechaVencimiento = estacion.FechaVencimiento,
+                Periodicidad = estacion.Periodicidad
             };
         }
 
@@ -138,6 +144,54 @@ namespace Turnify.Api.Services
             estacion.Activo = !estacion.Activo;
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        // =========================================================================
+        // 💳 HU-001-B: REGISTRO DE PAGO Y ACTIVACIÓN TEMPORAL DE SILLA / ESTACIÓN
+        // =========================================================================
+        public async Task<EstacionTrabajoResponseDto?> ActivarEstacionAsync(Guid id, Guid proveedorId, EstacionTrabajoActivarDto dto)
+        {
+            var estacion = await _context.estaciones_trabajo
+                .FirstOrDefaultAsync(e => e.Id == id && e.ProveedorId == proveedorId);
+
+            if (estacion == null) return null;
+
+            // 1. Determinar Días a Sumar según el Periodo Seleccionado
+            int diasASumar = dto.Periodo switch
+            {
+                "1 Semana" => 7,
+                "15 Días" => 15,
+                "1 Mes" => 30,
+                "1 Trimestre" => 90,
+                "1 Semestre" => 180,
+                "1 Año" => 365,
+                _ => 30
+            };
+
+            // 2. Cálculo de Fecha de Vencimiento Acumulativa:
+            DateTimeOffset fechaBase = (estacion.FechaVencimiento.HasValue && estacion.FechaVencimiento.Value > DateTimeOffset.UtcNow)
+                ? estacion.FechaVencimiento.Value
+                : DateTimeOffset.UtcNow;
+
+            estacion.FechaVencimiento = fechaBase.AddDays(diasASumar);
+            estacion.Activo = true;
+            estacion.Estado = "Disponible";
+            estacion.Periodicidad = dto.Periodo;
+
+            await _context.SaveChangesAsync();
+
+            return new EstacionTrabajoResponseDto
+            {
+                Id = estacion.Id,
+                ProveedorId = estacion.ProveedorId,
+                Nombre = estacion.Nombre,
+                Activo = estacion.Activo,
+                TipoCobro = estacion.TipoCobro,
+                ValorBase = estacion.ValorBase,
+                Estado = estacion.Estado,
+                FechaVencimiento = estacion.FechaVencimiento,
+                Periodicidad = estacion.Periodicidad
+            };
         }
     }
 }

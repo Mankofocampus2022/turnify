@@ -24,7 +24,7 @@ namespace Turnify.Api.Models
         [Column("activo")]
         public bool Activo { get; set; } = true;
 
-        // --- NUEVOS CAMPOS AGREGADOS ---
+        // --- CAMPOS FINANCIEROS Y OPERATIVOS ---
         [Column("tipo_cobro")]
         [StringLength(50)]
         public string TipoCobro { get; set; } = "Porcentaje";
@@ -36,7 +36,15 @@ namespace Turnify.Api.Models
         [StringLength(20)]
         public string Estado { get; set; } = "Disponible";
 
-        // --- RELACIÓN ORIGINAL INTACТА ---
+        // --- 🚀 CAMPOS AGREGADOS PARA ACTIVACIÓN Y CONTROL TEMPORAL (HU-001-B / C) ---
+        [Column("fecha_vencimiento")]
+        public DateTimeOffset? FechaVencimiento { get; set; }
+
+        [Column("periodicidad")]
+        [StringLength(50)]
+        public string? Periodicidad { get; set; }
+
+        // --- RELACIÓN ORIGINAL INTACTA ---
         [ForeignKey("ProveedorId")]
         [JsonIgnore]
         public virtual Proveedores? Proveedor { get; set; }

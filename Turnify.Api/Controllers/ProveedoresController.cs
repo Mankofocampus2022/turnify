@@ -213,8 +213,11 @@ namespace Turnify.Api.Controllers
                     return BadRequest(new { message = "El correo electrónico ya se encuentra registrado." });
                 }
 
-                var rolDependiente = await _context.roles.FirstOrDefaultAsync(r => r.nombre == Roles.RoleNames.ProveedorDependiente)
-                                   ?? await _context.roles.FindAsync(Roles.RoleIds.ProveedorDependiente);
+                string targetRoleName = Roles.RoleNames.ProveedorDependiente;
+                Guid targetRoleId = Roles.RoleIds.ProveedorDependiente; // 🔹 FIX CS0029: Cambiado de int a Guid
+
+                var rolDependiente = await _context.roles.FirstOrDefaultAsync(r => r.nombre == targetRoleName)
+                                   ?? await _context.roles.FindAsync(targetRoleId);
 
                 var nuevoUsuario = new Usuarios
                 {
@@ -222,7 +225,7 @@ namespace Turnify.Api.Controllers
                     nombre = dto.NombreComercial,
                     email = dto.Email,
                     password_hash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                    rol_id = rolDependiente?.id ?? Roles.RoleIds.ProveedorDependiente
+                    rol_id = rolDependiente?.id ?? targetRoleId // 🔹 FIX CS0019: Coincidencia Guid con Guid
                 };
 
                 _context.usuarios.Add(nuevoUsuario);
@@ -263,8 +266,11 @@ namespace Turnify.Api.Controllers
                     return BadRequest(new { message = "El correo electrónico ya se encuentra registrado." });
                 }
 
-                var rolDependiente = await _context.roles.FirstOrDefaultAsync(r => r.nombre == Roles.RoleNames.ProveedorDependiente)
-                                   ?? await _context.roles.FindAsync(Roles.RoleIds.ProveedorDependiente);
+                string targetRoleName = Roles.RoleNames.ProveedorDependiente;
+                Guid targetRoleId = Roles.RoleIds.ProveedorDependiente; // 🔹 FIX CS0029: Cambiado de int a Guid
+
+                var rolDependiente = await _context.roles.FirstOrDefaultAsync(r => r.nombre == targetRoleName)
+                                   ?? await _context.roles.FindAsync(targetRoleId);
 
                 var nuevoUsuario = new Usuarios
                 {
@@ -272,7 +278,7 @@ namespace Turnify.Api.Controllers
                     nombre = dto.NombreComercial,
                     email = dto.Email,
                     password_hash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                    rol_id = rolDependiente?.id ?? Roles.RoleIds.ProveedorDependiente
+                    rol_id = rolDependiente?.id ?? targetRoleId // 🔹 FIX CS0019: Coincidencia Guid con Guid
                 };
 
                 _context.usuarios.Add(nuevoUsuario);
@@ -294,7 +300,10 @@ namespace Turnify.Api.Controllers
             // Identificar StaffId si la petición proviene de un Staff autenticado
             Guid? staffIdActual = dto.StaffId;
             var staffClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (staffIdActual == null && !string.IsNullOrEmpty(staffClaim) && User.IsInRole(Roles.RoleNames.Staff))
+
+            string staffRoleName = Roles.RoleNames.Staff;
+
+            if (staffIdActual == null && !string.IsNullOrEmpty(staffClaim) && User.IsInRole(staffRoleName))
             {
                 staffIdActual = Guid.Parse(staffClaim);
             }
@@ -354,7 +363,13 @@ namespace Turnify.Api.Controllers
                 return (false, "La foto de perfil no debe superar los 3 MB.", null);
             }
 
-            var uploadsFolder = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", "proveedores");
+            var baseWebPath = _env.WebRootPath;
+            if (string.IsNullOrEmpty(baseWebPath))
+            {
+                baseWebPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            }
+
+            var uploadsFolder = Path.Combine(baseWebPath, "uploads", "proveedores");
             if (!Directory.Exists(uploadsFolder))
             {
                 Directory.CreateDirectory(uploadsFolder);

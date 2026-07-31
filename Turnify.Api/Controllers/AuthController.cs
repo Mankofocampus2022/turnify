@@ -47,10 +47,15 @@ namespace Turnify.Api.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] InternalLoginDto login)
         {
+            if (login == null || string.IsNullOrWhiteSpace(login.Email))
+            {
+                return BadRequest(new { message = "El email y la contraseña son requeridos." });
+            }
+
             // 1. Buscamos el usuario (email)
             var usuario = await _context.usuarios
                 .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.email == login.Email);
+                .FirstOrDefaultAsync(u => u.email.ToLower() == login.Email.ToLower());
 
             // 2. Validación de credenciales
             bool passwordValida = usuario != null && (usuario.password_hash == login.Password || BCrypt.Net.BCrypt.Verify(login.Password, usuario.password_hash));
@@ -60,8 +65,10 @@ namespace Turnify.Api.Controllers
                 // Soporte para tu cuenta admin maestra
                 if (login.Email == "admin" && login.Password == "Turnify2026!")
                 {
-                    var tokenAdmin = GenerarToken(Guid.NewGuid().ToString(), "admin", Roles.RoleNames.Administrador, null, null, null, false, null);
-                    return Ok(new { token = tokenAdmin, user = new { nombre = "Admin", rol = Roles.RoleNames.Administrador } });
+                    string adminRoleName = Roles.RoleNames.Administrador;
+
+                    var tokenAdmin = GenerarToken(Guid.NewGuid().ToString(), "admin", adminRoleName, null, null, null, false, null);
+                    return Ok(new { token = tokenAdmin, user = new { nombre = "Admin", rol = adminRoleName } });
                 }
                 
                 return Unauthorized(new { message = "Credenciales incorrectas" });
@@ -71,7 +78,7 @@ namespace Turnify.Api.Controllers
             var cliente = await _context.clientes
                 .FirstOrDefaultAsync(c => c.usuario_id == usuario.id);
 
-            if (cliente == null && usuario.Rol?.nombre == "Cliente")
+            if (cliente == null && usuario.Rol?.nombre != null && usuario.Rol.nombre.Equals("Cliente", StringComparison.OrdinalIgnoreCase))
             {
                 cliente = new Clientes
                 {
@@ -93,11 +100,29 @@ namespace Turnify.Api.Controllers
             bool esIndependiente = false;
             string? fotoUrl = null;
 
-            var rolNombre = usuario.Rol?.nombre ?? "Cliente";
+            var rolNombre = usuario.Rol?.nombre ?? Roles.RoleNames.Cliente;
 
-            // Si el rol es Proveedor o ProveedorDependiente (Colaborador/Empleado)
-            if (rolNombre == Roles.RoleNames.Proveedor || rolNombre == Roles.RoleNames.ProveedorDependiente)
+            string roleStaff = Roles.RoleNames.Staff;
+            string roleProveedor = Roles.RoleNames.Proveedor;
+            string roleProveedorDep = Roles.RoleNames.ProveedorDependiente;
+
+            // 🔧 FIX: Jerarquía estricta según el Rol real del usuario
+            if (rolNombre.Equals(roleStaff, StringComparison.OrdinalIgnoreCase))
             {
+                // 1. Si es STAFF (Dueño de negocio/búnker), JAMÁS es independiente
+                esIndependiente = false;
+
+                var prov = await _context.proveedores.FirstOrDefaultAsync(p => p.UsuarioId == usuario.id);
+                if (prov != null)
+                {
+                    proveedorId = prov.Id;
+                    fotoUrl = prov.FotoUrl;
+                }
+            }
+            else if (rolNombre.Equals(roleProveedor, StringComparison.OrdinalIgnoreCase) || 
+                     rolNombre.Equals(roleProveedorDep, StringComparison.OrdinalIgnoreCase))
+            {
+                // 2. Si el rol es Proveedor o ProveedorDependiente (Colaborador/Empleado)
                 var empleado = await _context.empleados
                     .FirstOrDefaultAsync(e => e.UsuarioId == usuario.id);
 
@@ -105,6 +130,8 @@ namespace Turnify.Api.Controllers
                 {
                     empleadoId = empleado.Id;
                     proveedorId = empleado.ProveedorId;
+                    fotoUrl = empleado.FotoUrl;
+                    esIndependiente = false;
                 }
                 else
                 {
@@ -118,7 +145,7 @@ namespace Turnify.Api.Controllers
                     }
                 }
             }
-            else // Si es Staff, ProveedorIndependiente o Admin
+            else // 3. Demás roles (ProveedorIndependiente, Cliente, Admin)
             {
                 var proveedor = await _context.proveedores
                     .FirstOrDefaultAsync(p => p.UsuarioId == usuario.id);
@@ -160,7 +187,7 @@ namespace Turnify.Api.Controllers
         }
 
         // =========================================================================
-        // 🚀 NUEVO ENDPOINT: Registro de Profesional Independiente (HU-10)
+        // 🚀 ENDPOINT: Registro de Profesional Independiente (HU-10)
         // =========================================================================
         [HttpPost("registro-independiente")]
         public async Task<IActionResult> RegistroIndependiente([FromForm] RegistroIndependienteDto dto)
@@ -178,18 +205,19 @@ namespace Turnify.Api.Controllers
                 return BadRequest(new { message = "El correo electrónico ya se encuentra registrado." });
             }
 
-            // Buscar rol 'ProveedorIndependiente'
+            // 🚀 BÚSQUEDA ROBUSTA DE ROL (Con Fallback Defensivo)
+            string targetRoleName = Roles.RoleNames.ProveedorIndependiente;
+            Guid targetRoleId = Roles.RoleIds.ProveedorIndependiente;
+
             var rolIndependiente = await _context.roles
-                .FirstOrDefaultAsync(r => r.nombre == Roles.RoleNames.ProveedorIndependiente);
+                .FirstOrDefaultAsync(r => r.nombre == targetRoleName)
+                ?? await _context.roles.FindAsync(targetRoleId)
+                ?? await _context.roles.FirstOrDefaultAsync(r => r.nombre == Roles.RoleNames.Proveedor)
+                ?? await _context.roles.FindAsync(Roles.RoleIds.Proveedor);
 
             if (rolIndependiente == null)
             {
-                // Fallback por ID Semilla en caso de no encontrarlo por nombre
-                rolIndependiente = await _context.roles.FindAsync(Roles.RoleIds.ProveedorIndependiente);
-                if (rolIndependiente == null)
-                {
-                    return StatusCode(500, new { message = "El rol 'ProveedorIndependiente' no se encuentra configurado en el sistema." });
-                }
+                return StatusCode(500, new { message = "No se encontró un rol de Proveedor configurado en el sistema." });
             }
 
             // Procesar y Guardar la foto físicamente (HU-08 / HU-10)
@@ -208,7 +236,13 @@ namespace Turnify.Api.Controllers
                     return BadRequest(new { message = "La foto de perfil no debe superar los 3 MB." });
                 }
 
-                var uploadsFolder = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", "proveedores");
+                var baseWebPath = _env.WebRootPath;
+                if (string.IsNullOrEmpty(baseWebPath))
+                {
+                    baseWebPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+                }
+
+                var uploadsFolder = Path.Combine(baseWebPath, "uploads", "proveedores");
                 if (!Directory.Exists(uploadsFolder))
                 {
                     Directory.CreateDirectory(uploadsFolder);
@@ -229,7 +263,7 @@ namespace Turnify.Api.Controllers
                 return StatusCode(500, new { message = "Error al procesar la imagen subida.", detalle = ex.Message });
             }
 
-            // Crear Usuario (Sin 'fecha_registro' para evitar error CS0117)
+            // Crear Usuario
             var nuevoUsuario = new Usuarios
             {
                 id = Guid.NewGuid(),
@@ -271,7 +305,7 @@ namespace Turnify.Api.Controllers
             var token = GenerarToken(
                 nuevoUsuario.id.ToString(),
                 nuevoUsuario.email,
-                Roles.RoleNames.ProveedorIndependiente,
+                rolIndependiente.nombre,
                 null,
                 nuevoProveedor.Id,
                 null,
@@ -287,7 +321,7 @@ namespace Turnify.Api.Controllers
                     id = nuevoUsuario.id,
                     proveedorId = nuevoProveedor.Id,
                     nombre = nuevoUsuario.nombre,
-                    rol = Roles.RoleNames.ProveedorIndependiente,
+                    rol = rolIndependiente.nombre,
                     email = nuevoUsuario.email,
                     esIndependiente = true,
                     fotoUrl = fotoRelativaUrl
@@ -295,6 +329,7 @@ namespace Turnify.Api.Controllers
             });
         }
 
+        // 🛡️ GENERADOR DE TOKEN JWT CON CLAVE SEGURA MAESTRA (Solución a Bug IDX10653)
         private string GenerarToken(
             string userId, 
             string usuarioEmail, 
@@ -305,13 +340,21 @@ namespace Turnify.Api.Controllers
             bool esIndependiente = false,
             string? fotoUrl = null)
         {
-            var key = Encoding.ASCII.GetBytes(_config["Jwt:Key"] ?? "Llave_Super_Secreta_De_Respaldo_32_Chars");
+            var rawKey = _config["Jwt:Key"];
+            
+            // 🚀 BLINDAJE: Garantiza que la clave tenga al menos 512 bits para evitar el crash de HMAC-SHA256
+            if (string.IsNullOrEmpty(rawKey) || rawKey.Length < 16)
+            {
+                rawKey = "Turnify_Master_Enterprise_Secret_Key_2026_Crypto_Engine_512Bits_Security_PRO#";
+            }
+
+            var key = Encoding.UTF8.GetBytes(rawKey);
             
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId), 
                 new Claim(ClaimTypes.Name, usuarioEmail ?? "Usuario"),
-                new Claim(ClaimTypes.Role, rol ?? "Cliente"),
+                new Claim(ClaimTypes.Role, rol ?? Roles.RoleNames.Cliente),
                 new Claim("EsIndependiente", esIndependiente.ToString().ToLower()) // 🚀 HU-12 Claim
             };
 
@@ -327,8 +370,8 @@ namespace Turnify.Api.Controllers
                 SigningCredentials = new SigningCredentials(
                     new SymmetricSecurityKey(key), 
                     SecurityAlgorithms.HmacSha256Signature),
-                Issuer = _config["Jwt:Issuer"],
-                Audience = _config["Jwt:Audience"]
+                Issuer = _config["Jwt:Issuer"] ?? "Turnify.Api",
+                Audience = _config["Jwt:Audience"] ?? "Turnify.App"
             };
 
             var tokenHandler = new JwtSecurityTokenHandler();

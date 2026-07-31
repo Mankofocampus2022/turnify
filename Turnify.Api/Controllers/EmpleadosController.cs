@@ -27,17 +27,33 @@ namespace Turnify.Api.Controllers
             _context = context;
         }
 
-        // 🧠 MÉTODO PRIVADO DE SEGURIDAD: Extrae la identidad del dueño desde el Token
+        // 🧠 MÉTODO PRIVADO DE SEGURIDAD REFORZADO: Extrae la identidad del negocio desde el Claim o la BDD
         private async Task<Guid?> GetProveedorIdAsync()
         {
+            // 1. Intentar obtener directamente el ProveedorId inyectado en los Claims del JWT
+            var proveedorClaim = User.FindFirst("ProveedorId")?.Value;
+            if (!string.IsNullOrEmpty(proveedorClaim) && Guid.TryParse(proveedorClaim, out var claimProveedorId))
+            {
+                return claimProveedorId;
+            }
+
+            // 2. Fallback: Buscar en BDD por UsuarioId de la sesión activa
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdString)) return null;
+            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId)) 
+                return null;
 
-            if (!Guid.TryParse(userIdString, out var userId)) return null;
+            var proveedor = await _context.proveedores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UsuarioId == userId);
 
-            var proveedor = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.UsuarioId == userId);
-            
-            return proveedor?.Id;
+            if (proveedor != null) return proveedor.Id;
+
+            // 3. Fallback Multi-tenant: Si es un perfil subordinado registrado bajo un Staff/Búnker
+            var proveedorDependiente = await _context.proveedores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.StaffId != null && p.UsuarioId == userId);
+
+            return proveedorDependiente?.StaffId ?? proveedorDependiente?.Id;
         }
 
         // 🔒 MÉTODO PRIVADO AUXILIAR: Valida firmas mágicas de archivos (MIME Real)
@@ -113,9 +129,9 @@ namespace Turnify.Api.Controllers
             return Ok(empleado);
         }
 
-        // ➕ POST: api/empleados (Soporta JSON o multipart/form-data para HU-08)
+        // ➕ POST: api/empleados (Soporta JSON o multipart/form-data HÍBRIDO)
         [HttpPost]
-        public async Task<IActionResult> Create([FromForm] EmpleadoCreateDto dto)
+        public async Task<IActionResult> Create([FromBody] EmpleadoCreateDto dto)
         {
             var proveedorId = await GetProveedorIdAsync();
             if (proveedorId == null) return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });
@@ -131,9 +147,9 @@ namespace Turnify.Api.Controllers
             }
         }
 
-        // 📝 PUT: api/empleados/{id} (Soporta JSON o multipart/form-data para actualización)
+        // 📝 PUT: api/empleados/{id} (Soporta JSON o multipart/form-data HÍBRIDO)
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(Guid id, [FromForm] EmpleadoUpdateDto dto)
+        public async Task<IActionResult> Update(Guid id, [FromBody] EmpleadoUpdateDto dto)
         {
             var proveedorId = await GetProveedorIdAsync();
             if (proveedorId == null) return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });

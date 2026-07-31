@@ -30,14 +30,11 @@ namespace Turnify.Api.Models.DTOs
         [JsonPropertyName("rol_id")]
         public Guid RolId { get; set; }
 
-        // 🚩 Campos nuevos para que el Service no chille
-        // Blindaje: Aseguramos que el teléfono llegue sí o sí para evitar el bug de Juana de Arco
-        [Required(ErrorMessage = "El teléfono es obligatorio para la creación del perfil.")]
-        // 🛡️ BLINDAJE TC-002: Acotación de longitud física de número telefónico
+        // 🛡️ BLINDAJE TC-002: Opcional para evitar fallos si el formulario de origen no envía teléfono de entrada
         [StringLength(20, ErrorMessage = "El número telefónico no puede exceder los 20 caracteres.")]
         [Phone(ErrorMessage = "Formato de teléfono no válido.")]
         [JsonPropertyName("telefono")]
-        public string Telefono { get; set; } = string.Empty;
+        public string? Telefono { get; set; } = string.Empty;
 
         [JsonPropertyName("nombreComercial")]
         // 🛡️ BLINDAJE TC-002: Sanitización y límite estricto para el establecimiento comercial
@@ -45,10 +42,37 @@ namespace Turnify.Api.Models.DTOs
         [RegularExpression(@"^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\.,#\-&]*$", ErrorMessage = "El nombre comercial contiene caracteres especiales no válidos.")]
         public string? NombreComercial { get; set; }
 
+        // 🔹 Alias de respaldo JSON para evitar fallos si el cliente manda nombre_comercial
+        [JsonPropertyName("nombre_comercial")]
+        public string? NombreComercialSnakeCase
+        {
+            get => NombreComercial;
+            set { if (string.IsNullOrEmpty(NombreComercial)) NombreComercial = value; }
+        }
+
         [JsonPropertyName("tipoNegocio")]
         // 🛡️ BLINDAJE TC-002: Límite defensivo para rubro comercial
         [StringLength(50, ErrorMessage = "El tipo de negocio no puede superar los 50 caracteres.")]
         [RegularExpression(@"^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$", ErrorMessage = "El tipo de negocio solo admite caracteres alfabéticos y espacios.")]
         public string? TipoNegocio { get; set; }
+
+        // 🔹 Alias de respaldo JSON para evitar fallos si el cliente manda tipo_negocio
+        [JsonPropertyName("tipo_negocio")]
+        public string? TipoNegocioSnakeCase
+        {
+            get => TipoNegocio;
+            set { if (string.IsNullOrEmpty(TipoNegocio)) TipoNegocio = value; }
+        }
+
+        // 🚀 MEJORA COMPATIBILIDAD STAFF/INDEPENDIENTE: Permite explicitar la modalidad si se registra un proveedor/colaborador
+        [JsonPropertyName("esIndependiente")]
+        public bool EsIndependiente { get; set; } = false;
+
+        [JsonPropertyName("es_independiente")]
+        public bool EsIndependienteSnakeCase
+        {
+            get => EsIndependiente;
+            set => EsIndependiente = value;
+        }
     }
 }

@@ -12,7 +12,10 @@ const API_HOST = (window.location.hostname === 'localhost' || window.location.ho
 // 1. CONFIGURACIÓN DE ROLES (GUIDs y Claves de Sistema)
 const ROLES = {
     CLIENTE: "56992f75-6420-4d55-a5f9-9223248c50d7",
-    ADMINISTRADOR: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7", // Rol de Proveedor / Administrador del negocio
+    // 🚀 FIX CRÍTICO: Reemplazado por el GUID real de STAFF (Dueño de Búnker / Administrador de local)
+    ADMINISTRADOR: "99a2b3c4-e5f6-4789-90ab-c1d2e3f40099", 
+    STAFF: "99a2b3c4-e5f6-4789-90ab-c1d2e3f40099",
+    PROVEEDOR: "8854c07c-6e5e-4876-a29a-c7ad5dcfbab7",
     INDEPENDIENTE: "PROVEEDOR_INDEPENDIENTE"
 };
 
@@ -53,10 +56,10 @@ function cambiarRol(rol) {
         if(sectionReserva) sectionReserva.style.display = 'none';
         if(inputNegocio) inputNegocio.required = false;
         
-        btnText.innerText = "Registrarme como Independiente";
+        if(btnText) btnText.innerText = "Registrarme como Independiente";
         if(btnIndependiente) btnIndependiente.classList.add('active');
 
-    } else if (rol === 'ADMINISTRADOR' || rol === 'BARBERO') {
+    } else if (rol === 'ADMINISTRADOR' || rol === 'BARBERO' || rol === 'STAFF') {
         currentRole = 'ADMINISTRADOR';
         if(groupNegocio) groupNegocio.style.display = 'block';
         if(groupEspecialidad) groupEspecialidad.style.display = 'block';
@@ -65,7 +68,7 @@ function cambiarRol(rol) {
         if(sectionReserva) sectionReserva.style.display = 'none';
         if(inputNegocio) inputNegocio.required = true;
         
-        btnText.innerText = "Registrar mi Negocio";
+        if(btnText) btnText.innerText = "Registrar mi Negocio";
         if(btnBarbero) btnBarbero.classList.add('active');
 
     } else {
@@ -78,7 +81,7 @@ function cambiarRol(rol) {
         if(qrProveedorId && sectionReserva) sectionReserva.style.display = 'block';
         if(inputNegocio) inputNegocio.required = false;
         
-        btnText.innerText = "Registrarme como Cliente";
+        if(btnText) btnText.innerText = "Registrarme como Cliente";
         if(btnCliente) btnCliente.classList.add('active');
     }
 }
@@ -87,7 +90,7 @@ function cambiarRol(rol) {
  * 🚩 Lógica de Domicilio (Ocultar/Mostrar dirección)
  */
 function toggleDireccionRegistro() {
-    const modalidad = document.getElementById('regModalidad').value;
+    const modalidad = document.getElementById('regModalidad')?.value;
     const groupDireccion = document.getElementById('groupDireccionRegistro');
     const inputDireccion = document.getElementById('regDireccion');
     
@@ -134,7 +137,7 @@ async function inicializarFlujoQR() {
 // Escuchamos el cambio de fecha para cargar horas disponibles
 document.getElementById('regFecha')?.addEventListener('change', async (e) => {
     const fecha = e.target.value;
-    const servicioId = document.getElementById('regServicio').value;
+    const servicioId = document.getElementById('regServicio')?.value;
     const selectHora = document.getElementById('regHora');
 
     if (!fecha || !servicioId) return;
@@ -153,7 +156,7 @@ document.getElementById('regFecha')?.addEventListener('change', async (e) => {
 /**
  * Manejador principal del Registro (CON SOPORTE DE PROFESIONAL INDEPENDIENTE HU-10)
  */
-document.getElementById('formRegistroCliente').addEventListener('submit', async (e) => {
+document.getElementById('formRegistroCliente')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const btnSubmit = document.getElementById('btnSubmit');
@@ -174,8 +177,10 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
         }
     }
 
-    btnSubmit.disabled = true;
-    btnSubmit.innerText = "Procesando Registro...";
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerText = "Procesando Registro...";
+    }
 
     try {
         // =========================================================================
@@ -193,7 +198,7 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
             formData.append('Ciudad', "Bogotá");
             
             const fileInput = document.getElementById('regFotoRostro');
-            if (fileInput.files.length > 0) {
+            if (fileInput && fileInput.files.length > 0) {
                 formData.append('FotoRostro', fileInput.files[0]);
             }
 
@@ -229,23 +234,27 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
                     errorMsg = Object.values(result.errors).flat().join("\n");
                 }
                 alert("❌ Error: " + errorMsg);
-                btnSubmit.disabled = false;
-                btnSubmit.innerText = "Registrarme como Independiente";
+                if (btnSubmit) {
+                    btnSubmit.disabled = false;
+                    btnSubmit.innerText = "Registrarme como Independiente";
+                }
             }
             return;
         }
 
         // =========================================================================
-        // 📦 CASO B: REGISTRO STANDARD (CLIENTE / ADMINISTRADOR DE NEGOCIO)
+        // 📦 CASO B: REGISTRO STANDARD (CLIENTE / STAFF - DUEÑO DE NEGOCIO)
         // =========================================================================
         const registroData = {
             nombre: document.getElementById('regNombre').value.trim(),
             email: document.getElementById('regEmail').value.trim(),
             password: password,
-            rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.ADMINISTRADOR,
+            // 🚀 AHORA ENVÍA EL GUID REAL DE STAFF: "99a2b3c4-e5f6-4789-90ab-c1d2e3f40099"
+            rol_id: currentRole === 'CLIENTE' ? ROLES.CLIENTE : ROLES.STAFF,
             telefono: document.getElementById('regTelefono').value.trim(),
-            nombreComercial: currentRole === 'ADMINISTRADOR' ? document.getElementById('regNegocio').value.trim() : "",
-            tipoNegocio: currentRole === 'ADMINISTRADOR' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular"
+            nombreComercial: currentRole === 'ADMINISTRADOR' ? document.getElementById('regNegocio')?.value.trim() : "",
+            tipoNegocio: currentRole === 'ADMINISTRADOR' ? (document.getElementById('regCategoria')?.value || "Barbería") : "Particular",
+            esIndependiente: false
         };
 
         const response = await fetch(`${API_HOST}/api/Usuarios/registrar`, {
@@ -268,16 +277,16 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
 
             // PASO B.1: SI ES FLUJO QR, AGENDAMOS DE UNA VEZ
             if (qrProveedorId && currentRole === 'CLIENTE' && clienteId) {
-                btnSubmit.innerText = "Agendando tu cita...";
+                if (btnSubmit) btnSubmit.innerText = "Agendando tu cita...";
                 
                 const citaData = {
                     clienteId: clienteId,
                     proveedorId: qrProveedorId,
-                    servicioId: document.getElementById('regServicio').value,
-                    fecha: document.getElementById('regFecha').value,
-                    hora: document.getElementById('regHora').value,
-                    modalidad: document.getElementById('regModalidad').value,
-                    direccion: document.getElementById('regDireccion').value.trim(),
+                    servicioId: document.getElementById('regServicio')?.value,
+                    fecha: document.getElementById('regFecha')?.value,
+                    hora: document.getElementById('regHora')?.value,
+                    modalidad: document.getElementById('regModalidad')?.value,
+                    direccion: document.getElementById('regDireccion')?.value.trim() || "",
                     metodoRegistro: "QR" 
                 };
 
@@ -293,7 +302,7 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
                     alert("✅ Cuenta creada, pero hubo un error agendando. Inicia sesión para intentarlo de nuevo.");
                 }
             } else {
-                alert("🚀 ¡Bienvenido a Turnify! Tu cuenta ha sido creada.");
+                alert("🚀 ¡Bienvenido a Turnify! Tu cuenta ha sido creada con éxito.");
             }
             
             window.location.href = 'login.html';
@@ -304,15 +313,19 @@ document.getElementById('formRegistroCliente').addEventListener('submit', async 
             }
             alert("❌ Error: " + errorMsg);
             
-            btnSubmit.disabled = false;
-            btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrar mi Negocio";
+            if (btnSubmit) {
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = currentRole === 'CLIENTE' ? "Registrarme como Cliente" : "Registrar mi Negocio";
+            }
         }
 
     } catch (error) {
         console.error("🚨 Error:", error);
         alert("🔌 Error de conexión con el servidor.");
-        btnSubmit.disabled = false;
-        btnSubmit.innerText = "Reintentar Registro";
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerText = "Reintentar Registro";
+        }
     }
 });
 

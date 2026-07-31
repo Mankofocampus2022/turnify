@@ -171,22 +171,50 @@ namespace Turnify.Api.Services
             // 🛡️ Lógica de protección: Si se envía correo y clave, se le crea un usuario en el sistema
             if (!string.IsNullOrEmpty(dto.EmailParaUsuario) && !string.IsNullOrEmpty(dto.PasswordParaUsuario))
             {
-                var existeEmail = await _context.usuarios.AnyAsync(u => u.email == dto.EmailParaUsuario);
+                var emailLimpio = dto.EmailParaUsuario.Trim().ToLower();
+                var existeEmail = await _context.usuarios.AnyAsync(u => u.email == emailLimpio);
                 if (existeEmail)
                 {
                     throw new InvalidOperationException("El correo electrónico ya está registrado por otro usuario.");
                 }
 
+                // 🎯 FIX CRÍTICO: Búsqueda dinámica del ROL DE STAFF para los colaboradores
+                var rolStaff = await _context.roles
+                    .FirstOrDefaultAsync(r => r.nombre == "Staff" || r.nombre == "Empleado" || r.nombre == Roles.RoleNames.ProveedorDependiente);
+
+                // Asigna explícitamente el GUID del rol Staff: 99a2b3c4-e5f6-4789-90ab-c1d2e3f40099
+                var rolIdFinal = rolStaff?.id ?? Guid.Parse("99a2b3c4-e5f6-4789-90ab-c1d2e3f40099");
+
                 var nuevoUsuario = new Usuarios
                 {
                     id = Guid.NewGuid(),
-                    email = dto.EmailParaUsuario,
+                    nombre = dto.Nombre ?? "Colaborador Staff",
+                    email = emailLimpio,
                     password_hash = BCrypt.Net.BCrypt.HashPassword(dto.PasswordParaUsuario),
-                    rol_id = Guid.Parse("99A2B3C4-E5F6-4789-90AB-C1D2E3F40099") // Rol Semilla 'Staff'
+                    rol_id = rolIdFinal, // 👈 AHORA SÍ ASIGNA EL ROL DE STAFF
+                    fecha_creacion = DateTime.UtcNow,
+                    activo = true
                 };
 
                 _context.usuarios.Add(nuevoUsuario);
                 nuevoUsuarioId = nuevoUsuario.id;
+
+                // 🚩 Registro secundario en Proveedores para soporte multi-tenant (EsIndependiente = false)
+                var proveedorPadre = await _context.proveedores.FirstOrDefaultAsync(p => p.Id == proveedorId);
+                
+                _context.proveedores.Add(new Proveedores
+                {
+                    Id = Guid.NewGuid(),
+                    UsuarioId = nuevoUsuario.id,
+                    NombreComercial = dto.Nombre ?? "Colaborador Staff",
+                    Tipo = proveedorPadre?.Tipo ?? "Barbería",
+                    Email = emailLimpio,
+                    Telefono = dto.Telefono ?? string.Empty,
+                    Activo = true,
+                    FechaCreacion = DateTime.UtcNow,
+                    Direccion = proveedorPadre?.Direccion ?? "Sede Principal",
+                    EsIndependiente = false // 👈 TODO STAFF NACE COMO NO INDEPENDIENTE
+                });
             }
 
             var nuevoEmpleadoId = Guid.NewGuid();

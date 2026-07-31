@@ -20,7 +20,7 @@ namespace Turnify.Api.Data
         public DbSet<Suscripciones> suscripciones { get; set; }
         public DbSet<HorariosAtencion> horarios_atencion { get; set; }
 
-        // 🚀 HU 001 - MULTI-SILLA: Nuevas tablas
+        // 🚀 HU 001 - MULTI-SILLA: Tablas de la Épica
         public DbSet<EstacionTrabajo> estaciones_trabajo { get; set; }
         public DbSet<Empleado> empleados { get; set; }
 
@@ -39,6 +39,7 @@ namespace Turnify.Api.Data
             
             // 🚀 HU 001: Precisión para el valor del contrato/pago silla/comisión
             modelBuilder.Entity<Empleado>().Property(e => e.ValorContrato).HasPrecision(18, 2);
+            modelBuilder.Entity<EstacionTrabajo>().Property(e => e.ValorBase).HasPrecision(18, 2);
 
             // 🚀 HU-09 & HU-12: Precisión para la comisión de proveedores dependientes
             modelBuilder.Entity<Proveedores>().Property(p => p.PorcentajeComision).HasPrecision(5, 2);
@@ -59,7 +60,38 @@ namespace Turnify.Api.Data
             modelBuilder.Entity<EstacionTrabajo>().ToTable("estaciones_trabajo");
 
             // ============================================================================
-            // 3. INTEGRIDAD REFERENCIAL Y BLINDAJE DE CASCADAS (PROTECCIÓN MULTI-TENANT)
+            // 3. MAPEO DETALLADO Y BLINDAJE PARA ESTACIONES DE TRABAJO (HU-001-B / C)
+            // ============================================================================
+            modelBuilder.Entity<EstacionTrabajo>(entity => {
+                entity.ToTable("estaciones_trabajo");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProveedorId).HasColumnName("proveedor_id");
+                entity.Property(e => e.Nombre).HasColumnName("nombre").HasMaxLength(100);
+                
+                // 🛑 CORRECCIÓN CRÍTICA: Forzamos a EF a enviar explícitamente 'activo' en el INSERT 
+                // para evitar el fallo por NULL en SQL Server.
+                entity.Property(e => e.Activo)
+                      .HasColumnName("activo")
+                      .IsRequired();
+
+                entity.Property(e => e.TipoCobro).HasColumnName("tipo_cobro").HasMaxLength(50);
+                entity.Property(e => e.ValorBase).HasColumnName("valor_base");
+                entity.Property(e => e.Estado).HasColumnName("estado").HasMaxLength(20);
+
+                // 🚀 Mapeo de Campos Temporales y Activación por Silla
+                entity.Property(e => e.FechaVencimiento)
+                      .HasColumnName("fecha_vencimiento")
+                      .HasColumnType("datetimeoffset")
+                      .IsRequired(false);
+
+                entity.Property(e => e.Periodicidad)
+                      .HasColumnName("periodicidad")
+                      .HasMaxLength(50)
+                      .IsRequired(false);
+            });
+
+            // ============================================================================
+            // 4. INTEGRIDAD REFERENCIAL Y BLINDAJE DE CASCADAS (PROTECCIÓN MULTI-TENANT)
             // ============================================================================
 
             // 🚩 FIX NUCLEAR 1: Evita borrado en cascada de Proveedor -> Estaciones
@@ -76,13 +108,13 @@ namespace Turnify.Api.Data
                 .HasForeignKey(e => e.ProveedorId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // 🚀 RELACIÓN ESTACIÓN - EMPLEADO (Mapeada mediante sombra/unidireccional segura para evitar CS1061)
+            // 🚀 RELACIÓN ESTACIÓN - EMPLEADO (Mapeada a la columna física 'empleado_id' en snake_case)
             modelBuilder.Entity<EstacionTrabajo>()
                 .HasOne<Empleado>()
                 .WithMany()
-                .HasForeignKey("EmpleadoId")
+                .HasForeignKey("empleado_id")
                 .IsRequired(false)
-                .OnDelete(DeleteBehavior.SetNull); // Si se borra el empleado, la estación no se elimina, solo queda libre
+                .OnDelete(DeleteBehavior.SetNull);
 
             // 🚩 MAPEO DE COLUMNAS Y RELACIONES DE USUARIOS
             modelBuilder.Entity<Usuarios>(entity => {
@@ -121,7 +153,7 @@ namespace Turnify.Api.Data
                 entity.Property(p => p.Telefono).HasColumnName("telefono").HasMaxLength(20).IsRequired(false);
                 entity.Property(p => p.Email).HasColumnName("email").HasMaxLength(150).IsRequired(false); 
 
-                // 🚀 NUEVO MAPEO: Módulo de fotos, rol independiente y dependencias de Staff
+                // 🚀 Módulo de fotos, rol independiente y dependencias de Staff
                 entity.Property(p => p.FotoUrl).HasColumnName("foto_url").HasMaxLength(500).IsRequired(false);
                 entity.Property(p => p.EsIndependiente).HasColumnName("es_independiente").HasDefaultValue(false);
                 entity.Property(p => p.StaffId).HasColumnName("staff_id").IsRequired(false);
@@ -131,7 +163,7 @@ namespace Turnify.Api.Data
                 entity.HasOne(p => p.Staff)
                       .WithMany()
                       .HasForeignKey(p => p.StaffId)
-                      .OnDelete(DeleteBehavior.SetNull); // Si el Staff borra su cuenta, el registro del dependiente queda huérfano sin crashear la BD
+                      .OnDelete(DeleteBehavior.SetNull);
             });
 
             // ============================================================================
@@ -152,7 +184,7 @@ namespace Turnify.Api.Data
                 .IsRowVersion();
 
             // ============================================================================
-            // 4. RELACIONES Y CLAVES FORÁNEAS DE CITAS
+            // 5. RELACIONES Y CLAVES FORÁNEAS DE CITAS
             // ============================================================================
             modelBuilder.Entity<Citas>()
                 .HasOne(c => c.Proveedor)
@@ -186,7 +218,7 @@ namespace Turnify.Api.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             // ============================================================================
-            // 5. CONFIGURACIÓN DE HORARIOS DE ATENCIÓN
+            // 6. CONFIGURACIÓN DE HORARIOS DE ATENCIÓN
             // ============================================================================
             modelBuilder.Entity<HorariosAtencion>()
                 .HasOne(h => h.Proveedor)
@@ -195,7 +227,7 @@ namespace Turnify.Api.Data
                 .OnDelete(DeleteBehavior.NoAction);
 
             // ============================================================================
-            // 6. DATOS SEMILLA (SEED DATA)
+            // 7. DATOS SEMILLA (SEED DATA)
             // ============================================================================
             modelBuilder.Entity<Roles>().HasData(
                 new Roles { id = Guid.Parse("6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43"), nombre = "Administrador" },

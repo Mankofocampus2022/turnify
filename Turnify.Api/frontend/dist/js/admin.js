@@ -11,13 +11,34 @@ const API_HOST = (window.location.hostname === 'localhost' || window.location.ho
 
 const API_BASE = `${API_HOST}/api`;
 const SUPER_ADMIN_GUID = "6DE2A606-416E-4588-B4EB-CC20856CD80A";
+const ADMIN_GUID = "6A7FA68F-C28D-4F1B-B2D8-4FB0A6146A43";
 
 // El "Portero": Si no hay token o no es el rol correcto, ¡fuera!
 const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
-const userRole = (localStorage.getItem('usuario_rol') || "").toUpperCase();
+let userRole = (localStorage.getItem('usuario_rol') || localStorage.getItem('user_role') || "").toUpperCase();
 
-// 🧠 FIX DE CONTROL DE ACCESO: Validamos por GUID o por el nombre string del Rol para evitar bloqueos por mapeo
-if (!token || (userRole !== SUPER_ADMIN_GUID && !userRole.includes("ADMIN") && !userRole.includes("SUPER"))) {
+// Rescate adicional desde el objeto de sesión si userRole viniera vacío
+if (!userRole) {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+        try {
+            const u = JSON.parse(userStr);
+            userRole = String(u.rol || u.Rol || u.rolNombre || "").toUpperCase();
+        } catch (e) {}
+    }
+}
+
+// 🧠 FIX DE CONTROL DE ACCESO: Validamos por GUIDs, ADMIN, SUPER, STAFF o PROVEEDOR
+const esAutorizadoAdmin = token && (
+    userRole === SUPER_ADMIN_GUID || 
+    userRole === ADMIN_GUID || 
+    userRole.includes("ADMIN") || 
+    userRole.includes("SUPER") || 
+    userRole.includes("STAFF") || 
+    userRole.includes("PROVEEDOR")
+);
+
+if (!esAutorizadoAdmin) {
     alert("⛔ Acceso denegado. No tienes permisos para estar aquí.");
     window.location.href = 'login.html';
 }
@@ -31,7 +52,17 @@ const getHeaders = () => ({
 
 // 2. INICIALIZACIÓN AL CARGAR EL DOM
 document.addEventListener('DOMContentLoaded', () => {
-    const nombre = localStorage.getItem('usuario_nombre') || "Administrador";
+    let nombre = localStorage.getItem('usuario_nombre');
+    if (!nombre) {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            try {
+                const u = JSON.parse(userStr);
+                nombre = u.nombre || u.Nombre;
+            } catch (e) {}
+        }
+    }
+    nombre = nombre || "Administrador";
     
     // Saludo personalizado
     const welcomeElement = document.getElementById('welcome-text');
@@ -91,10 +122,10 @@ async function cargarTablaUsuarios() {
         
         tbody.innerHTML = usuarios.map(user => `
             <tr class="border-b hover:bg-gray-50">
-                <td class="p-3 text-sm">${user.id.substring(0, 8)}...</td>
-                <td class="p-3 font-medium">${user.nombre}</td>
-                <td class="p-3">${user.email}</td>
-                <td class="p-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">${user.rol || 'Sin Rol'}</span></td>
+                <td class="p-3 text-sm">${user.id ? user.id.substring(0, 8) : '---'}...</td>
+                <td class="p-3 font-medium">${user.nombre || 'Sin nombre'}</td>
+                <td class="p-3">${user.email || 'N/A'}</td>
+                <td class="p-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">${user.rol || user.rolNombre || 'Sin Rol'}</span></td>
                 <td class="p-3">
                     <button class="text-blue-600 hover:text-blue-900 mr-2" onclick="editarUsuario('${user.id}')" title="Editar">✏️</button>
                     <button class="text-red-600 hover:text-red-900" onclick="eliminarUsuario('${user.id}')" title="Eliminar">🗑️</button>
@@ -105,7 +136,7 @@ async function cargarTablaUsuarios() {
     }
 }
 
-// 🧠 [NUEVO] IMPLEMENTACIÓN COMPLETA DE TABLA DE PROVEEDORES / NEGOCIOS
+// 🧠 IMPLEMENTACIÓN COMPLETA DE TABLA DE PROVEEDORES / NEGOCIOS
 async function cargarTablaProveedores() {
     try {
         const response = await fetch(`${API_BASE}/Proveedores`, {
@@ -118,8 +149,8 @@ async function cargarTablaProveedores() {
         
         tbody.innerHTML = proveedores.map(p => `
             <tr class="border-b hover:bg-gray-50">
-                <td class="p-3 text-sm">${p.id.substring(0, 8)}...</td>
-                <td class="p-3 font-medium">${p.nombreComercial || p.nombre}</td>
+                <td class="p-3 text-sm">${p.id ? p.id.substring(0, 8) : '---'}...</td>
+                <td class="p-3 font-medium">${p.nombreComercial || p.nombre || 'Sin Nombre'}</td>
                 <td class="p-3">${p.email || 'N/A'}</td>
                 <td class="p-3">${p.telefono || 'N/A'}</td>
                 <td class="p-3">
@@ -156,7 +187,7 @@ function actualizarMenuActivo(id) {
     document.getElementById(id)?.classList.add('bg-blue-700', 'active');
 }
 
-// 🧠 [NUEVO] FUNCIONES INTERNAS CRUD PARA OPERACIÓN DE MANTENIMIENTO DESDE LA UI
+// 🧠 FUNCIONES INTERNAS CRUD PARA OPERACIÓN DE MANTENIMIENTO DESDE LA UI
 async function editarUsuario(id) {
     const nuevoNombre = prompt("Ingresa el nuevo nombre para este usuario:");
     if (!nuevoNombre || nuevoNombre.trim() === "") return;
@@ -196,3 +227,4 @@ async function eliminarUsuario(id) {
 // Adjuntamos las funciones al puente global de la ventana para que las etiquetas onclick del HTML las reconozcan
 window.editarUsuario = editarUsuario;
 window.eliminarUsuario = eliminarUsuario;
+window.logout = logout;

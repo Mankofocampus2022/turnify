@@ -63,15 +63,24 @@ async function login() {
             // Guardamos el proveedorId (Negocio del Administrador/Dueño) y el empleadoId (si es colaborador/barbero/Staff) de forma explícita
             if (data.user.proveedorId) {
                 localStorage.setItem('turnify_proveedor_id', data.user.proveedorId);
+                localStorage.setItem('proveedorId', data.user.proveedorId);
             } else {
                 localStorage.removeItem('turnify_proveedor_id');
+                localStorage.removeItem('proveedorId');
             }
 
             if (data.user.empleadoId) {
                 localStorage.setItem('turnify_empleado_id', data.user.empleadoId);
+                localStorage.setItem('empleadoId', data.user.empleadoId);
             } else {
                 localStorage.removeItem('turnify_empleado_id');
+                localStorage.removeItem('empleadoId');
             }
+
+            // 🚩 PERSISTENCIA EXPLÍCITA DE LA BANDERA ES_INDEPENDIENTE
+            const esIndependienteBool = Boolean(data.user.esIndependiente);
+            localStorage.setItem('es_independiente', esIndependienteBool.toString());
+            localStorage.setItem('turnify_es_independiente', esIndependienteBool.toString());
 
             // Extraemos y normalizamos el Rol (Manejamos nulls con "")
             const userRole = (data.user.rol || data.user.Rol || data.user.rolNombre || "").toUpperCase();
@@ -93,7 +102,7 @@ async function login() {
                             userRole.includes("STAFF") ||
                             data.user.rolId?.toUpperCase() === ADMIN_ID;
 
-            console.log("Verificando acceso para rol:", userRole);
+            console.log("Verificando acceso para rol:", userRole, "| esIndependiente:", esIndependienteBool);
 
             if (esAdmin) {
                 console.log("🚀 Acceso concedido al Dashboard Administrativo");
