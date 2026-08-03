@@ -41,15 +41,22 @@
         </aside>
 
         <main class="main-content" id="contenido-reporte">
-            <div class="header-section">
-                <h2>Reportes de Actividad</h2>
-                <div class="user-info">
+            <div class="header-section" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2>Reportes de Actividad</h2>
+                    <p style="color: #cbd5e1; font-size: 0.85rem; margin-top: 4px;">Auditoría y liquidación financiera en tiempo real.</p>
+                </div>
+                <div class="user-info" style="display: flex; align-items: center; gap: 10px;">
+                    <!-- 🚀 HU-20 & HU-21: Badge dinámico de Estrategia/Modelo de Negocio -->
+                    <span id="badgeModeloReportes" class="badge-modelo" style="padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background-color: #1e293b; color: #38bdf8; border: 1px solid #0284c7;">
+                        Modelo: Cargando...
+                    </span>
                     <span>Sesión: <strong id="admin-name">Administrador</strong></span>
                 </div>
             </div>
 
-            <div class="actions-bar" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px;">
-                <div class="filters" style="display: flex; gap: 10px;">
+            <div class="actions-bar" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; flex-wrap: wrap; gap: 10px;">
+                <div class="filters" style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <select id="filtro-periodo" class="btn-filter" style="background: #162431; color: #48c1b5; border: 1px solid #48c1b5; padding: 8px; border-radius: 5px; cursor: pointer; font-weight: bold;">
                         <option value="hoy">Hoy</option>
                         <option value="semana">Esta Semana</option>
@@ -88,7 +95,8 @@
                 </div>
             </div>
 
-            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px;">
+            <!-- 📊 GRID DE ESTADÍSTICAS OPERATIVAS Y FINANCIERAS (HU-20 & HU-21) -->
+            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px;">
                 <div class="stat-card">
                     <span class="stat-title">Citas Totales</span>
                     <p id="total-citas" class="stat-value">0</p>
@@ -99,6 +107,19 @@
                     <span class="stat-title">Ingresos Proyectados</span>
                     <p id="total-ingresos" class="stat-value">$0</p>
                     <div id="trend-ingresos" class="trend-label">--</div>
+                </div>
+
+                <!-- 🚀 HU-20 / HU-21: Métricas de Deducciones e Ingreso Neto Real por Strategy -->
+                <div class="stat-card" style="border-top: 4px solid #ff5e5e;">
+                    <span class="stat-title">Comisiones Pagadas</span>
+                    <p id="total-comisiones-pagadas" class="stat-value" style="color: #ff5e5e;">$0</p>
+                    <span style="font-size: 0.7rem; color: #f87171;">Deducción por especialistas</span>
+                </div>
+
+                <div class="stat-card" style="border-top: 4px solid #48c1b5;">
+                    <span class="stat-title">Ingreso Neto Real</span>
+                    <p id="total-ingreso-neto" class="stat-value" style="color: #48c1b5;">$0</p>
+                    <span style="font-size: 0.7rem; color: #48c1b5;">Balance neto del negocio</span>
                 </div>
 
                 <div class="stat-card">
@@ -131,22 +152,26 @@
                 </div>
             </div>
 
+            <!-- 📜 TABLA DETALLE DE MOVIMIENTOS Y AUDITORÍA FINANCIERA -->
             <div class="table-card"> 
-                <h3 style="padding: 20px 20px 0 20px;"><i class="fas fa-list"></i> Detalle de Movimientos</h3>
+                <h3 style="padding: 20px 20px 0 20px;"><i class="fas fa-list"></i> Detalle de Movimientos y Liquidación</h3>
                 <table class="turnify-table">
                    <thead>
                         <tr>
                             <th>FECHA / HORA</th>
                             <th>CLIENTE</th>
                             <th>SERVICIO</th>
-                            <th>MONTO</th>
+                            <th>ESPECIALISTA</th>
+                            <th>MONTO BRUTO</th>
+                            <th>COMISIÓN</th>
+                            <th>NETO LIQUIDADO</th>
                             <th>ESTADO</th>
                             <th style="text-align: center;">ACCIONES</th> 
                         </tr>
                     </thead>
                     <tbody id="lista-reportes">
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 30px; color: #48c1b5;">
+                            <td colspan="9" style="text-align: center; padding: 30px; color: #48c1b5;">
                                 <i class="fas fa-spinner fa-spin"></i> Cargando auditoría...
                             </td>
                         </tr>
@@ -156,9 +181,12 @@
         </main>
     </div>
 
+    <!-- Scripts de Librerías Externas -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
+    <!-- Scripts de Autenticación Global y Lógica de Reportes -->
+    <script src="js/auth-global.js"></script>
     <script src="js/reportes.js"></script>
 </body>
 </html>

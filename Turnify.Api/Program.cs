@@ -16,6 +16,7 @@ using Turnify.Api.Interfaces;
 using Turnify.Api.Services;
 using Turnify.Api.Middleware;
 using Turnify.Api.Workers; 
+using Turnify.Api.Services.Strategies; // 👈 IMPORT DEL PATRÓN STRATEGY (HU-20 & HU-21)
 
 // --- ALIAS DE SWAGGER ---
 using SwaggerDocInfo = Microsoft.OpenApi.Models.OpenApiInfo;
@@ -154,6 +155,7 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
+// --- 🚀 REGISTRO DE SERVICIOS DE DOMINIO ---
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IClienteService, ClienteService>();
 builder.Services.AddScoped<ICitaService, CitaService>();
@@ -163,6 +165,12 @@ builder.Services.AddScoped<IEmpleadoService, EmpleadoService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 builder.Services.AddScoped<IEstacionTrabajoService, EstacionTrabajoService>();
+
+// ============================================================================
+// 🚀 HU-20 & HU-21: PATRÓN STRATEGY DE LIQUIDACIÓN Y REPORTES FINANCIEROS
+// ============================================================================
+builder.Services.AddTransient<LiquidacionDependienteStrategy>();
+builder.Services.AddTransient<LiquidacionIndependienteStrategy>();
 
 // 🔄 Inyección del Worker Automático en segundo plano
 builder.Services.AddHostedService<CitaCancellationWorker>();

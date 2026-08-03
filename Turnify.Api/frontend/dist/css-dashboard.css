@@ -13,6 +13,11 @@
     /* --- Nuevas Variables de Marca Turnify --- */
     --turnify-teal: #48c1b5;
     --turnify-light: #f4f7f6;
+
+    /* --- 🚀 HU-20 & HU-21: Variables del Patrón Strategy --- */
+    --color-bruto: #38bdf8;
+    --color-comision: #ff5e5e;
+    --color-neto: #48c1b5;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -347,4 +352,41 @@ tbody td {
 /* 🚀 HU 001 & HU 006 - Ocultar/Mostrar Columna Dinámica */
 .col-staff-silla {
     display: none; 
+}
+
+/* ============================================================
+   🚀 HU-20 & HU-21: ESTILOS PARA EL PATRÓN STRATEGY DE LIQUIDACIÓN
+   ============================================================ */
+
+/* Insignias de Modelo de Negocio */
+.badge-modelo-independiente {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    background-color: rgba(72, 193, 181, 0.15);
+    color: #48c1b5;
+    border: 1px solid #48c1b5;
+    box-shadow: 0 0 10px rgba(72, 193, 181, 0.2);
+}
+
+.badge-modelo-dependiente {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    background-color: rgba(2, 132, 199, 0.15);
+    color: #38bdf8;
+    border: 1px solid #0284c7;
+    box-shadow: 0 0 10px rgba(2, 132, 199, 0.2);
+}
+
+/* Formato para filas de liquidación Strategy */
+#tablaMovimientosStrategy td {
+    font-size: 0.85rem;
+    vertical-align: middle;
+}
+
+#tablaMovimientosStrategy tr:hover {
+    background-color: rgba(255, 255, 255, 0.03);
 }

@@ -13,6 +13,11 @@
     --bg-dark: #0f172a;
     --card-bg: rgba(30, 41, 59, 0.7);
     --border-glass: rgba(255, 255, 255, 0.1);
+
+    /* 🚀 HU-20 & HU-21: Variables de Liquidación Strategy */
+    --color-bruto: #38bdf8;
+    --color-comision: #ff5e5e;
+    --color-neto: #48c1b5;
 }
 
 /* =========================================
@@ -175,6 +180,14 @@ body {
     background: var(--lava-orange);
 }
 
+.stat-card.comisiones::before {
+    background: var(--danger-red);
+}
+
+.stat-card.neto::before {
+    background: var(--brand-emerald);
+}
+
 .stat-value {
     font-size: 32px;
     font-weight: 900;
@@ -282,7 +295,45 @@ body {
 }
 
 /* =========================================
-   8. 🛡️ BLINDAJE PARA EXPORTACIÓN PDF
+   8. 🚀 HU-20 & HU-21: REGLAS DEL PATRÓN STRATEGY EN REPORTES
+   ========================================= */
+.badge-modelo-independiente {
+    background-color: rgba(72, 193, 181, 0.15) !important;
+    color: #48c1b5 !important;
+    border: 1px solid #48c1b5 !important;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.badge-modelo-dependiente {
+    background-color: rgba(56, 189, 248, 0.15) !important;
+    color: #38bdf8 !important;
+    border: 1px solid #0284c7 !important;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+/* Colores condicionales en celdas financieras de auditoría */
+.text-bruto {
+    color: #38bdf8 !important;
+    font-weight: bold;
+}
+
+.text-comision {
+    color: #ff5e5e !important;
+}
+
+.text-neto {
+    color: #48c1b5 !important;
+    font-weight: bold;
+}
+
+/* =========================================
+   9. 🛡️ BLINDAJE PARA EXPORTACIÓN PDF
    ========================================= */
 @media print {
     body { 

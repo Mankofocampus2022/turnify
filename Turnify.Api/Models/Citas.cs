@@ -75,6 +75,10 @@ namespace Turnify.Api.Models
         [Range(0, 999999.99)]
         public decimal CostoDomicilio { get; set; } = 0;
 
+        // 🚀 PROPIEDAD CALCULADA (HU-20/HU-21): Suma automática sin afectar BD ni migraciones
+        [NotMapped]
+        public decimal PrecioTotal => PrecioPactado + CostoDomicilio;
+
         [Required]
         [Column("duracion_pactada_min")]
         [Range(1, 480)]

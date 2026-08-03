@@ -181,6 +181,41 @@ namespace Turnify.Api.Controllers
             }
         }
 
+        // 🗑️ DELETE: api/estacionestrabajo/{id} (Solución blindada al Error 405 Method Not Allowed)
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            try
+            {
+                var proveedorId = await GetProveedorIdAsync();
+                if (proveedorId == null) 
+                {
+                    return Unauthorized(new { message = "No tienes un perfil de negocio registrado." });
+                }
+
+                // Búsqueda dinámica y segura sobre el DbContext
+                var estacionesSet = _context.Set<Turnify.Api.Models.EstacionTrabajo>();
+
+                var estacion = await estacionesSet
+                    .FirstOrDefaultAsync(e => e.Id == id && e.ProveedorId == proveedorId.Value);
+
+                if (estacion == null)
+                {
+                    return NotFound(new { message = "Estación de trabajo no encontrada o no pertenece a tu negocio." });
+                }
+
+                estacionesSet.Remove(estacion);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Estación de trabajo eliminada exitosamente." });
+            }
+            catch (Exception ex)
+            {
+                var innerError = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+                return StatusCode(500, new { message = "Error al eliminar la estación de trabajo.", error = innerError });
+            }
+        }
+
         // 🔄 PATCH: api/estacionestrabajo/{id}/toggle
         [HttpPatch("{id}/toggle")]
         public async Task<IActionResult> ToggleEstado(Guid id)

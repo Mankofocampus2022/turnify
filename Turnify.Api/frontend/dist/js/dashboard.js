@@ -200,13 +200,11 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
     if (sectionTitle) sectionTitle.innerText = titulos[periodo] || 'Agenda de Turnos';
 
     // C. Calculation de Fechas para el Backend (Sincronizado con la Zona Horaria de Colombia)
-    // Calculamos el desfase de Bogotá (UTC-5) para evitar que dependa de la hora de la máquina de desarrollo
     let d = new Date();
     let utc = d.getTime() + (d.getTimezoneOffset() * 60000);
     let inicio = new Date(utc + (3600000 * -5));
     let fin = new Date(utc + (3600000 * -5));
 
-    // Forzamos limpieza absoluta de horas, minutos y segundos para enviar solo el bloque de la fecha
     inicio.setHours(0, 0, 0, 0);
     fin.setHours(0, 0, 0, 0);
 
@@ -230,7 +228,6 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         periodoParamBackend = 'mensual';
     }
 
-    // Formato robusto YYYY-MM-DD sin alterations regionales del motor de JS
     const year = inicio.getFullYear();
     const month = String(inicio.getMonth() + 1).padStart(2, '0');
     const dayStr = String(inicio.getDate()).padStart(2, '0');
@@ -256,7 +253,6 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
             thStaffSilla.style.display = esIndependiente ? 'none' : 'table-cell';
         }
 
-        // 🛡️ HU-06 CA4: Ocultar selector de puesto si es proveedor independiente
         const containerFiltro = document.getElementById('containerFiltroPuesto');
         if (containerFiltro) {
             containerFiltro.style.display = esIndependiente ? 'none' : 'flex';
@@ -264,7 +260,6 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 
         let requestUrl = "";
         
-        // 💈 HU-06 & HU-07: Si el usuario es Independiente, invoca el endpoint dedicado
         if (esIndependiente) {
             requestUrl = `${API_BASE}/Dashboard/independiente?periodo=${periodoParamBackend}&fecha=${startStr}`;
         } else {
@@ -289,10 +284,12 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 
         const data = await response.json();
         
-        // Mapeo unificado para ambas estructuras de respuesta
         const citasRespuesta = data.citas || data.proximasCitas || [];
         renderizarTablaDashboard(citasRespuesta, token, API_BASE, esIndependiente);
         actualizarContadoresDashboard(data, esIndependiente); 
+
+        // 🚀 HU-20 & HU-21: INVOCACIÓN DEL PATRÓN STRATEGY DE LIQUIDACIÓN Y MOVIMIENTOS
+        cargarDetalleMovimientosStrategy(token, API_BASE, periodoParamBackend, startStr);
 
     } catch (error) { 
         if (error.name === 'AbortError') {
@@ -307,7 +304,113 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
 }
 
 /**
- * 📝 Renderiza las filas (🛡️ BLINDAJE DE ESTADOS EN ACCIONES Y BANDERAS DE CLIENTE NUEVO HU-07)
+ * 🚀 HU-20 & HU-21: CONSUMO DEL ENDPOINT CON PATRÓN STRATEGY (/api/dashboard/movimientos)
+ */
+async function cargarDetalleMovimientosStrategy(token, API_BASE, periodo = "diario", fechaStr = "") {
+    try {
+        const url = `${API_BASE}/Dashboard/movimientos?periodo=${periodo}&fecha=${fechaStr}`;
+        const resp = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'X-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota'
+            }
+        });
+
+        if (!resp.ok) {
+            console.warn("⚠️ No se pudo obtener el detalle de movimientos strategy.");
+            return;
+        }
+
+        const data = await resp.json();
+        actualizarUIStrategyMovimientos(data);
+
+    } catch (err) {
+        console.error("❌ Error al consumir api/dashboard/movimientos:", err);
+    }
+}
+
+/**
+ * 🎨 RENDERIZADO DE LIQUIDACIÓN DE MOVIMIENTOS Y BANDERAS STRATEGY (HU-20 & HU-21)
+ */
+function actualizarUIStrategyMovimientos(data) {
+    if (!data) return;
+
+    const userStr = localStorage.getItem('user');
+    const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+    const userObj = userStr ? JSON.parse(userStr) : null;
+    
+    // Evaluar si es independiente o si el modelo recibido desde el backend es Independiente
+    const esIndependiente = evaluarEsIndependiente(userObj, token) || data.tipoModelo === "Independiente";
+
+    // Formateador de moneda COP
+    const fmtCOP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
+
+    // 1. Elementos de resumen global financieros
+    const badgeModeloEl = document.getElementById('badgeModeloNegocio');
+    const totalAcumuladoEl = document.getElementById('montoTotalAcumulado');
+    const ingresoNetoEl = document.getElementById('ingresoNetoTotal');
+    const comisionesPagadasEl = document.getElementById('comisionesTotalesPagadas');
+
+    // 🛡️ OCULTAR TARJETA DE COMISIONES SI ES INDEPENDIENTE
+    if (comisionesPagadasEl) {
+        const cardComisiones = comisionesPagadasEl.closest('.stat-card');
+        if (cardComisiones) {
+            cardComisiones.style.display = esIndependiente ? 'none' : 'flex';
+        }
+    }
+
+    if (badgeModeloEl) {
+        badgeModeloEl.innerText = `Modelo: ${data.tipoModelo || (esIndependiente ? 'Independiente' : 'Estándar')}`;
+        badgeModeloEl.className = esIndependiente ? "badge-modelo-independiente" : "badge-modelo-dependiente";
+    }
+
+    if (totalAcumuladoEl) totalAcumuladoEl.innerText = fmtCOP.format(data.montoTotalAcumulado || 0);
+    if (ingresoNetoEl) ingresoNetoEl.innerText = fmtCOP.format(data.ingresoNetoTotal || 0);
+    if (comisionesPagadasEl && !esIndependiente) {
+        comisionesPagadasEl.innerText = fmtCOP.format(data.comisionesTotalesPagadas || 0);
+    }
+
+    // 🛡️ OCULTAR CABECERAS DE TABLA SI ES INDEPENDIENTE
+    const thEspecialista = document.getElementById('thMovEspecialista');
+    const thDeduccion = document.getElementById('thMovDeduccion');
+    if (thEspecialista) thEspecialista.style.display = esIndependiente ? 'none' : 'table-cell';
+    if (thDeduccion) thDeduccion.style.display = esIndependiente ? 'none' : 'table-cell';
+
+    // 2. Renderizar tabla de detalle si existe en la vista
+    const tablaMov = document.getElementById('tablaMovimientosStrategy') || document.getElementById('bodyMovimientos');
+    if (!tablaMov) return;
+
+    const movimientos = data.movimientos || [];
+    const colSpanTotal = esIndependiente ? 5 : 7;
+
+    if (movimientos.length === 0) {
+        tablaMov.innerHTML = `<tr><td colspan="${colSpanTotal}" style="text-align: center; color: #888; padding: 15px;">Sin movimientos financieros registrados.</td></tr>`;
+        return;
+    }
+
+    tablaMov.innerHTML = movimientos.map(m => {
+        const fechaFormatted = m.fecha ? new Date(m.fecha).toLocaleDateString('es-CO') : '--';
+        
+        const celdaEspecialista = esIndependiente ? '' : `<td>${m.especialistaNombre || 'No Asignado'}</td>`;
+        const celdaDeduccion = esIndependiente ? '' : `<td style="color: #ff5e5e;">-${fmtCOP.format(m.montoComisionEspecialista || 0)}</td>`;
+
+        return `
+            <tr>
+                <td>${fechaFormatted}</td>
+                <td><strong>${m.clienteNombre || 'Cliente'}</strong></td>
+                <td>${m.servicioNombre || 'Servicio'}</td>
+                ${celdaEspecialista}
+                <td style="font-weight: bold; color: #38bdf8;">${fmtCOP.format(m.montoTotal || 0)}</td>
+                ${celdaDeduccion}
+                <td style="font-weight: bold; color: #48c1b5;">${fmtCOP.format(m.ingresoNeto || 0)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * 📝 Renderiza las filas de citas
  */
 function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = false) {
     const tabla = document.getElementById('turnosTable');
@@ -318,7 +421,6 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
         return;
     }
 
-    // 🚀 HU-01 CA1: Filtro por Puesto sólo si es Staff
     const filtroPuestoEl = document.getElementById('filtroEstacion') || document.getElementById('selectEstacion');
     const puestoSeleccionado = (filtroPuestoEl && !esIndependiente) ? filtroPuestoEl.value : "todos";
 
@@ -337,7 +439,6 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
         const estado = (c.estado || c.Estado || "pendiente").toLowerCase();
         const badgeClass = getEstadoClass(estado);
         
-        // 🚩 LÓGICA DE ACCIONES SEGÚN EL ESTADO REAL
         let celdaAccion = "";
         if (estado === 'completada' || estado === 'confirmada' || estado === 'completado') {
             celdaAccion = `<span style="color: #48c1b5; font-size: 0.8rem;"><i class="fas fa-check-circle"></i> Validado</span>`;
@@ -347,7 +448,6 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
             celdaAccion = `<span style="color: #888; font-size: 0.8rem;"><i class="fas fa-clock"></i> Pendiente</span>`;
         }
         
-        // 💈 HU-07 CA1: Inyección visual del distintivo "Cliente Nuevo"
         const esNuevo = c.esNuevoCliente === true || c.EsNuevoCliente === true;
         const badgeCliente = esNuevo 
             ? `<span class="badge-nuevo-cliente" style="margin-left: 5px;"><i class="fas fa-star"></i> Nuevo</span>`
@@ -357,7 +457,6 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
         const empleadoNombre = c.empleadoAsignado || c.EmpleadoAsignado || 'Sin Asignar';
         const estacionNombre = c.estacionAsignada || c.estacion || c.Estacion || 'Sin Silla';
 
-        // 🚀 HU-01 & HU-03: Etiqueta de esquema de contratación con Alerta de Cobro Silla
         const tipoContrato = (c.tipoContratoEmpleado || c.TipoContratoEmpleado || "").toLowerCase();
         const precioSilla = c.precioSilla || c.PrecioSilla;
         const estadoPagoSilla = c.estadoPagoSilla || c.EstadoPagoSilla || "Al día";
@@ -372,7 +471,6 @@ function renderizarTablaDashboard(citas, token, API_BASE, esIndependiente = fals
             badgeEsquema = `<br><span class="badge-comision"><i class="fas fa-percentage"></i> Comisión${detallePct}</span>`;
         }
 
-        // 🚀 HU-01: Celda condicional para asignación
         const celdaStaffSilla = esIndependiente 
             ? '' 
             : `<td class="col-staff-silla" style="display: table-cell; font-size: 0.8rem; color: #cbd5e1;">
@@ -405,6 +503,15 @@ function actualizarContadoresDashboard(data, esIndependiente = false) {
     const ingresosEl = document.getElementById('ingresosMes') || document.getElementById('total-ingresos');
     const clientesEl = document.getElementById('nuevosClientes') || document.getElementById('nuevos-clientes');
     const ingresoNotaEl = document.getElementById('ingresoNota');
+    const comisionesPagadasEl = document.getElementById('comisionesTotalesPagadas');
+
+    // 🛡️ OCULTAR LA TARJETA DE COMISIONES EN EL DASHBOARD GENERAL
+    if (comisionesPagadasEl) {
+        const cardComisiones = comisionesPagadasEl.closest('.stat-card');
+        if (cardComisiones) {
+            cardComisiones.style.display = esIndependiente ? 'none' : 'flex';
+        }
+    }
 
     const listaCitas = data.citas || data.proximasCitas || [];
 
@@ -412,7 +519,6 @@ function actualizarContadoresDashboard(data, esIndependiente = false) {
         totalCitasEl.innerText = data.totalCitas !== undefined ? data.totalCitas : listaCitas.length;
     }
 
-    // HU-07 CA2: Prioriza la métrica directa de nuevos clientes entregada por el backend
     if (clientesEl) {
         if (data.totalNuevosClientes !== undefined) {
             clientesEl.innerText = data.totalNuevosClientes;
@@ -424,12 +530,10 @@ function actualizarContadoresDashboard(data, esIndependiente = false) {
         }
     }
 
-    // HU-06 CA1: Muestra los ingresos 100% brutos reales o proyectados
     if (ingresosEl) {
         let montoCalculado = 0;
 
         if (esIndependiente) {
-            // HU-05 & HU-06: 100% de Ingreso Bruto sin deducción
             if (data.ingresosRealesBrutos !== undefined && data.ingresosRealesBrutos > 0) {
                 montoCalculado = data.ingresosRealesBrutos;
             } else if (data.ingresosProyectadosBrutos !== undefined) {
@@ -446,7 +550,6 @@ function actualizarContadoresDashboard(data, esIndependiente = false) {
             }
             if (ingresoNotaEl) ingresoNotaEl.innerText = "100% Ingreso Bruto (Sin deducciones)";
         } else {
-            // HU-02 & HU-04: Descuenta comisiones del staff
             if (data.ingresoProyectadoNegocio !== undefined) {
                 montoCalculado = data.ingresoProyectadoNegocio;
             } else if (data.gananciaReal !== undefined) {
@@ -460,10 +563,10 @@ function actualizarContadoresDashboard(data, esIndependiente = false) {
 
                     if (est.includes("completad") || est.includes("confirmad") || est.includes("pendiente")) {
                         if (tipoContrato.includes("silla") || tipoContrato.includes("fijo")) {
-                            return acc + valor; // En sillas fijas el negocio recibe el pago completo o no retiene comisión
+                            return acc + valor;
                         } else {
                             const valorComision = valor * (comisionPct / 100);
-                            return acc + (valor - valorComision); // Margen neto del negocio
+                            return acc + (valor - valorComision);
                         }
                     }
                     return acc;
@@ -519,3 +622,4 @@ function logout() {
 window.cambiarPeriodo = cambiarPeriodo;
 window.logout = logout;
 window.evaluarEsIndependiente = evaluarEsIndependiente;
+window.cargarDetalleMovimientosStrategy = cargarDetalleMovimientosStrategy;

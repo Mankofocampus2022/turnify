@@ -47,7 +47,11 @@
                 <h2 id="welcomeText">Cargando...</h2>
                 <p id="subTitle">Aquí tienes el estado actual de tu negocio.</p>
             </div>
-            <div class="user-profile">
+            <div class="user-profile" style="display: flex; align-items: center; gap: 10px;">
+                <!-- 🚀 HU-20 & HU-21: Badge que indica si el modelo es Independiente o Dependiente -->
+                <span id="badgeModeloNegocio" class="badge-modelo-dependiente" style="padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background-color: #1e293b; color: #38bdf8; border: 1px solid #0284c7;">
+                    Modelo: Causal...
+                </span>
                 <span id="userRole" class="badge">Usuario</span>
             </div>
         </header>
@@ -69,6 +73,27 @@
                 <h3>Ingresos Proyectados</h3>
                 <p id="ingresosMes" class="number">$0</p>
                 <span id="ingresoNota" class="currency">Calculando comisiones...</span>
+            </div>
+        </section>
+
+        <!-- =========================================================================
+             🚀 HU-20 & HU-21: SECCIÓN FINANCIERA (PATRÓN STRATEGY EN TIEMPO REAL)
+             ========================================================================= -->
+        <section class="stats-grid" style="margin-top: 20px;">
+            <div class="stat-card" style="border-left: 4px solid #38bdf8;">
+                <h3>Total Recaudado (Bruto)</h3>
+                <p id="montoTotalAcumulado" class="number" style="color: #38bdf8;">$0</p>
+                <span class="trend" style="color: #cbd5e1;"><i class="fas fa-wallet"></i> Facturación total</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #ff5e5e;">
+                <h3>Comisiones Especialistas</h3>
+                <p id="comisionesTotalesPagadas" class="number" style="color: #ff5e5e;">$0</p>
+                <span class="trend" style="color: #f87171;"><i class="fas fa-percentage"></i> Deducción por Colaborador</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #48c1b5;">
+                <h3>Ingreso Neto Real</h3>
+                <p id="ingresoNetoTotal" class="number" style="color: #48c1b5;">$0</p>
+                <span class="trend" style="color: #48c1b5;"><i class="fas fa-check-circle"></i> Balance final negocio</span>
             </div>
         </section>
 
@@ -121,8 +146,41 @@
                 </table>
             </div>
         </section>
+
+        <!-- =========================================================================
+             🚀 HU-20 & HU-21: TABLA DETALLE DE MOVIMIENTOS Y LIQUIDACIÓN (STRATEGY)
+             ========================================================================= -->
+        <section class="content-section" style="margin-top: 30px;">
+            <div class="section-header">
+                <h3><i class="fas fa-receipt" style="color: #48c1b5;"></i> Detalle de Movimientos Financieros</h3>
+            </div>
+            <div class="appointments-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>FECHA</th>
+                            <th>CLIENTE</th>
+                            <th>SERVICIO</th>
+                            <th>ESPECIALISTA</th>
+                            <th>MONTO TOTAL</th>
+                            <th>DEDUCCIÓN/COMISIÓN</th>
+                            <th>INGRESO NETO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaMovimientosStrategy">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 20px; color: #cbd5e1;">
+                                <i class="fas fa-spinner fa-spin"></i> Cargando liquidación de movimientos...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
     </main>
 </div>
+
 <!-- 📜 SCRIPT GLOBAL Y DE NAVEGACIÓN (Con la carpeta js/ incluida) -->
 <script src="js/auth-global.js"></script> 
 <script src="js/dashboard.js"></script>

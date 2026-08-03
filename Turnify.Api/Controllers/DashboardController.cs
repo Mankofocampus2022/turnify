@@ -5,6 +5,7 @@ using Turnify.Api.Models.DTOs;
 using Turnify.Api.Data; 
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using Turnify.Api.Services.Strategies; // 👈 Import de la estrategia financiera
 
 namespace Turnify.Api.Controllers
 {
@@ -208,6 +209,146 @@ namespace Turnify.Api.Controllers
             }
 
             return Ok(resumenIndependiente);
+        }
+
+        // =========================================================================
+        // 🚀 HU-20 & HU-21: DETALLE DE MOVIMIENTOS Y LIQUIDACIÓN (PATRÓN STRATEGY)
+        // =========================================================================
+
+        /// <summary>
+        /// Retorna el detalle financiero de movimientos aplicando el Patrón Strategy.
+        /// Si el proveedor es independiente (HU-21), aplica retención 100%.
+        /// Si el proveedor es dependiente/multi-silla (HU-20), calcula deducción por comisión de especialista.
+        /// </summary>
+        [HttpGet("movimientos")]
+        [HttpGet("detalle-movimientos")]
+        public async Task<IActionResult> GetDetalleMovimientos(
+            [FromQuery] DateTime? fecha = null,
+            [FromQuery] string periodo = "diario",
+            [FromQuery] int? mes = null,
+            [FromQuery] int? anio = null)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(usuarioIdClaim) || !Guid.TryParse(usuarioIdClaim, out var userId))
+                return Unauthorized(new { message = "Sesión no válida o token corrupto." });
+
+            var proveedor = await _context.proveedores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UsuarioId == userId || p.Id == userId);
+
+            if (proveedor == null)
+                return NotFound(new { message = "Perfil de negocio no encontrado." });
+
+            // 1. Determinar el tipo de modelo de negocio (Flag EsIndependiente)
+            bool esIndependiente = proveedor.EsIndependiente;
+
+            // 2. Instanciar dinámicamente la estrategia mediante el Factory
+            ILiquidacionStrategy strategy = LiquidacionStrategyFactory.ObtenerEstrategia(esIndependiente);
+
+            // 3. Obtener el rango de fechas en DateTimeOffset para ser compatible con Citas.Fecha
+            DateTime fechaBase = fecha ?? GetLocalToday();
+            DateTimeOffset fechaInicio = new DateTimeOffset(fechaBase.Date);
+            DateTimeOffset fechaFin = new DateTimeOffset(fechaBase.Date.AddDays(1).AddTicks(-1));
+
+            if (periodo.ToLower() == "mes" || periodo.ToLower() == "mensual")
+            {
+                int targetMes = mes ?? fechaBase.Month;
+                int targetAnio = anio ?? fechaBase.Year;
+                DateTime inicioMes = new DateTime(targetAnio, targetMes, 1);
+                fechaInicio = new DateTimeOffset(inicioMes);
+                fechaFin = new DateTimeOffset(inicioMes.AddMonths(1).AddTicks(-1));
+            }
+
+            // 4. CONSULTA EN BASE DE DATOS: Cargar explícitamente en memoria con ToListAsync()
+            // para evitar excepciones de traducción de reflexión en LINQ to SQL
+            var citas = await _context.citas
+                .AsNoTracking()
+                .Include(c => c.Cliente)
+                .Include(c => c.Servicio)
+                .Include(c => c.Empleado)
+                .Where(c => c.ProveedorId == proveedor.Id 
+                       && c.Fecha >= fechaInicio 
+                       && c.Fecha <= fechaFin)
+                .ToListAsync();
+
+            // 5. MAPEO EN MEMORIA (LINQ to Objects): Mapeo defensivo libre de errores de traducción SQL
+            var detalleMovimientos = citas.Select(c => 
+            {
+                // Extraer Nombre del Cliente de forma resiliente
+                string clienteNom = "Cliente General";
+                if (c.Cliente != null)
+                {
+                    var propNombre = c.Cliente.GetType().GetProperty("Nombre") ?? c.Cliente.GetType().GetProperty("nombre");
+                    var propApellido = c.Cliente.GetType().GetProperty("Apellido") ?? c.Cliente.GetType().GetProperty("apellido");
+
+                    var valNombre = propNombre?.GetValue(c.Cliente)?.ToString();
+                    var valApellido = propApellido?.GetValue(c.Cliente)?.ToString();
+
+                    clienteNom = $"{valNombre} {valApellido}".Trim();
+                    if (string.IsNullOrWhiteSpace(clienteNom)) clienteNom = "Cliente General";
+                }
+
+                // Extraer Nombre del Servicio
+                string servicioNom = "Servicio General";
+                if (c.Servicio != null)
+                {
+                    var propServ = c.Servicio.GetType().GetProperty("Nombre") ?? c.Servicio.GetType().GetProperty("nombre");
+                    servicioNom = propServ?.GetValue(c.Servicio)?.ToString() ?? "Servicio General";
+                }
+
+                // Extraer Datos del Empleado (Nombre y % Comisión)
+                string especialistaNom = "No Asignado";
+                decimal comision = 0m;
+
+                if (c.Empleado != null)
+                {
+                    var propEmpNom = c.Empleado.GetType().GetProperty("Nombre") ?? c.Empleado.GetType().GetProperty("nombre");
+                    var propEmpApe = c.Empleado.GetType().GetProperty("Apellido") ?? c.Empleado.GetType().GetProperty("apellido");
+                    
+                    var empN = propEmpNom?.GetValue(c.Empleado)?.ToString();
+                    var empA = propEmpApe?.GetValue(c.Empleado)?.ToString();
+
+                    especialistaNom = !string.IsNullOrEmpty(empA) ? $"{empN} {empA}".Trim() : (empN ?? "Especialista");
+
+                    var propCom = c.Empleado.GetType().GetProperty("PorcentajeComision") 
+                               ?? c.Empleado.GetType().GetProperty("ComisionPorcentaje")
+                               ?? c.Empleado.GetType().GetProperty("porcentaje_comision")
+                               ?? c.Empleado.GetType().GetProperty("comision");
+
+                    if (propCom != null)
+                    {
+                        var valCom = propCom.GetValue(c.Empleado);
+                        if (valCom != null && decimal.TryParse(valCom.ToString(), out var parsedCom))
+                            comision = parsedCom;
+                    }
+                }
+
+                decimal montoTotal = c.PrecioPactado + c.CostoDomicilio;
+
+                return strategy.CalcularMovimiento(
+                    citaId: c.Id,
+                    fecha: c.Fecha.DateTime,
+                    clienteNombre: clienteNom,
+                    servicioNombre: servicioNom,
+                    montoTotal: montoTotal,
+                    porcentajeComision: comision,
+                    estado: c.Estado ?? "Completada",
+                    especialistaNombre: especialistaNom
+                );
+            }).ToList();
+
+            // 6. Respuesta limpia serializada correctamente
+            int totalRegistros = detalleMovimientos.Count;
+
+            return Ok(new
+            {
+                TipoModelo = esIndependiente ? "Independiente" : "Dependiente",
+                TotalMovimientos = totalRegistros,
+                MontoTotalAcumulado = detalleMovimientos.Sum(m => m.MontoTotal),
+                IngresoNetoTotal = detalleMovimientos.Sum(m => m.IngresoNeto),
+                ComisionesTotalesPagadas = detalleMovimientos.Sum(m => m.MontoComisionEspecialista),
+                Movimientos = detalleMovimientos
+            });
         }
     }
 }
