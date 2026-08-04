@@ -260,7 +260,6 @@ namespace Turnify.Api.Controllers
             }
 
             // 4. CONSULTA EN BASE DE DATOS: Cargar explícitamente en memoria con ToListAsync()
-            // para evitar excepciones de traducción de reflexión en LINQ to SQL
             var citas = await _context.citas
                 .AsNoTracking()
                 .Include(c => c.Cliente)
@@ -296,8 +295,8 @@ namespace Turnify.Api.Controllers
                     servicioNom = propServ?.GetValue(c.Servicio)?.ToString() ?? "Servicio General";
                 }
 
-                // Extraer Datos del Empleado (Nombre y % Comisión)
-                string especialistaNom = "No Asignado";
+                // 🚀 HOTFIX ESPECIALISTA: Fallback resiliente que evita desplegar "No Asignado"
+                string especialistaNom = string.Empty;
                 decimal comision = 0m;
 
                 if (c.Empleado != null)
@@ -308,7 +307,7 @@ namespace Turnify.Api.Controllers
                     var empN = propEmpNom?.GetValue(c.Empleado)?.ToString();
                     var empA = propEmpApe?.GetValue(c.Empleado)?.ToString();
 
-                    especialistaNom = !string.IsNullOrEmpty(empA) ? $"{empN} {empA}".Trim() : (empN ?? "Especialista");
+                    especialistaNom = !string.IsNullOrEmpty(empA) ? $"{empN} {empA}".Trim() : (empN ?? string.Empty);
 
                     var propCom = c.Empleado.GetType().GetProperty("PorcentajeComision") 
                                ?? c.Empleado.GetType().GetProperty("ComisionPorcentaje")
@@ -321,6 +320,14 @@ namespace Turnify.Api.Controllers
                         if (valCom != null && decimal.TryParse(valCom.ToString(), out var parsedCom))
                             comision = parsedCom;
                     }
+                }
+
+                // Si el empleado asignado no tiene un nombre configurado o es null (ej. atención directa o independiente)
+                if (string.IsNullOrWhiteSpace(especialistaNom))
+                {
+                    // Usa el NombreComercial o Nombre del proveedor/negocio
+                    var propProvNom = proveedor.GetType().GetProperty("NombreComercial") ?? proveedor.GetType().GetProperty("Nombre") ?? proveedor.GetType().GetProperty("nombre");
+                    especialistaNom = propProvNom?.GetValue(proveedor)?.ToString() ?? "Especialista Asignado";
                 }
 
                 decimal montoTotal = c.PrecioPactado + c.CostoDomicilio;

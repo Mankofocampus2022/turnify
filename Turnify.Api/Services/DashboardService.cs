@@ -83,11 +83,15 @@ namespace Turnify.Api.Services
                     .AsNoTracking()
                     .Where(c => c.ProveedorId == idReal && c.Fecha >= inicio && c.Fecha < fin)
                     .Select(c => new {
-                        c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado, c.ClienteId, c.CodigoVerificacion,
+                        c.Id, c.Hora, c.Fecha, c.PrecioPactado, c.Estado, c.ClienteId, c.CodigoVerificacion, c.EmpleadoId,
                         ClienteNombre = c.Cliente != null ? c.Cliente.nombre : "Cliente no registrado",
                         ServicioNombre = c.Servicio != null ? c.Servicio.Nombre : "Servicio no definido",
-                        // 🚀 HU 001 & HU 003: Inyección UI, Nombre del empleado, estación y esquema de contratación
-                        EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
+                        
+                        // 🚀 HU 001 & HU 003 / HOTFIX ASIGNACIÓN: Resolución en cascada para garantizar que siempre haya un especialista visible
+                        EmpleadoAsignado = c.Empleado != null 
+                            ? c.Empleado.Nombre 
+                            : (c.Proveedor != null && !string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Especialista Asignado"),
+                            
                         Estacion = c.Estacion != null ? c.Estacion.Nombre : "Local",
                         TipoContratoEmpleado = c.Empleado != null ? c.Empleado.TipoContrato : "comision",
                         ValorContratoEmpleado = c.Empleado != null ? c.Empleado.ValorContrato : 0
@@ -191,9 +195,9 @@ namespace Turnify.Api.Services
                         };
                     }).ToList(),
                     chartServiciosPopulares = rawCitas.Where(c => c.Estado != "cancelada")
-                                                  .GroupBy(c => c.ServicioNombre)
-                                                  .Select(g => new { nombre = g.Key, cantidad = g.Count() })
-                                                  .ToList()
+                                                      .GroupBy(c => c.ServicioNombre)
+                                                      .Select(g => new { nombre = g.Key, cantidad = g.Count() })
+                                                      .ToList()
                 };
             }
             catch (Exception ex)

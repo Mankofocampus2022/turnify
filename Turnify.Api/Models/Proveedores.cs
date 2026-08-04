@@ -84,7 +84,7 @@ namespace Turnify.Api.Models
 
 
         // =========================================================================
-        // 🚀 NUEVOS CAMPOS REQUERIDOS (HU-08, HU-09, HU-10, HU-12)
+        // 🚀 NUEVOS CAMPOS REQUERIDOS (HU-08, HU-09, HU-10, HU-12, HU-22)
         // =========================================================================
 
         /// <summary>
@@ -96,12 +96,23 @@ namespace Turnify.Api.Models
         public string? FotoUrl { get; set; }
 
         /// <summary>
-        /// HU-10 & HU-12: Indica si opera como profesional independiente (100% ganancias brutas).
+        /// HU-10 & HU-12 & HU-22: Indica si opera como profesional independiente (100% ganancias brutas).
         /// Si es false, se trata de un proveedor dependiente o local comercial.
         /// </summary>
         [Column("es_independiente")]
         [JsonPropertyName("es_independiente")]
         public bool EsIndependiente { get; set; } = false;
+
+        /// <summary>
+        /// 🟢 HU-22: Propiedad con getter/setter en minúscula sin mapear para evitar errores CS1061 de reflexión/compilador
+        /// </summary>
+        [NotMapped]
+        [JsonIgnore]
+        public bool es_independiente 
+        { 
+            get => EsIndependiente; 
+            set => EsIndependiente = value; 
+        }
 
         /// <summary>
         /// HU-10 & HU-12: Clave foránea opcional que apunta al Staff / Dueño del negocio.
@@ -115,7 +126,6 @@ namespace Turnify.Api.Models
         /// HU-09 & HU-12: Porcentaje de comisión asignado para el dependiente.
         /// Para independientes se establece por defecto en 0.00 (ganancia directa total).
         /// </summary>
-
         [Column("porcentaje_comision", TypeName = "decimal(5,2)")]
         [JsonPropertyName("porcentaje_comision")]
         public decimal PorcentajeComision { get; set; } = 0.00m;
@@ -141,8 +151,6 @@ namespace Turnify.Api.Models
         public virtual ICollection<Suscripciones> Suscripciones { get; set; } = new List<Suscripciones>();
 
         // 🛡️ [NUEVO] Vínculo directo con Citas
-        // Esto permite que el CitaService encuentre las citas de "Tola y Maruja 2" 
-        // simplemente navegando desde el objeto Proveedor.
         [JsonIgnore]
         public virtual ICollection<Citas> Citas { get; set; } = new List<Citas>();
     }

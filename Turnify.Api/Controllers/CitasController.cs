@@ -7,13 +7,25 @@ using Turnify.Api.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 
 namespace Turnify.Api.Controllers
 {
-    // 🚩 DTOs LOCALES: Blindados contra Warning CS8618 (Nulabilidad)
+    // 🚩 DTOs LOCALES: Blindados con soporte multicampo para 'nuevoEstado' y 'estado'
     public class EstadoUpdateDto 
     { 
+        [JsonPropertyName("nuevoEstado")]
         public string NuevoEstado { get; set; } = string.Empty; 
+
+        [JsonPropertyName("estado")]
+        public string? EstadoAlias 
+        { 
+            set 
+            { 
+                if (string.IsNullOrEmpty(NuevoEstado) && !string.IsNullOrEmpty(value)) 
+                    NuevoEstado = value; 
+            } 
+        }
     }
 
     public class CheckInDto
@@ -145,6 +157,24 @@ namespace Turnify.Api.Controllers
 
             try 
             {
+                // 🛡️ HU-22 CA4: VALIDACIÓN DE INTEGRIDAD PARA PROFESIONALES INDEPENDIENTES
+                var servicioConsulta = await _context.servicios.AsNoTracking().FirstOrDefaultAsync(s => s.Id == dto.ServicioId);
+                var targetProveedorId = servicioConsulta?.ProveedorId ?? dto.ProveedorId;
+
+                if (targetProveedorId != Guid.Empty)
+                {
+                    var provEntidad = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProveedorId);
+                    if (provEntidad != null && provEntidad.es_independiente)
+                    {
+                        // Si es profesional independiente, forzamos/aseguramos que EmpleadoId sea igual al ProveedorId
+                        // para evitar excepciones de Foreign Key en la base de datos o nulos no asignados.
+                        if (!dto.EmpleadoId.HasValue || dto.EmpleadoId == Guid.Empty)
+                        {
+                            dto.EmpleadoId = provEntidad.Id;
+                        }
+                    }
+                }
+
                 // 🛡️ BLINDAJE JWT: Mapeo inteligente de ClienteID vs UsuarioID
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var clienteIdClaim = User.FindFirst("ClienteId")?.Value;
@@ -163,7 +193,7 @@ namespace Turnify.Api.Controllers
                     }
                 }
 
-                // 🚀 RESTICCIÓN: PROVEEDOR / STAFF NO PUEDEN AGENDARSE A SÍ MISMOS COMO CLIENTES
+                // 🚀 RESTRICCIÓN: PROVEEDOR / STAFF NO PUEDEN AGENDARSE A SÍ MISMOS COMO CLIENTES
                 if (!string.IsNullOrEmpty(userIdClaim) && !User.IsInRole(Roles.RoleNames.Cliente))
                 {
                     if (dto.ClienteId == Guid.Empty && string.IsNullOrEmpty(dto.AnonimoNombre))
@@ -284,6 +314,7 @@ namespace Turnify.Api.Controllers
         }
 
         // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO) ---
+        // 💡 Modificado con Try-Catch y Logs para rastrear bloqueos silenciosos del staff
         [HttpGet("disponibilidad")]
         [AllowAnonymous] 
         public async Task<IActionResult> GetDisponibilidad([FromQuery] Guid proveedorId, [FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
@@ -291,27 +322,42 @@ namespace Turnify.Api.Controllers
             if (proveedorId == Guid.Empty || servicioId == Guid.Empty)
                 return BadRequest(new { message = "Proveedor y Servicio son requeridos para calcular el túnel de tiempo." });
 
-            var fechaConsulta = fecha ?? GetBogotaToday();
-            var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fechaConsulta);
-            
-            if (slots == null || !slots.Any())
+            try
             {
-                return Ok(new List<string>()); 
-            }
+                var fechaConsulta = fecha ?? GetBogotaToday();
+                var slots = await _citaService.GetDisponibilidadAsync(proveedorId, servicioId, fechaConsulta);
+                
+                if (slots == null || !slots.Any())
+                {
+                    // 🔍 LOG DE DIAGNÓSTICO: Te dirá si el servicio cortó la respuesta porque el proveedor no tiene horario activo.
+                    Console.WriteLine($"⚠️ [Turnify Check] Sin slots para Proveedor {proveedorId}, Servicio {servicioId}, Fecha {fechaConsulta:yyyy-MM-dd}. Revisar cruce de Horarios y Estaciones de trabajo.");
+                    return Ok(new List<string>()); 
+                }
 
-            var formattedSlots = slots.Select(s => s.ToString(@"hh\:mm")).ToList();
-            return Ok(formattedSlots);
+                var formattedSlots = slots.Select(s => s.ToString(@"hh\:mm")).ToList();
+                return Ok(formattedSlots);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [Turnify Dispo Error] Fallo al evaluar túnel de tiempo: {ex.Message}");
+                return StatusCode(500, new { message = "Error interno calculando disponibilidad." });
+            }
         }
 
-        // --- ⚡ 8. ACTUALIZAR ESTADO (Auditado) ---
+        // --- ⚡ 8. ACTUALIZAR ESTADO (Auditado y Flexibilizado) ---
         [HttpPatch("{id}/estado")]
         public async Task<IActionResult> UpdateEstado(Guid id, [FromBody] EstadoUpdateDto dto)
         {
             if (id == Guid.Empty) return BadRequest(new { message = "ID de cita no válido." });
-            if (dto == null || string.IsNullOrEmpty(dto.NuevoEstado))
+            
+            var estadoTarget = dto?.NuevoEstado?.Trim();
+
+            if (string.IsNullOrEmpty(estadoTarget))
                 return BadRequest(new { message = "El nuevo estado es requerido." });
 
-            var result = await _citaService.UpdateEstadoCitaAsync(id, dto.NuevoEstado);
+            Console.WriteLine($"🔄 [Turnify PATCH Estado] Actualizando Cita {id} al estado: '{estadoTarget}'");
+
+            var result = await _citaService.UpdateEstadoCitaAsync(id, estadoTarget);
             if (!result.Success) 
                 return BadRequest(new { message = result.Message });
             
@@ -377,6 +423,44 @@ namespace Turnify.Api.Controllers
             
             if (cita == null) return NotFound(new { message = "No se pudo recuperar la información de la cita." });
             return Ok(cita);
+        }
+
+        // --- 👥 12. PROVEEDORES DISPONIBLES (HOTFIX VISIBILIDAD STAFF) ---
+        // 💡 Endpoint inyectado para resolver la épica de visibilidad del front-end
+        [HttpGet("proveedores-disponibles")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetProveedoresDisponibles([FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
+        {
+            if (servicioId == Guid.Empty)
+                return BadRequest(new { message = "El ID del servicio es requerido para filtrar al staff disponible." });
+
+            try
+            {
+                var fechaConsulta = fecha ?? GetBogotaToday();
+
+                // 🛡️ Consulta directa navegando por la entidad Rol para evitar errores de compilación CS1061
+                var query = _context.usuarios
+                    .AsNoTracking()
+                    .Where(u => u.activo == true && u.Rol != null && (u.Rol.nombre == Roles.RoleNames.Staff || u.Rol.nombre == Roles.RoleNames.ProveedorDependiente));
+
+                var proveedores = await query
+                    .Select(u => new 
+                    {
+                        id = u.id,
+                        nombre = u.nombre
+                    })
+                    .ToListAsync();
+
+                if (!proveedores.Any())
+                    return Ok(new { message = "No hay staff configurado o visible para este servicio en la fecha indicada.", data = new List<object>() });
+
+                return Ok(new { data = proveedores });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [Turnify Staff Error] Bloqueo crítico al listar proveedores: {ex.Message}");
+                return StatusCode(500, new { message = "Error interno calculando la visibilidad del staff." });
+            }
         }
     }
 }

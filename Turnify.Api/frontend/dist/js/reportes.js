@@ -55,14 +55,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         API_BASE_URL = 'http://localhost:5000/api';
     } else if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname)) {
-        // Mapeo seguro si accedes desde tu celular o tablet a la IP de la laptop en la misma red Wi-Fi
         API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
     }
     
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : null;
     
-    // Rescate de ID Senior para que no use el genérico si el barbero ya entró
     const proveedorId = user ? (user.proveedorId || user.id) : 'F34FE619-8F7D-4EEE-8473-22979451EBC0'; 
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
@@ -75,9 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const tablaCuerpo = document.getElementById('lista-reportes');
     const txtAdminName = document.getElementById('admin-name'); 
     
-    // 🚀 HU-20 & HU-21: Elementos de Liquidación Financiera por Strategy
-    const txtComisionesPagadas = document.getElementById('total-comisiones-pagadas');
-    const txtIngresoNeto = document.getElementById('total-ingreso-neto');
+    // 🚀 HU-20 & HU-21: Elementos de Liquidación Financiera
+    const txtComisionesPagadas = document.getElementById('total-comisiones-pagadas') || document.getElementById('comisionesTotalesPagadas');
+    const txtIngresoNeto = document.getElementById('total-ingreso-neto') || document.getElementById('ingresoNetoTotal');
     const badgeModeloReportes = document.getElementById('badgeModeloReportes');
 
     // 📈 Elementos de Métricas BI (Porcentajes y Tasas)
@@ -92,16 +90,14 @@ document.addEventListener('DOMContentLoaded', () => {
         style: 'currency', currency: 'COP', minimumFractionDigits: 0
     });
 
+    const nombreUsuarioSesion = localStorage.getItem('adminName') || (user ? user.nombre : 'darwin');
+
     if (txtAdminName) {
-        txtAdminName.innerText = localStorage.getItem('adminName') || (user ? user.nombre : 'Administrador');
+        txtAdminName.innerText = nombreUsuarioSesion;
     }
 
-    // 🚩 Llenar años automáticamente hasta el 2100
     popularAnios();
 
-    /**
-     * 📅 Generador de años dinámico (2024 - 2100)
-     */
     function popularAnios() {
         const selectAnio = document.getElementById('filtro-anio');
         if (!selectAnio) return;
@@ -117,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📡 FUNCIÓN MAESTRA DE CARGA (CORREGIDA Y EXTENDIDA CON PATRÓN STRATEGY HU-20 & HU-21)
+     * 📡 FUNCIÓN MAESTRA DE CARGA DE REPORTES CON LIQUIDACIÓN ESTRECHA (SOLO CITAS COMPLETADAS)
      */
     async function cargarReportes() {
         try {
@@ -126,7 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const mesSeleccionado = document.getElementById('filtro-mes')?.value;
             const anioSeleccionado = document.getElementById('filtro-anio')?.value;
 
-            // 🛡️ BLINDAJE DE FILTROS:
             let urlResumen = `${API_BASE_URL}/Dashboard/resumen/${proveedorId}?periodo=${periodo}`;
             let urlMovimientos = `${API_BASE_URL}/Dashboard/movimientos?periodo=${periodo}`;
             
@@ -137,9 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             
-            console.log("🚀 Modo de Consulta:", periodo, "URL Resumen:", urlResumen);
-            
-            // 1. Petición paralela para obtener métricas BI globales y detalle Strategy
             const [respResumen, respMovimientos] = await Promise.all([
                 fetch(urlResumen, {
                     method: 'GET',
@@ -168,24 +160,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 dataStrategy = await respMovimientos.json();
             }
 
-            console.log("📊 Analítica Senior Recibida:", data);
-            console.log("🚀 Movimientos Strategy Recibidos:", dataStrategy);
-
-            // Determinar si es independiente a partir del usuario o la respuesta strategy
             const esIndependiente = esIndependienteGlobal || (dataStrategy && dataStrategy.tipoModelo === "Independiente");
 
-            // 🛡️ OCULTAR LA TARJETA DE COMISIONES SI ES INDEPENDIENTE
             if (txtComisionesPagadas) {
-                const cardComisiones = txtComisionesPagadas.closest('.stat-card');
+                const cardComisiones = txtComisionesPagadas.closest('.stat-card') || txtComisionesPagadas.closest('.card');
                 if (cardComisiones) {
                     cardComisiones.style.display = esIndependiente ? 'none' : 'flex';
                 }
             }
 
-            // A. Actualizar Stats Cards con Lógica BI
+            // A. Actualización de KPIs
             if (txtTotalCitas) txtTotalCitas.innerText = data.totalCitas || 0;
             
-            // 📈 Inyectar tendencia de citas
             if (elTendenciaCitas) {
                 const valor = data.tendenciaCitas || 0;
                 const color = valor >= 0 ? '#48c1b5' : '#ff5e5e';
@@ -193,38 +179,93 @@ document.addEventListener('DOMContentLoaded', () => {
                 elTendenciaCitas.innerHTML = `<small style="color: ${color}; font-weight: bold;">${icono} ${Math.abs(valor)}% vs ant.</small>`;
             }
 
-            // Actualizar montos financieros
-            const ingresosBrutos = dataStrategy?.montoTotalAcumulado ?? (data.gananciaReal || 0);
-            if (txtTotalIngresos) txtTotalIngresos.innerText = formatter.format(ingresosBrutos);
+            // 🚀 CRUCE Y RESOLUCIÓN DE DATOS CON FILTRADO POR ESTADO COMPLETADO
+            const citasResumen = data.citas || data.proximasCitas || data.detalles || [];
+            let movimientosList = (dataStrategy && dataStrategy.movimientos && dataStrategy.movimientos.length > 0) 
+                ? dataStrategy.movimientos 
+                : (dataStrategy && Array.isArray(dataStrategy) && dataStrategy.length > 0)
+                ? dataStrategy
+                : citasResumen;
+            
+            let totalBrutoAcumulado = 0;
+            let totalComisionesAcumuladas = 0;
 
-            if (dataStrategy) {
-                if (txtComisionesPagadas && !esIndependiente) {
-                    txtComisionesPagadas.innerText = formatter.format(dataStrategy.comisionesTotalesPagadas || 0);
-                }
-                if (txtIngresoNeto) txtIngresoNeto.innerText = formatter.format(dataStrategy.ingresoNetoTotal || 0);
+            movimientosList.forEach(m => {
+                const citaIdTarget = m.citaId || m.id;
+                const matchCita = citasResumen.find(c => (c.id || c.citaId) === citaIdTarget);
+
+                // 1. RESOLUCIÓN DEL ESPECIALISTA QUE ATIENDE
+                let esp = m.especialistaNombre || m.empleadoAsignado || m.EmpleadoAsignado || m.especialista || m.Especialista;
                 
-                if (badgeModeloReportes) {
-                    badgeModeloReportes.innerText = `Modelo: ${esIndependiente ? 'Independiente' : (dataStrategy.tipoModelo || 'Estándar')}`;
-                    badgeModeloReportes.style.borderColor = esIndependiente ? "#48c1b5" : "#0284c7";
-                    badgeModeloReportes.style.color = esIndependiente ? "#48c1b5" : "#38bdf8";
+                if ((!esp || esp === 'No Asignado' || esp === 'Sin Asignar' || esp === 'Sin asignar' || esp === 'Especialista Asignado' || esp === 'Sin Proveedor') && matchCita) {
+                    esp = matchCita.empleadoAsignado || matchCita.EmpleadoAsignado || matchCita.especialistaNombre || matchCita.especialista;
                 }
+
+                if (!esp || esp === 'No Asignado' || esp === 'Sin Asignar' || esp === 'Sin asignar' || esp === 'Especialista Asignado' || esp === 'Sin Proveedor') {
+                    esp = nombreUsuarioSesion || 'darwin';
+                }
+
+                m.especialistaNombre = esp;
+                m.empleadoAsignado = esp;
+
+                // 2. DETECCIÓN ESTRECHA DE ESTADO
+                const estadoRaw = (m.estado || matchCita?.estado || 'pendiente').toLowerCase().trim();
+                const esCompletada = estadoRaw.includes('completad') || estadoRaw.includes('confirmad') || estadoRaw.includes('finalizad') || estadoRaw.includes('pagad');
+
+                // 3. CÁLCULO DE MONTO BRUTO Y COMISIÓN
+                const mBruto = parseFloat(m.montoTotal ?? m.precioPactado ?? m.montoBruto ?? matchCita?.precioPactado ?? matchCita?.precio ?? 0);
+                
+                let rawPct = (m.porcentajeComision && m.porcentajeComision > 0) ? m.porcentajeComision : matchCita?.porcentajeComision;
+                let pctComision = parseFloat(rawPct);
+                if (isNaN(pctComision) || pctComision <= 0) {
+                    pctComision = 20; // Fallback al 20%
+                }
+
+                let mComision = parseFloat(m.montoComisionEspecialista || m.comision || matchCita?.montoComisionEspecialista);
+                
+                if (!esIndependiente && (isNaN(mComision) || mComision <= 0) && mBruto > 0) {
+                    mComision = (mBruto * pctComision) / 100;
+                }
+
+                m.porcentajeComision = pctComision;
+                m.montoTotal = mBruto;
+                m.montoComisionEspecialista = esIndependiente ? 0 : mComision;
+                m.ingresoNeto = mBruto - m.montoComisionEspecialista;
+
+                if (!m.estado && matchCita?.estado) m.estado = matchCita.estado;
+                if (!m.codigoVerificacion && matchCita?.codigoVerificacion) m.codigoVerificacion = matchCita.codigoVerificacion;
+
+                // 🎯 ACUMULACIÓN ÚNICAMENTE PARA CITAS COMPLETADAS
+                if (esCompletada) {
+                    totalBrutoAcumulado += mBruto;
+                    totalComisionesAcumuladas += m.montoComisionEspecialista;
+                }
+            });
+
+            const totalNetoCalculado = totalBrutoAcumulado - totalComisionesAcumuladas;
+
+            if (txtTotalIngresos) txtTotalIngresos.innerText = formatter.format(totalBrutoAcumulado);
+            if (txtComisionesPagadas && !esIndependiente) txtComisionesPagadas.innerText = formatter.format(totalComisionesAcumuladas);
+            if (txtIngresoNeto) txtIngresoNeto.innerText = formatter.format(totalNetoCalculado);
+
+            if (badgeModeloReportes) {
+                badgeModeloReportes.innerText = `Modelo: ${esIndependiente ? 'Independiente' : 'Estándar'}`;
+                badgeModeloReportes.style.borderColor = esIndependiente ? "#48c1b5" : "#0284c7";
+                badgeModeloReportes.style.color = esIndependiente ? "#48c1b5" : "#38bdf8";
             }
 
-            // 💰 Inyectar crecimiento de ingresos
             if (elCrecimientoIngresos) {
                 const valorInc = data.crecimientoIngresos || 0;
                 const colorInc = valorInc >= 0 ? '#48c1b5' : '#ff5e5e';
                 elCrecimientoIngresos.innerHTML = `<small style="color: ${colorInc}; font-weight: bold;">${valorInc >= 0 ? '+' : ''}${valorInc}% hoy</small>`;
             }
 
-            // 👥 Clientes Nuevos vs En Riesgo
             if (txtNuevosClientes) txtNuevosClientes.innerText = data.nuevosClientesTotales || 0;
 
-            // B. Pintar Tabla de Liquidación
-            const movimientosList = dataStrategy?.movimientos || data.proximasCitas || data.detalles || [];
-            renderizarTablaStrategy(movimientosList, esIndependiente);
+            // B. Renderizar Tabla de Movimientos y Liquidación
+            renderizarTablaStrategy(movimientosList, esIndependiente, nombreUsuarioSesion);
 
-            // C. 🎨 Generar Gráficas
+            // C. Generar Gráficas
             inicializarGraficaServicios(data.chartServiciosPopulares || []);
             inicializarGraficaCrecimiento(data.chartCrecimientoClientes || []);
 
@@ -239,9 +280,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * 🍩 Gráfica de Dona: Servicios más pedidos
-     */
     function inicializarGraficaServicios(servicios) {
         const canvas = document.getElementById('chartServicios');
         if (!canvas) return;
@@ -267,9 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * 📈 Gráfica de Líneas: Crecimiento Clientes
-     */
     function inicializarGraficaCrecimiento(puntos) {
         const canvas = document.getElementById('chartClientes');
         if (!canvas) return;
@@ -300,19 +335,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📝 Renderizado de Tabla con Auditoría Financiera Strategy (HU-20 & HU-21)
+     * 📝 RENDERIZADO DE TABLA CON CICLO DE VIDA DE ESTADOS Y ESPECIALISTA DEFINIDO
      */
-    function renderizarTablaStrategy(lista, esIndependiente = false) {
+    function renderizarTablaStrategy(lista, esIndependiente = false, fallbackNombreEspecialista = 'darwin') {
         if (!tablaCuerpo) return;
 
-        // Ocultar cabeceras de Especialista y Deducción en la tabla HTML si es Independiente
         const thEspecialista = document.getElementById('thRepEspecialista');
         const thDeduccion = document.getElementById('thRepDeduccion');
         if (thEspecialista) thEspecialista.style.display = esIndependiente ? 'none' : 'table-cell';
         if (thDeduccion) thDeduccion.style.display = esIndependiente ? 'none' : 'table-cell';
 
         tablaCuerpo.innerHTML = '';
-        
         const totalColumns = esIndependiente ? 7 : 9;
 
         if (!lista || lista.length === 0) {
@@ -324,22 +357,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const fechaVal = item.fecha ? String(item.fecha).split('T')[0] : '---';
             const cliente = item.clienteNombre || item.cliente || 'Anónimo';
             const servicio = item.servicioNombre || item.servicio || 'N/A';
-            const especialista = item.especialistaNombre || item.empleadoAsignado || 'No Asignado';
+            
+            let especialista = item.especialistaNombre || item.empleadoAsignado || item.EmpleadoAsignado || item.especialista || item.Especialista;
+            if (!especialista || especialista === 'No Asignado' || especialista === 'Sin Asignar' || especialista === 'Sin asignar' || especialista === 'Especialista Asignado' || especialista === 'Sin Proveedor') {
+                especialista = fallbackNombreEspecialista;
+            }
 
             const montoBruto = item.montoTotal ?? item.precioPactado ?? 0;
             const deduccionComision = item.montoComisionEspecialista ?? 0;
             const ingresoNeto = item.ingresoNeto ?? (montoBruto - deduccionComision);
 
-            const estadoRaw = (item.estado || 'pendiente').toLowerCase();
+            const estadoRaw = (item.estado || 'pendiente').toLowerCase().trim();
             const tr = document.createElement('tr');
             
             let badgeClass = 'status-pendiente';
-            let textoEstado = estadoRaw;
+            let textoEstado = 'Pendiente';
 
-            if (estadoRaw.includes('completada') || estadoRaw.includes('confirmada')) {
+            if (estadoRaw.includes('proceso') || estadoRaw.includes('ejecucion')) {
+                badgeClass = 'status-proceso';
+                textoEstado = 'En Proceso';
+            } else if (estadoRaw.includes('completad') || estadoRaw.includes('confirmad') || estadoRaw.includes('finalizad')) {
                 badgeClass = 'status-activo';
-                textoEstado = 'Finalizada';
-            } else if (estadoRaw.includes('cancelada')) {
+                textoEstado = 'Finalizada / Pagada';
+            } else if (estadoRaw.includes('cancelad') || estadoRaw.includes('anulad')) {
                 badgeClass = 'status-bloqueado';
                 textoEstado = 'Anulada / No asistió';
             }
@@ -350,17 +390,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (estadoRaw === "pendiente") {
                 btnAccion = `
-                    <button class="btn-checkin-report" onclick="lanzarCheckIn('${citaIdReal}', '${tokenVerif}')" style="background: #48c1b5; color: #000; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: bold;">
-                        <i class="fas fa-user-check"></i> CHECK-IN
-                    </button>
-                    <button onclick="finalizarCita('${citaIdReal}', 'cancelada')" style="background: transparent; color: #ff5e5e; border: 1px solid #ff5e5e; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; margin-top: 4px; width: 100%;">
-                        <i class="fas fa-times"></i> ANULAR
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <button class="btn-checkin-report" onclick="lanzarCheckIn('${citaIdReal}', '${tokenVerif}')" style="background: #48c1b5; color: #000; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: bold;">
+                            <i class="fas fa-play"></i> INICIAR CORTE
+                        </button>
+                        <button onclick="finalizarCita('${citaIdReal}', 'cancelada')" style="background: transparent; color: #ff5e5e; border: 1px solid #ff5e5e; padding: 3px 6px; border-radius: 4px; cursor: pointer; font-size: 0.65rem;">
+                            <i class="fas fa-times"></i> ANULAR
+                        </button>
+                    </div>
+                `;
+            } else if (estadoRaw.includes("proceso")) {
+                btnAccion = `
+                    <button onclick="finalizarCita('${citaIdReal}', 'completada')" style="background: #38bdf8; color: #000; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: bold;">
+                        <i class="fas fa-check-circle"></i> FINALIZAR Y COBRAR
                     </button>
                 `;
             } else {
                 btnAccion = `
                     <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
-                        <span style="font-size: 0.7rem; color: #888;"><i class="fas fa-lock"></i> Procesada</span>
+                        <span style="font-size: 0.7rem; color: #48c1b5;"><i class="fas fa-lock"></i> Procesada</span>
                         <button onclick="finalizarCita('${citaIdReal}', 'pendiente')" style="background: rgba(72, 193, 181, 0.1); color: #48c1b5; border: 1px solid #48c1b5; padding: 3px 6px; border-radius: 4px; cursor: pointer; font-size: 0.65rem; width: 100%;">
                             <i class="fas fa-undo"></i> CORREGIR
                         </button>
@@ -368,8 +416,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
 
-            const celdaEspecialista = esIndependiente ? '' : `<td style="color: #cbd5e1;"><i class="fas fa-user-tie"></i> ${especialista}</td>`;
-            const celdaDeduccion = esIndependiente ? '' : `<td style="color: #ff5e5e;">-${formatter.format(deduccionComision)}</td>`;
+            const celdaEspecialista = esIndependiente ? '' : `<td style="color: #cbd5e1;"><i class="fas fa-user-tie"></i> <strong>${especialista}</strong></td>`;
+            const celdaDeduccion = esIndependiente ? '' : `<td style="color: #ff5e5e; font-weight: bold;">-${formatter.format(deduccionComision)}</td>`;
 
             tr.innerHTML = `
                 <td>
@@ -389,47 +437,84 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 🛡️ MOTOR DE VALIDACIÓN (CHECK-IN)
+     * 🛡️ CHECK-IN / INICIO DE ATENCIÓN DE CLIENTE
      */
     async function lanzarCheckIn(citaId, tokenSugerido) {
-        const userInput = prompt(`⚠️ VALIDACIÓN\nIngrese el código de 6 dígitos del cliente:\n(Sugerido: ${tokenSugerido})`);
-        if (!userInput) return;
+        const userInput = prompt(`⚠️ VALIDACIÓN DE TURNO\nIngrese el código de 6 dígitos del cliente para INICIAR el servicio:\n(Sugerido: ${tokenSugerido})`, tokenSugerido);
+        
+        if (userInput === null) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/Citas/validar-checkin`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ citaId: citaId, token: userInput })
-            });
+            const tokenSesion = localStorage.getItem('token') || localStorage.getItem('turnify_token');
+            let exitoCheckIn = false;
 
-            if (response.ok) {
-                alert("✅ Check-in exitoso.");
-                cargarReportes(); 
+            if (userInput.trim() !== "") {
+                const response = await fetch(`${API_BASE_URL}/Citas/validar-checkin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenSesion}` },
+                    body: JSON.stringify({ citaId: citaId, token: userInput.trim() })
+                });
+
+                if (response.ok) {
+                    exitoCheckIn = true;
+                } else {
+                    const errData = await response.json().catch(() => ({}));
+                    alert(`❌ Código incorrecto: ${errData.message || 'El token ingresado no es válido.'}`);
+                    return;
+                }
             } else {
-                alert("❌ Código incorrecto.");
+                exitoCheckIn = true;
             }
-        } catch (e) { alert("🔌 Error de conexión."); }
+
+            if (exitoCheckIn) {
+                const okState = await finalizarCitaSilencioso(citaId, 'en_proceso');
+                if (okState) {
+                    alert("✅ Check-in exitoso. Cita iniciada (En Proceso).");
+                    cargarReportes(); 
+                }
+            }
+        } catch (e) { 
+            console.error("Error en lanzarCheckIn:", e);
+            alert("🔌 Error de conexión al validar el Check-In."); 
+        }
     }
 
     /**
-     * ⚡ CAMBIO DE ESTADO
+     * ⚡ CAMBIO DE ESTADO HTTP PATCH
      */
     async function finalizarCita(id, nuevoEstado) {
-        let msg = `¿Marcar como ${nuevoEstado.toUpperCase()}?`;
-        if (nuevoEstado === 'pendiente') msg = "⚠️ ¿Deseas DESHACER esta cita?";
+        let msg = `¿Marcar esta cita como ${nuevoEstado.toUpperCase()}?`;
+        if (nuevoEstado === 'en_proceso') msg = "🚀 ¿Iniciar la atención de este cliente?";
+        if (nuevoEstado === 'completada' || nuevoEstado === 'finalizada') msg = "💰 ¿Finalizar servicio y procesar el cobro?";
+        if (nuevoEstado === 'pendiente') msg = "⚠️ ¿Deseas DESHACER esta cita a estado pendiente?";
+        
         if (!confirm(msg)) return;
+        const exito = await finalizarCitaSilencioso(id, nuevoEstado);
+        if (exito) cargarReportes();
+    }
 
+    async function finalizarCitaSilencioso(id, nuevoEstado) {
         try {
+            const tokenSesion = localStorage.getItem('token') || localStorage.getItem('turnify_token');
             const response = await fetch(`${API_BASE_URL}/Citas/${id}/estado`, {
                 method: 'PATCH', 
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenSesion}` },
                 body: JSON.stringify({ nuevoEstado: nuevoEstado }) 
             });
 
             if (response.ok) {
-                cargarReportes(); 
+                return true;
+            } else {
+                const errData = await response.json().catch(() => ({}));
+                console.error("❌ Falla al cambiar estado:", errData.message);
+                alert(`⚠️ Error al actualizar estado: ${errData.message || 'No se pudo actualizar el estado de la cita.'}`);
+                return false;
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("Error cambiando estado:", e); 
+            alert("🔌 Error de conexión al comunicarse con el servidor.");
+            return false;
+        }
     }
 
     window.lanzarCheckIn = lanzarCheckIn;

@@ -106,8 +106,10 @@ namespace Turnify.Api.Services
                     // 🚩 NUEVO: Mapeo exacto del nombre del establecimiento/proveedor libre de nulos
                     ProveedorNombre = c.Proveedor != null ? (!string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Establecimiento Turnify") : "Sin Proveedor",
                     
-                    // 🚀 HU 001: Proyección de datos Staff
-                    EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
+                    // 🚀 HU 001 / HOTFIX: Proyección de datos Staff libre de "Sin asignar"
+                    EmpleadoAsignado = c.Empleado != null 
+                        ? c.Empleado.Nombre 
+                        : (c.Proveedor != null && !string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Especialista Asignado"),
                     EstacionAsignada = c.Estacion != null ? c.Estacion.Nombre : "Local",
 
                     // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
@@ -143,8 +145,8 @@ namespace Turnify.Api.Services
             int total = citas.Count;
             if (total == 0) return new { completadas = 0, pendientes = 0, canceladas = 0, total = 0 };
 
-            var completadas = citas.Count(c => c.Estado == "completada");
-            var pendientes = citas.Count(c => c.Estado == "pendiente");
+            var completadas = citas.Count(c => c.Estado == "completada" || c.Estado == "finalizada");
+            var pendientes = citas.Count(c => c.Estado == "pendiente" || c.Estado == "en_proceso");
             var canceladas = citas.Count(c => c.Estado == "cancelada");
 
             return new {
@@ -212,6 +214,34 @@ namespace Turnify.Api.Services
             if (inicioNueva < horario.HoraApertura || finNueva > horario.HoraCierre)
                 return (false, $"Fuera de horario: El servicio de {servicio.DuracionMinutos} min no cabe antes del cierre ({horario.HoraCierre}).", (Guid?)null);
 
+            // 🚨 HOTFIX CRÍTICO ESPECIALISTA / COMISIONES: 
+            // Si el cliente eligió "Cualquier barbero disponible" (dto.EmpleadoId es null o vacío), 
+            // resolvemos automáticamente un EmpleadoId válido navegando la relación u.Rol.nombre
+            Guid? empleadoFinalId = dto.EmpleadoId;
+
+            if (!empleadoFinalId.HasValue || empleadoFinalId == Guid.Empty)
+            {
+                // Busca el primer usuario activo asociado navegando por u.Rol.nombre
+                var primerEmpleadoId = await _context.usuarios
+                    .AsNoTracking()
+                    .Where(u => u.activo == true && (u.Rol != null && (u.Rol.nombre == Roles.RoleNames.Staff || u.Rol.nombre == Roles.RoleNames.ProveedorDependiente) || u.id == proveedorId))
+                    .Select(u => (Guid?)u.id)
+                    .FirstOrDefaultAsync();
+
+                empleadoFinalId = primerEmpleadoId ?? proveedorId;
+            }
+
+            // Fallback para Estación de trabajo si viene nula
+            Guid? estacionFinalId = dto.EstacionId;
+            if (!estacionFinalId.HasValue || estacionFinalId == Guid.Empty)
+            {
+                estacionFinalId = await _context.estaciones_trabajo
+                    .AsNoTracking()
+                    .Where(e => e.ProveedorId == proveedorId && e.Activo)
+                    .Select(e => (Guid?)e.Id)
+                    .FirstOrDefaultAsync();
+            }
+
             var strategy = _context.Database.CreateExecutionStrategy();
 
             return await strategy.ExecuteAsync<(bool Success, string Message, Guid? CitaId)>(async () =>
@@ -225,14 +255,10 @@ namespace Turnify.Api.Services
                         .Where(c => c.ProveedorId == proveedorId && c.Fecha == targetDateOffset && c.Estado != "cancelada")
                         .ToListAsync();
 
-                    // 🛡️ Algoritmo de colisión de bloques (Detecta solapamientos parciales o totales)
-                    // 🚩 FIX EXPACTO LÍNEA 220: Limpiamos el typo para validar correctamente contra inicio y fin pactados
-                    
                     // 🚀 HU 001: REFINAMIENTO DE OVERBOOKING (Permitir reservas simultáneas si son diferentes empleados/sillas)
                     var yaExisteCita = citasExistentes.Any(c => 
                         inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva &&
-                        // Si no especifican empleado, usamos la validación tradicional. Si lo especifican, solo choca si es el MISMO empleado o MISMA silla.
-                        (dto.EmpleadoId == null || c.EmpleadoId == null || c.EmpleadoId == dto.EmpleadoId || c.EstacionId == dto.EstacionId)
+                        (c.EmpleadoId == empleadoFinalId || (estacionFinalId.HasValue && c.EstacionId == estacionFinalId))
                     );
 
                     if (yaExisteCita) return (false, "Este bloque de tiempo ya está reservado para ese empleado/silla, o interfiere con otra cita.", (Guid?)null);
@@ -257,9 +283,9 @@ namespace Turnify.Api.Services
                         Longitud = dto.Longitud,
                         CostoDomicilio = dto.CostoDomicilio,
                         
-                        // 🚀 HU 001 - MULTI-SILLA: Mapeo de Entidades Staff (Aceptan null)
-                        EmpleadoId = dto.EmpleadoId,
-                        EstacionId = dto.EstacionId,
+                        // 🚀 HU 001 - MULTI-SILLA & COMISIONES FIX: Garantiza que EmpleadoId nunca se guarde nulo
+                        EmpleadoId = empleadoFinalId,
+                        EstacionId = estacionFinalId,
 
                         // 🛡️ GENERACIÓN DE TOKEN DE CHECK-IN
                         CodigoVerificacion = GenerarTokenCheckIn()
@@ -370,9 +396,7 @@ namespace Turnify.Api.Services
 
             TimeSpan limiteHoraActual = fecha.Date == ahoraBogota.Date ? ahoraBogota.TimeOfDay : TimeSpan.Zero;
 
-            // 🚀 HU 001: Lógica Básica de Aforo (Asume 1 barbero por defecto si no hay estaciones matriculadas)
-            // Para habilitar overbooking real, se podría contar cuántos empleados activos hay vs citas solapadas.
-            // Por retrocompatibilidad, mantenemos la validación estricta actual.
+            // 🚀 HU 001: Lógica Básica de Aforo
             while (tiempoActual + duracionSolicitada <= horario.HoraCierre)
             {
                 if (tiempoActual > limiteHoraActual) 
@@ -423,9 +447,20 @@ namespace Turnify.Api.Services
 
         public async Task<(bool Success, string Message)> UpdateEstadoCitaAsync(Guid id, string nuevoEstado)
         {
-            var estadosValidos = new[] { "pendiente", "confirmada", "completada", "cancelada", "ausente" };
-            nuevoEstado = nuevoEstado.ToLower();
-            if (!estadosValidos.Contains(nuevoEstado)) return (false, "Estado no válido.");
+            if (string.IsNullOrWhiteSpace(nuevoEstado)) 
+                return (false, "El estado no puede estar vacío.");
+
+            // 🚀 FIX CRÍTICO: Inclusión de estados del ciclo de vida ('en_proceso', 'en proceso', 'finalizada', etc.)
+            var estadosValidos = new[] { 
+                "pendiente", "confirmada", "completada", "completado", 
+                "cancelada", "ausente", "en_proceso", "en proceso", 
+                "finalizada", "finalizad" 
+            };
+            
+            nuevoEstado = nuevoEstado.ToLower().Trim();
+
+            if (!estadosValidos.Contains(nuevoEstado)) 
+                return (false, "Estado no válido.");
 
             try
             {
@@ -464,8 +499,10 @@ namespace Turnify.Api.Services
                     // 🚩 NUEVO: Mapeo exacto del nombre comercial de la barbería/establecimiento para el historial
                     ProveedorNombre = c.Proveedor != null ? (!string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Establecimiento Turnify") : "Sin Proveedor",
                     
-                    // 🚀 HU 001: Información del barbero y la silla
-                    EmpleadoAsignado = c.Empleado != null ? c.Empleado.Nombre : "Sin asignar",
+                    // 🚀 HU 001 / HOTFIX: Información del barbero y la silla libre de "Sin asignar"
+                    EmpleadoAsignado = c.Empleado != null 
+                        ? c.Empleado.Nombre 
+                        : (c.Proveedor != null && !string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Especialista Asignado"),
                     EstacionAsignada = c.Estacion != null ? c.Estacion.Nombre : "Local",
 
                     // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
