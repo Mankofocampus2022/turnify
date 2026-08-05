@@ -150,7 +150,7 @@ namespace Turnify.Api.Models
         [JsonIgnore]
         public virtual ICollection<Suscripciones> Suscripciones { get; set; } = new List<Suscripciones>();
 
-        // 🛡️ [NUEVO] Vínculo directo con Citas
+        // 🛡️ Vínculo directo con Citas
         [JsonIgnore]
         public virtual ICollection<Citas> Citas { get; set; } = new List<Citas>();
     }

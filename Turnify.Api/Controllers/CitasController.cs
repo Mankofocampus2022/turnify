@@ -47,7 +47,7 @@ namespace Turnify.Api.Controllers
         {
             _citaService = citaService;
             _dashboardService = dashboardService;
-            _context = context; // 🛡️ Sincronizado
+            _context = context;
         }
 
         // 🚩 MÉTODO PRIVADO MODIFICADO PARA SOPORTE INTERNACIONAL:
@@ -159,19 +159,18 @@ namespace Turnify.Api.Controllers
             {
                 // 🛡️ HU-22 CA4: VALIDACIÓN DE INTEGRIDAD PARA PROFESIONALES INDEPENDIENTES
                 var servicioConsulta = await _context.servicios.AsNoTracking().FirstOrDefaultAsync(s => s.Id == dto.ServicioId);
-                var targetProveedorId = servicioConsulta?.ProveedorId ?? dto.ProveedorId;
+                var targetProveedorId = dto.ProveedorId != Guid.Empty ? dto.ProveedorId : (servicioConsulta?.ProveedorId ?? Guid.Empty);
 
                 if (targetProveedorId != Guid.Empty)
                 {
                     var provEntidad = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProveedorId);
-                    if (provEntidad != null && provEntidad.es_independiente)
+                    
+                    // 🟢 FIX CA4: Si es profesional independiente, forzamos EmpleadoId y EstacionId a NULL
+                    // para evitar violaciones de clave foránea (FK_Citas_Empleados) en la base de datos.
+                    if (provEntidad != null && (provEntidad.EsIndependiente || provEntidad.es_independiente))
                     {
-                        // Si es profesional independiente, forzamos/aseguramos que EmpleadoId sea igual al ProveedorId
-                        // para evitar excepciones de Foreign Key en la base de datos o nulos no asignados.
-                        if (!dto.EmpleadoId.HasValue || dto.EmpleadoId == Guid.Empty)
-                        {
-                            dto.EmpleadoId = provEntidad.Id;
-                        }
+                        dto.EmpleadoId = null;
+                        dto.EstacionId = null;
                     }
                 }
 
@@ -282,6 +281,10 @@ namespace Turnify.Api.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ [Turnify Critical Error] {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"❌ [Turnify Critical Error Detalle]: {ex.InnerException.Message}");
+                }
                 return StatusCode(500, new { message = "Error interno al agendar: " + ex.Message });
             }
         }
@@ -314,7 +317,6 @@ namespace Turnify.Api.Controllers
         }
 
         // --- 🕒 7. DISPONIBILIDAD (MOTOR OVERBOOKING PRO) ---
-        // 💡 Modificado con Try-Catch y Logs para rastrear bloqueos silenciosos del staff
         [HttpGet("disponibilidad")]
         [AllowAnonymous] 
         public async Task<IActionResult> GetDisponibilidad([FromQuery] Guid proveedorId, [FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
@@ -329,7 +331,6 @@ namespace Turnify.Api.Controllers
                 
                 if (slots == null || !slots.Any())
                 {
-                    // 🔍 LOG DE DIAGNÓSTICO: Te dirá si el servicio cortó la respuesta porque el proveedor no tiene horario activo.
                     Console.WriteLine($"⚠️ [Turnify Check] Sin slots para Proveedor {proveedorId}, Servicio {servicioId}, Fecha {fechaConsulta:yyyy-MM-dd}. Revisar cruce de Horarios y Estaciones de trabajo.");
                     return Ok(new List<string>()); 
                 }
@@ -426,7 +427,6 @@ namespace Turnify.Api.Controllers
         }
 
         // --- 👥 12. PROVEEDORES DISPONIBLES (HOTFIX VISIBILIDAD STAFF) ---
-        // 💡 Endpoint inyectado para resolver la épica de visibilidad del front-end
         [HttpGet("proveedores-disponibles")]
         [AllowAnonymous]
         public async Task<IActionResult> GetProveedoresDisponibles([FromQuery] Guid servicioId, [FromQuery] DateTime? fecha)
@@ -438,7 +438,6 @@ namespace Turnify.Api.Controllers
             {
                 var fechaConsulta = fecha ?? GetBogotaToday();
 
-                // 🛡️ Consulta directa navegando por la entidad Rol para evitar errores de compilación CS1061
                 var query = _context.usuarios
                     .AsNoTracking()
                     .Where(u => u.activo == true && u.Rol != null && (u.Rol.nombre == Roles.RoleNames.Staff || u.Rol.nombre == Roles.RoleNames.ProveedorDependiente));

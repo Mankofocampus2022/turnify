@@ -222,6 +222,12 @@ async function cargarDatosConfig(proveedorId, token) {
             if(document.getElementById('negocioTelefono')) document.getElementById('negocioTelefono').value = data.telefono || '';
             if(document.getElementById('negocioDireccion')) document.getElementById('negocioDireccion').value = data.direccion || '';
             if(document.getElementById('negocioTipo')) document.getElementById('negocioTipo').value = data.tipo || 'Barbería';
+            
+            // 🎯 HU-22 / CA1: Cargar estado de Profesional Independiente
+            const checkIndep = document.getElementById('negocioEsIndependiente');
+            if(checkIndep) {
+                checkIndep.checked = data.esIndependiente ?? data.es_independiente ?? data.EsIndependiente ?? false;
+            }
         }
     } catch (error) { console.error(error); }
 }
@@ -236,6 +242,8 @@ async function guardarConfig(e, proveedorId, token) {
     const inputTelefono = document.getElementById('negocioTelefono');
     const inputEmail = document.getElementById('negocioEmail');
     const tipoSelect = document.getElementById('negocioTipo') ? document.getElementById('negocioTipo').value : "Barbería";
+    const checkIndep = document.getElementById('negocioEsIndependiente');
+    const esIndependienteVal = checkIndep ? checkIndep.checked : false;
 
     let categoriaMapeada = "Barbero";
     if (tipoSelect === "Manicure") {
@@ -251,7 +259,11 @@ async function guardarConfig(e, proveedorId, token) {
         Tipo: tipoSelect,
         Categoria: categoriaMapeada, 
         Telefono: inputTelefono ? inputTelefono.value.trim() : "",
-        Email: inputEmail ? inputEmail.value.trim() : ""
+        Email: inputEmail ? inputEmail.value.trim() : "",
+        
+        // 🎯 HU-22 / CA1: Persistir flag de Profesional Independiente
+        EsIndependiente: esIndependienteVal,
+        es_independiente: esIndependienteVal
     };
 
     try {
@@ -321,7 +333,7 @@ async function guardarTodosLosHorarios() {
 }
 
 /* ============================================================
-   🧠 RECONCILIACIÓN FINTECH Y ALERTAS INTEGRADA EN PROVEEEDORES
+   🧠 RECONCILIACIÓN FINTECH Y ALERTAS INTEGRADA EN PROVEEDORES
    ============================================================ */
 
 async function cargarDatosPagos(proveedorId, token) {
@@ -352,12 +364,16 @@ async function guardarConfigPagos(e, proveedorId, token) {
     const nombreComercial = document.getElementById('negocioNombre')?.value || "";
     const direccion = document.getElementById('negocioDireccion')?.value || "";
     const tipo = document.getElementById('negocioTipo')?.value || "Barbería";
+    const checkIndep = document.getElementById('negocioEsIndependiente');
+    const esIndependienteVal = checkIndep ? checkIndep.checked : false;
 
     const body = {
         Id: proveedorId,
         NombreComercial: nombreComercial,
         Direccion: direccion,
         Tipo: tipo,
+        EsIndependiente: esIndependienteVal,
+        es_independiente: esIndependienteVal,
         NequiCelular: document.getElementById('pagoNequi').value.trim(),
         DaviplataCelular: document.getElementById('pagoDaviplata').value.trim(),
         BancoNombre: document.getElementById('pagoBancoNombre').value.trim(),
@@ -399,12 +415,16 @@ async function guardarConfigNotificaciones(e, proveedorId, token) {
     const nombreComercial = document.getElementById('negocioNombre')?.value || "";
     const direccion = document.getElementById('negocioDireccion')?.value || "";
     const tipo = document.getElementById('negocioTipo')?.value || "Barbería";
+    const checkIndep = document.getElementById('negocioEsIndependiente');
+    const esIndependienteVal = checkIndep ? checkIndep.checked : false;
 
     const body = {
         Id: proveedorId,
         NombreComercial: nombreComercial,
         Direccion: direccion,
         Tipo: tipo,
+        EsIndependiente: esIndependienteVal,
+        es_independiente: esIndependienteVal,
         PermitirWhatsApp: document.getElementById('notifWhatsApp').checked,
         PermitirEmail: document.getElementById('notifEmail').checked
     };

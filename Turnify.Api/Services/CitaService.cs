@@ -16,14 +16,14 @@ namespace Turnify.Api.Services
     public class CitaService : ICitaService
     {
         private readonly TurnifyDbContext _context;
-        private readonly IEmailService _emailService; // 🚀 [NUEVO] Canal de correo electrónico inyectado
-        private readonly IWhatsAppService _whatsappService; // 🚀 [NUEVO] Canal de WhatsApp Bot inyectado
+        private readonly IEmailService _emailService; // 🚀 Canal de correo electrónico inyectado
+        private readonly IWhatsAppService _whatsappService; // 🚀 Canal de WhatsApp Bot inyectado
 
         public CitaService(TurnifyDbContext context, IEmailService emailService, IWhatsAppService whatsappService)
         {
             _context = context;
-            _emailService = emailService; // 🚀 Sincronizado
-            _whatsappService = whatsappService; // 🚀 Sincronizado
+            _emailService = emailService;
+            _whatsappService = whatsappService;
         }
 
         // 🚩 MÉTODO PRIVADO: Convertido a DateTimeOffset para eliminar el Timezone Drift global de Docker
@@ -91,7 +91,7 @@ namespace Turnify.Api.Services
                 .Include(c => c.Empleado)  // 🚀 HU 001: Incluimos el empleado
                 .Include(c => c.Estacion)  // 🚀 HU 001: Incluimos la estación
                 // 🚩 AJUSTE DE IDENTIDAD: Buscamos por ProveedorId o ClienteId (validando contra usuario_id también)
-                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == userId) || c.EmpleadoId == userId) && // 🚀 HU 001: Filtro para empleados 
+                .Where(c => (c.ProveedorId == userId || c.ClienteId == userId || (c.Cliente != null && c.Cliente.usuario_id != null && c.Cliente.usuario_id == userId) || c.EmpleadoId == userId) && 
                             c.Fecha >= fechaInicioOffset && 
                             c.Fecha < fechaFinLimiteOffset && 
                             c.Estado != "cancelada")
@@ -111,6 +111,9 @@ namespace Turnify.Api.Services
                         ? c.Empleado.Nombre 
                         : (c.Proveedor != null && !string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Especialista Asignado"),
                     EstacionAsignada = c.Estacion != null ? c.Estacion.Nombre : "Local",
+
+                    // 🟢 HU-22: Bandera para identificar si la cita corresponde a un profesional independiente
+                    EsIndependiente = c.Proveedor != null && c.Proveedor.EsIndependiente,
 
                     // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
                     Estado = c.Estado ?? "pendiente",
@@ -134,7 +137,7 @@ namespace Turnify.Api.Services
             return await GetCitasRangoAsync(userId, hoyBogota, hoyBogota);
         }
 
-        // --- 📊 [NUEVO] 1.1 ESTADÍSTICAS PARA GRÁFICA DE TORTA ---
+        // --- 📊 1.1 ESTADÍSTICAS PARA GRÁFICA DE TORTA ---
         public async Task<object> GetEstadisticasTortaAsync(Guid proveedorId)
         {
             var citas = await _context.citas
@@ -173,11 +176,14 @@ namespace Turnify.Api.Services
 
             if (cliente == null) return (false, "El cliente especificado no existe.", (Guid?)null);
 
-            // 🛡️ REGLA DE NEGOCIO: Expiración de 3 meses (90 días)
-            var diasDesdeCreacion = (GetBogotaTime().DateTime - cliente.fecha_creacion).TotalDays;
-            if (diasDesdeCreacion > 90)
+            // 🛡️ REGLA DE NEGOCIO: Expiración de 3 meses (90 días) - Solo aplica si la fecha de creación fue registrada
+            if (cliente.fecha_creacion != default && cliente.fecha_creacion != DateTime.MinValue)
             {
-                return (false, "Cuenta de cliente expirada (máximo 3 meses). Favor actualizar perfil.", (Guid?)null);
+                var diasDesdeCreacion = (GetBogotaTime().DateTime - cliente.fecha_creacion).TotalDays;
+                if (diasDesdeCreacion > 90)
+                {
+                    return (false, "Cuenta de cliente expirada (máximo 3 meses). Favor actualizar perfil.", (Guid?)null);
+                }
             }
 
             var servicio = await _context.servicios.FindAsync(dto.ServicioId);
@@ -194,10 +200,14 @@ namespace Turnify.Api.Services
             if (fechaHoraCitaOffset < ahoraBogota)
                 return (false, $"No puedes agendar en el pasado. (Actual en Bog: {ahoraBogota:HH:mm})", (Guid?)null);
 
-            var proveedorId = servicio.ProveedorId.GetValueOrDefault();
+            var proveedorId = dto.ProveedorId != Guid.Empty ? dto.ProveedorId : servicio.ProveedorId.GetValueOrDefault();
             
             if (proveedorId == Guid.Empty)
                 return (false, "Este servicio no tiene un proveedor asignado.", (Guid?)null);
+
+            // 🎯 CONSULTA DE MODALIDAD DEL PROVEEDOR (HU-22 / CA1 / CA4)
+            var proveedorObj = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == proveedorId);
+            bool esIndependiente = proveedorObj != null && proveedorObj.EsIndependiente;
 
             int diaDeLaSemana = (int)dto.Fecha.DayOfWeek;
 
@@ -214,32 +224,55 @@ namespace Turnify.Api.Services
             if (inicioNueva < horario.HoraApertura || finNueva > horario.HoraCierre)
                 return (false, $"Fuera de horario: El servicio de {servicio.DuracionMinutos} min no cabe antes del cierre ({horario.HoraCierre}).", (Guid?)null);
 
-            // 🚨 HOTFIX CRÍTICO ESPECIALISTA / COMISIONES: 
-            // Si el cliente eligió "Cualquier barbero disponible" (dto.EmpleadoId es null o vacío), 
-            // resolvemos automáticamente un EmpleadoId válido navegando la relación u.Rol.nombre
+            // 🚨 RESOLUCIÓN BLINDADA DE EMPLEADO Y ESTACIÓN (CA4 / HU-22)
             Guid? empleadoFinalId = dto.EmpleadoId;
-
-            if (!empleadoFinalId.HasValue || empleadoFinalId == Guid.Empty)
-            {
-                // Busca el primer usuario activo asociado navegando por u.Rol.nombre
-                var primerEmpleadoId = await _context.usuarios
-                    .AsNoTracking()
-                    .Where(u => u.activo == true && (u.Rol != null && (u.Rol.nombre == Roles.RoleNames.Staff || u.Rol.nombre == Roles.RoleNames.ProveedorDependiente) || u.id == proveedorId))
-                    .Select(u => (Guid?)u.id)
-                    .FirstOrDefaultAsync();
-
-                empleadoFinalId = primerEmpleadoId ?? proveedorId;
-            }
-
-            // Fallback para Estación de trabajo si viene nula
             Guid? estacionFinalId = dto.EstacionId;
-            if (!estacionFinalId.HasValue || estacionFinalId == Guid.Empty)
+
+            if (esIndependiente)
             {
-                estacionFinalId = await _context.estaciones_trabajo
-                    .AsNoTracking()
-                    .Where(e => e.ProveedorId == proveedorId && e.Activo)
-                    .Select(e => (Guid?)e.Id)
-                    .FirstOrDefaultAsync();
+                // 🛡️ BLINDAJE CA4: Si el proveedor es independiente, forzamos EmpleadoId y EstacionId a null 
+                // para evitar violaciones de clave foránea en la base de datos (FK_Citas_Empleados)
+                empleadoFinalId = null;
+                estacionFinalId = null;
+            }
+            else
+            {
+                // Si el cliente no seleccionó un profesional preferido en un salón/establecimiento
+                if (!empleadoFinalId.HasValue || empleadoFinalId == Guid.Empty)
+                {
+                    // 1. Busca en la tabla de empleados activos pertenecientes a este proveedor
+                    var primerEmpleado = await _context.empleados
+                        .AsNoTracking()
+                        .Where(e => e.ProveedorId == proveedorId && e.Activo)
+                        .Select(e => (Guid?)e.Id)
+                        .FirstOrDefaultAsync();
+
+                    if (primerEmpleado.HasValue && primerEmpleado != Guid.Empty)
+                    {
+                        empleadoFinalId = primerEmpleado;
+                    }
+                    else
+                    {
+                        // 2. Busca en usuarios por rol de Staff o ProveedorDependiente
+                        var primerUsuario = await _context.usuarios
+                            .AsNoTracking()
+                            .Where(u => u.activo == true && (u.Rol != null && (u.Rol.nombre == Roles.RoleNames.Staff || u.Rol.nombre == Roles.RoleNames.ProveedorDependiente)))
+                            .Select(u => (Guid?)u.id)
+                            .FirstOrDefaultAsync();
+
+                        empleadoFinalId = primerUsuario; // Si no encuentra, se mantiene null de forma segura
+                    }
+                }
+
+                // Fallback para Estación de trabajo si no fue especificada
+                if (!estacionFinalId.HasValue || estacionFinalId == Guid.Empty)
+                {
+                    estacionFinalId = await _context.estaciones_trabajo
+                        .AsNoTracking()
+                        .Where(e => e.ProveedorId == proveedorId && e.Activo)
+                        .Select(e => (Guid?)e.Id)
+                        .FirstOrDefaultAsync();
+                }
             }
 
             var strategy = _context.Database.CreateExecutionStrategy();
@@ -255,10 +288,14 @@ namespace Turnify.Api.Services
                         .Where(c => c.ProveedorId == proveedorId && c.Fecha == targetDateOffset && c.Estado != "cancelada")
                         .ToListAsync();
 
-                    // 🚀 HU 001: REFINAMIENTO DE OVERBOOKING (Permitir reservas simultáneas si son diferentes empleados/sillas)
+                    // 🚀 HU 001 & CA4: REFINAMIENTO DE OVERBOOKING (Independiente = Monopolio de Horario)
                     var yaExisteCita = citasExistentes.Any(c => 
                         inicioNueva < c.Hora.Add(TimeSpan.FromMinutes(c.DuracionPactadaMin)) && c.Hora < finNueva &&
-                        (c.EmpleadoId == empleadoFinalId || (estacionFinalId.HasValue && c.EstacionId == estacionFinalId))
+                        (
+                            esIndependiente 
+                            ? true 
+                            : ((empleadoFinalId.HasValue && c.EmpleadoId == empleadoFinalId) || (estacionFinalId.HasValue && c.EstacionId == estacionFinalId))
+                        )
                     );
 
                     if (yaExisteCita) return (false, "Este bloque de tiempo ya está reservado para ese empleado/silla, o interfiere con otra cita.", (Guid?)null);
@@ -276,14 +313,14 @@ namespace Turnify.Api.Services
                         PrecioPactado = servicio.Precio + (dto.CostoDomicilio >= 0 ? dto.CostoDomicilio : 0), 
                         DuracionPactadaMin = servicio.DuracionMinutos,
                         FechaCreacion = DateTimeOffset.UtcNow, // 🌐 Sincronizado con DateTimeOffset universal
-                        Observaciones = dto.Observaciones ?? "", // 🚩 OBSERVACIONES TOTALMENTE RESPETADAS E INTACTAS
+                        Observaciones = dto.Observaciones ?? "",
                         Direccion = dto.Direccion,
                         MetodoRegistro = dto.MetodoRegistro ?? "Web",
                         Latitud = dto.Latitud,
                         Longitud = dto.Longitud,
                         CostoDomicilio = dto.CostoDomicilio,
                         
-                        // 🚀 HU 001 - MULTI-SILLA & COMISIONES FIX: Garantiza que EmpleadoId nunca se guarde nulo
+                        // 🚀 HU 001 - MULTI-SILLA & CA4 FIX: Garantiza que EmpleadoId sea null para independientes o id válido
                         EmpleadoId = empleadoFinalId,
                         EstacionId = estacionFinalId,
 
@@ -294,7 +331,7 @@ namespace Turnify.Api.Services
                     _context.citas.Add(nuevaCita);
                     await _context.SaveChangesAsync();
 
-                    // 🧠 INYECTADO SENIOR: Mapeamos el nombre del establecimiento comercial antes de cerrar la conexión para el email
+                    // 🧠 Mapeamos el nombre del establecimiento comercial antes de cerrar la conexión para el email
                     var establecimientoNombre = "Establecimiento Turnify";
                     var provComercial = await _context.proveedores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == proveedorId);
                     if (provComercial != null)
@@ -304,12 +341,12 @@ namespace Turnify.Api.Services
 
                     await transaction.CommitAsync(); 
 
-                    // 🚀 [NUEVO CANAL REACTIVO ASÍNCRONO] - DISPARO DE NOTIFICACIONES ELECTRÓNICAS
+                    // 🚀 DISPARO ASÍNCRONO DE NOTIFICACIONES ELECTRÓNICAS
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            // 1. Envío automático de correo con la plantilla HTML responsiva matriculada
+                            // 1. Envío automático de correo con la plantilla HTML responsiva
                             if (!string.IsNullOrEmpty(cliente.email) && cliente.email.Contains("@"))
                             {
                                 await _emailService.EnviarTokenCitaAsync(
@@ -333,7 +370,6 @@ namespace Turnify.Api.Services
                 }
                 catch (DbUpdateConcurrencyException ex)
                 {
-                    // 🛡️ ¡CAPTURAMOS EL DOBLE AGENDAMIENTO EN EL ACTO!
                     await transaction.RollbackAsync();
                     Console.WriteLine($"🛡️ [Concurrencia Senior] Choque de escritura detectado al agendar: {ex.Message}");
                     return (false, "Lo sentimos, este cupo de tiempo exacto acaba de ser tomado por otro usuario hace un instante. Por favor, selecciona otro horario.", (Guid?)null);
@@ -342,6 +378,10 @@ namespace Turnify.Api.Services
                 {
                     await transaction.RollbackAsync(); 
                     Console.WriteLine($"❌ [Error-Fatal] Al agendar cita: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.WriteLine($"❌ [Error-Fatal Detalle Interno]: {ex.InnerException.Message}");
+                    }
                     return (false, "Error interno al procesar la cita. Intenta de nuevo.", (Guid?)null);
                 }
             });
@@ -414,7 +454,7 @@ namespace Turnify.Api.Services
             return slotsDisponibles;
         }
 
-        // 🛡️ NUEVO: Confirmar Asistencia vía Token (Check-in)
+        // 🛡️ Confirmar Asistencia vía Token (Check-in)
         public async Task<(bool Success, string Message)> ConfirmarAsistenciaAsync(Guid citaId, string token)
         {
             try
@@ -504,6 +544,9 @@ namespace Turnify.Api.Services
                         ? c.Empleado.Nombre 
                         : (c.Proveedor != null && !string.IsNullOrEmpty(c.Proveedor.NombreComercial) ? c.Proveedor.NombreComercial : "Especialista Asignado"),
                     EstacionAsignada = c.Estacion != null ? c.Estacion.Nombre : "Local",
+
+                    // 🟢 HU-22: Bandera para identificar si la cita corresponde a un profesional independiente
+                    EsIndependiente = c.Proveedor != null && c.Proveedor.EsIndependiente,
 
                     // 🛡️ BLINDAJE CONTRA ADVERTENCIAS DE NULABILIDAD (CS8601)
                     Estado = c.Estado ?? "pendiente",

@@ -21,5 +21,17 @@ namespace Turnify.Api.Models.DTOs
 
         public bool trabaja_domicilio { get; set; } 
         public bool activo { get; set; } = true;
+
+        // 🎯 FLAG DE INDEPENDIENTE / ESTABLECIMIENTO
+        // Permite identificar si el proveedor opera de forma individual o maneja un staff/equipo.
+        public bool es_independiente { get; set; } = false;
+
+        // 🛡️ ALIAS DE COMPATIBILIDAD C#: Mapea a PascalCase para evitar errores CS1061 
+        // en controladores, servicios o AutoMapper que busquen 'EsIndependiente'.
+        public bool EsIndependiente 
+        { 
+            get => es_independiente; 
+            set => es_independiente = value; 
+        }
     }
 }

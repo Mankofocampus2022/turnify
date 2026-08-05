@@ -2,6 +2,9 @@
    TURNIFY - MOTOR DE AGENDAMIENTO Y DISPONIBILIDAD HORARIA
    ============================================================ */
 
+// 🛡️ CACHÉ GLOBAL DE PROVEEDORES PARA EVALUACIÓN DUAL (HU-22 / CA1 / CA4)
+window.listaProveedoresCache = [];
+
 document.addEventListener('DOMContentLoaded', async () => {
     // 🛡️ [NUEVO] DETECCIÓN DE CÓDIGO QR / AISLAMIENTO DE MULTI-TENANT (Extracción Temprana)
     const urlParams = new URLSearchParams(window.location.search);
@@ -70,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (sectionCliente) sectionCliente.style.display = 'none';
         if (sectionProveedor) sectionProveedor.style.display = qrProveedorId ? 'none' : 'block';
         if (sectionStaffEstacion) sectionStaffEstacion.style.display = 'none'; // El cliente externo nunca ve sillas
-        if (sectionBarberoPreferido) sectionBarberoPreferido.style.display = 'block'; // El cliente SI ve staff preferido
+        if (sectionBarberoPreferido) sectionBarberoPreferido.style.display = 'block'; // El estado se evalúa dinámicamente según si es independiente
         
         if (subtitulo && !qrProveedorId) subtitulo.innerText = "Reserva tu cita con tu profesional favorito.";
         
@@ -109,8 +112,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         cargarProveedores(token, API_BASE);
         // Inyectamos de inmediato los servicios del portafolio del QR
         cargarServicios(qrProveedorId, token, API_BASE);
-        // 🚀 Cargar de manera pública los profesionales activos de esta Barbería específica
-        cargarEmpleadosPublico(qrProveedorId, API_BASE);
     }
 
     // 🔥 [KILLER FIX] - VINCULACIÓN DE EVENTOS DE DISPONIBILIDAD
@@ -243,6 +244,37 @@ async function cancelarCita(id, token, API_BASE) {
 }
 
 /**
+ * 🎯 EVALUAR MODALIDAD DEL PROVEEDOR (HU-22 / CA1 / CA4)
+ * Oculta/muestra la sección de "Barbero/Especialista Preferido" según si el proveedor es independiente.
+ */
+function evaluarModoProveedor(proveedorId, API_BASE) {
+    if (!proveedorId) return;
+
+    const prov = window.listaProveedoresCache.find(p => (p.id || p.Id) === proveedorId);
+    const sectionBarberoPreferido = document.getElementById('sectionBarberoPreferido');
+    const selectClienteEmpleado = document.getElementById('citaClienteEmpleadoId');
+
+    const esIndependiente = prov ? (prov.es_independiente || prov.EsIndependiente || prov.esIndependiente || false) : false;
+
+    if (esIndependiente) {
+        console.log("👤 [Turnify Log] Proveedor Independiente detectado -> Ocultando selector de staff.");
+        if (sectionBarberoPreferido) sectionBarberoPreferido.style.display = 'none';
+        if (selectClienteEmpleado) selectClienteEmpleado.value = "";
+    } else {
+        console.log("🏢 [Turnify Log] Establecimiento/Salón detectado -> Mostrando catálogo de staff.");
+        const rol = (localStorage.getItem('usuario_rol') || "").toUpperCase();
+        const esCliente = rol.includes("CLIENTE");
+        const urlParams = new URLSearchParams(window.location.search);
+        const qrId = urlParams.get('id');
+
+        if ((esCliente || qrId) && sectionBarberoPreferido) {
+            sectionBarberoPreferido.style.display = 'block';
+            cargarEmpleadosPublico(proveedorId, API_BASE);
+        }
+    }
+}
+
+/**
  * 🚩 CARGA DE PROVEEDORES
  */
 async function cargarProveedores(token, API_BASE) {
@@ -252,13 +284,16 @@ async function cargarProveedores(token, API_BASE) {
         });
         if (resp.ok) {
             const proveedores = await resp.json();
+            window.listaProveedoresCache = proveedores || []; // 🛡️ Persistencia local para rápida evaluación
+            
             const selectProv = document.getElementById('citaProveedorId');
             if (selectProv) {
                 selectProv.innerHTML = '<option value="" style="background-color: #1a2238; color: #ffffff;">-- Selecciona Profesional --</option>' + 
                     proveedores.map(p => {
                         const idFinal = p.id || p.Id;
                         const nombreFinal = p.nombre_comercial || p.nombreComercial || p.NombreComercial || p.nombre || p.Nombre || "Establecimiento";
-                        return `<option value="${idFinal}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${nombreFinal}</option>`;
+                        const esIndep = (p.es_independiente || p.EsIndependiente || p.esIndependiente) ? " (Independiente)" : "";
+                        return `<option value="${idFinal}" style="background-color: #1a2238; color: #ffffff; padding: 10px;">${nombreFinal}${esIndep}</option>`;
                     }).join('');
                 
                 const urlParams = new URLSearchParams(window.location.search);
@@ -272,13 +307,13 @@ async function cargarProveedores(token, API_BASE) {
                         const nombreQrFinal = provSeleccionado.nombre_comercial || provSeleccionado.nombreComercial || provSeleccionado.NombreComercial || provSeleccionado.nombre || provSeleccionado.Nombre || "Establecimiento";
                         document.getElementById('subtituloAgendar').innerText = `Agendando cita en: ${nombreQrFinal}`;
                     }
+                    evaluarModoProveedor(qrId, API_BASE);
                 }
 
                 selectProv.onchange = () => {
                     const selectedId = selectProv.value;
                     cargarServicios(selectedId, token, API_BASE);
-                    // 🚀 Si el cliente cambia manualmente de barbería, le cargamos sus empleados específicos de forma pública
-                    cargarEmpleadosPublico(selectedId, API_BASE);
+                    evaluarModoProveedor(selectedId, API_BASE);
                     const container = document.getElementById('containerSlots');
                     if (container) container.innerHTML = "";
                 };
@@ -441,7 +476,7 @@ async function cargarDisponibilidad(API_BASE) {
 
 function seleccionarHora(hora, elemento) {
     document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
-    elemento.classList.add('selected'); // Corrección menor: 'element' a 'elemento'
+    elemento.classList.add('selected');
     const inputHora = document.getElementById('citaHoraSeleccionada');
     if (inputHora) inputHora.value = hora;
 }
@@ -491,17 +526,25 @@ async function guardarCita(e, token, user, rol, API_BASE) {
         anonWpp = "3000000000";
     }
 
-    // 🚀 HU 001 - DISCRIMINACIÓN INTELIGENTE DE PREFERENCIA
+    // 🎯 VERIFICAR SI EL PROVEEDOR SELECCIONADO ES INDEPENDIENTE
+    const provObj = window.listaProveedoresCache.find(p => (p.id || p.Id) === proveedorIdFinal);
+    const esIndependiente = provObj ? (provObj.es_independiente || provObj.EsIndependiente || provObj.esIndependiente || false) : false;
+
+    // 🚀 HU 001 - DISCRIMINACIÓN INTELIGENTE DE PREFERENCIA Y BLINDAJE CA4
     let empleadoIdVal = null;
     let estacionIdVal = null;
 
-    if (esCliente || qrId) {
-        // Si es cliente, leemos el dropdown público de "Barbero Preferido"
+    if (esIndependiente) {
+        // 🛡️ CA4: Si es independiente, se fuerza EmpleadoId a null
+        empleadoIdVal = null;
+        estacionIdVal = null;
+    } else if (esCliente || qrId) {
+        // Si es cliente y es salón/barbería, leemos el dropdown público de "Barbero Preferido"
         const selectFav = document.getElementById('citaClienteEmpleadoId');
         empleadoIdVal = (selectFav && selectFav.value !== "") ? selectFav.value : null;
-        estacionIdVal = null; // Los clientes no gestionan la asignación física de las sillas
+        estacionIdVal = null;
     } else {
-        // Si es administrador o dueño, leemos la asignación de staff y sillas manuales
+        // Si es administrador o dueño, leemos la asignación manual
         const empleadoSelect = document.getElementById('citaEmpleadoId');
         const estacionSelect = document.getElementById('citaEstacionId');
         empleadoIdVal = (empleadoSelect && empleadoSelect.value !== "") ? empleadoSelect.value : null;
@@ -515,6 +558,7 @@ async function guardarCita(e, token, user, rol, API_BASE) {
 
     const dto = {
         ClienteId: clienteIdFinal,
+        ProveedorId: proveedorIdFinal,
         ServicioId: document.getElementById('citaServicioId').value,
         Fecha: document.getElementById('citaFecha').value,
         Hora: hora, 
@@ -528,7 +572,7 @@ async function guardarCita(e, token, user, rol, API_BASE) {
         AnonimoEmail: anonEmail,
         AnonimoWhatsApp: anonWpp,
 
-        // 🚀 HU 001: Mapeo de IDs (Envía el preferido por el cliente o la asignación forzada por el Admin)
+        // 🚀 HU 001 & CA4: Mapeo de IDs (Forzado a null si el proveedor es independiente)
         EmpleadoId: empleadoIdVal,
         EstacionId: estacionIdVal
     };

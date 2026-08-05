@@ -1,12 +1,13 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Turnify.Api.Models.DTOs
 {
     public class CitaCreateDto
     {
         // --- TUS CAMPOS ORIGINALES (INTACTOS Y BLINDADOS) ---
-        [Required(ErrorMessage = "El campo ClienteId es estrictamente obligatorio.")]
+        [Required(ErrorMessage = "El campo ClienteId es strictly obligatorio.")]
         public Guid ClienteId { get; set; }
         
         [Required(ErrorMessage = "El campo ProveedorId es estrictamente obligatorio.")]
@@ -94,5 +95,37 @@ namespace Turnify.Api.Models.DTOs
         // con agendamientos rápidos de clientes e historiales antiguos que no poseían asignaciones.
         public Guid? EmpleadoId { get; set; }
         public Guid? EstacionId { get; set; }
+
+        // --- 🎯 BLINDAJE HU-22 & CA4 (PROVEEDORES INDEPENDIENTES) ---
+        // Aliases para mapear automáticamente cualquier variante de payload enviada por el Frontend 
+        // sin romper si llega "profesionalId", "profesional_id", "empleado_id" o "ProfesionalPreferidoId".
+        
+        [JsonPropertyName("profesional_id")]
+        public Guid? profesional_id 
+        { 
+            get => EmpleadoId; 
+            set => EmpleadoId = value; 
+        }
+
+        [JsonPropertyName("profesionalId")]
+        public Guid? ProfesionalId 
+        { 
+            get => EmpleadoId; 
+            set => EmpleadoId = value; 
+        }
+
+        [JsonPropertyName("empleado_id")]
+        public Guid? empleado_id 
+        { 
+            get => EmpleadoId; 
+            set => EmpleadoId = value; 
+        }
+
+        [JsonPropertyName("ProfesionalPreferidoId")]
+        public Guid? ProfesionalPreferidoId 
+        { 
+            get => EmpleadoId; 
+            set => EmpleadoId = value; 
+        }
     }
 }

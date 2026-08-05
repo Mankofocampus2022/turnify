@@ -26,5 +26,19 @@ namespace Turnify.Api.Models.DTOs
         
         [JsonPropertyName("Email")]
         public string? Email { get; set; }
+
+        // 🎯 FLAG DE INDEPENDIENTE / ESTABLECIMIENTO
+        // Permite actualizar la modalidad del proveedor desde la configuración o perfil
+        [JsonPropertyName("EsIndependiente")]
+        public bool EsIndependiente { get; set; }
+
+        // 🛡️ ALIAS DE COMPATIBILIDAD C#: Mapea a snake_case por si el backend o mapeadores 
+        // legacy consultan 'es_independiente' en lugar de 'EsIndependiente'
+        [JsonIgnore]
+        public bool es_independiente
+        {
+            get => EsIndependiente;
+            set => EsIndependiente = value;
+        }
     }
 }

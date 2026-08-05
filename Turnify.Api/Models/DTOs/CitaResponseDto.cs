@@ -11,6 +11,12 @@ namespace Turnify.Api.Models.DTOs
     {
         public Guid Id { get; set; }
         
+        // 🆔 Identificadores GUIDs (Blindaje contra errores CS0117 y CS1061 en Controllers/Services)
+        public Guid? ProveedorId { get; set; }
+        public Guid? EmpleadoId { get; set; }
+        public Guid? ServicioId { get; set; }
+        public Guid? ClienteId { get; set; }
+
         // 🕒 Temporalidad (Blindaje contra CS0117 en CitaService)
         public DateTime Fecha { get; set; } 
         public TimeSpan Hora { get; set; }
@@ -49,6 +55,14 @@ namespace Turnify.Api.Models.DTOs
 
         // 🟢 HU-22: Bandera para identificar si la cita corresponde a un profesional independiente
         public bool EsIndependiente { get; set; } = false;
+
+        // 🛡️ ALIAS DE COMPATIBILIDAD C#/JSON: Sincronización en minúsculas para reflejar 'es_independiente'
+        [JsonIgnore]
+        public bool es_independiente
+        {
+            get => EsIndependiente;
+            set => EsIndependiente = value;
+        }
 
         // 💰 Propiedades de compatibilidad con sincronización inteligente (Nombres Cortos para Frontend)
         private decimal _precio;
