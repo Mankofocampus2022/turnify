@@ -8,31 +8,29 @@ namespace Turnify.Api.Models
     public class Suscripciones
     {
         [Key]
-        [Column("id")]
-        public Guid Id { get; set; } = Guid.NewGuid();
+        [Column("Id")]
+        public Guid Id { get; set; }
 
-        [Column("proveedor_id")]
+        [Column("ProveedorId")]
         public Guid ProveedorId { get; set; }
 
         [ForeignKey(nameof(ProveedorId))]
         public Proveedores Proveedor { get; set; } = null!;
 
-        [Column("plan_id")]
+        [Column("PlanId")]
         public Guid PlanId { get; set; }
 
         [ForeignKey(nameof(PlanId))]
         public PlanSuscripcion Plan { get; set; } = null!;
 
-        [Column("fecha_inicio")]
-        public DateTimeOffset FechaInicio { get; set; } = DateTimeOffset.UtcNow;
+        // 🚀 HOMOLOGACIÓN: Cambiado a DateTime para coincidir con el tipo físico de SQL Server
+        [Column("FechaInicio")]
+        public DateTime FechaInicio { get; set; }
 
-        [Column("fecha_fin")]
-        public DateTimeOffset FechaFin { get; set; }
+        [Column("FechaVencimiento")]
+        public DateTime FechaVencimiento { get; set; }
 
-        [Column("activo")]
-        public bool Activo { get; set; } = true;
-
-        [Column("fecha_creacion")]
-        public DateTimeOffset FechaCreacion { get; set; } = DateTimeOffset.UtcNow;
+        [Column("Estado")]
+        public string Estado { get; set; } = "Activo";
     }
 }

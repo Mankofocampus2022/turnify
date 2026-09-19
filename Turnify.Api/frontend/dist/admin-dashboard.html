@@ -56,121 +56,52 @@
             </div>
         </header>
 
-        <section class="stats-grid">
-            <div class="stat-card">
-                <h3>Citas Agendadas</h3>
-                <p id="totalCitas" class="number">0</p>
-                <span id="citasTrend" class="trend">En el periodo</span>
-            </div>
-            <!-- 🚀 HU 006 / 007 - Métrica de Nuevos Clientes -->
-            <div class="stat-card">
-                <h3>Nuevos Clientes</h3>
-                <p id="nuevosClientes" class="number">0</p>
-                <span class="trend" style="color: #f59e0b;"><i class="fas fa-star"></i> Primera visita</span>
-            </div>
-            <!-- 🚀 HU 002 / 004 / 005 - Ingresos Proyectados Dinámicos -->
-            <div class="stat-card primary">
-                <h3>Ingresos Proyectados</h3>
-                <p id="ingresosMes" class="number">$0</p>
-                <span id="ingresoNota" class="currency">Calculando comisiones...</span>
-            </div>
-        </section>
-
         <!-- =========================================================================
-             🚀 HU-20 & HU-21: SECCIÓN FINANCIERA (PATRÓN STRATEGY EN TIEMPO REAL)
+             🚀 HU-ADM02: SECCIÓN MÉTRICAS SAAS (EXCLUSIVO SUPERADMIN / ADMIN)
              ========================================================================= -->
-        <section class="stats-grid" style="margin-top: 20px;">
-            <div class="stat-card" style="border-left: 4px solid #38bdf8;">
-                <h3>Total Recaudado (Bruto)</h3>
-                <p id="montoTotalAcumulado" class="number" style="color: #38bdf8;">$0</p>
-                <span class="trend" style="color: #cbd5e1;"><i class="fas fa-wallet"></i> Facturación total</span>
-            </div>
-            <div class="stat-card" style="border-left: 4px solid #ff5e5e;">
-                <h3>Comisiones Especialistas</h3>
-                <p id="comisionesTotalesPagadas" class="number" style="color: #ff5e5e;">$0</p>
-                <span class="trend" style="color: #f87171;"><i class="fas fa-percentage"></i> Deducción por Colaborador</span>
+        <section id="sectionSaaSStats" class="stats-grid" style="display: none; margin-bottom: 25px;">
+            <div class="stat-card primary" style="border-left: 4px solid #38bdf8;">
+                <h3>Total Ingresos SaaS</h3>
+                <p id="totalSaaSRevenue" class="number" style="color: #38bdf8;">$0</p>
+                <span class="trend" style="color: #cbd5e1;"><i class="fas fa-dollar-sign"></i> Recaudo Directo Membresías</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid #48c1b5;">
-                <h3>Ingreso Neto Real</h3>
-                <p id="ingresoNetoTotal" class="number" style="color: #48c1b5;">$0</p>
-                <span class="trend" style="color: #48c1b5;"><i class="fas fa-check-circle"></i> Balance final negocio</span>
+                <h3>Suscriptores Activos</h3>
+                <p id="totalActiveSubscribers" class="number" style="color: #48c1b5;">0</p>
+                <span class="trend" style="color: #48c1b5;"><i class="fas fa-user-check"></i> Cuentas Vigentes</span>
             </div>
-        </section>
-
-        <section class="content-section">
-            <div class="section-header" style="flex-direction: column; align-items: flex-start; gap: 15px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;">
-                    <h3 id="sectionTitle">Agenda de Citas</h3>
-                    <!-- 🚀 HU 001 CA1: Control de Filtro por Puesto/Silla -->
-                    <div id="containerFiltroPuesto" style="display: flex; align-items: center; gap: 8px;">
-                        <label for="filtroEstacion" style="font-size: 0.85rem; color: #cbd5e1;"><i class="fas fa-chair"></i> Puesto:</label>
-                        <select id="filtroEstacion" onchange="const b = document.querySelector('.btn-filter.active'); if(b) cambiarPeriodo(b.innerText.toLowerCase().includes('hoy')?'hoy':b.innerText.toLowerCase().includes('mañana')?'mañana':b.innerText.toLowerCase().includes('semana')?'semana':'mes', b);" style="background-color: #1e293b; color: white; border: 1px solid #334155; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
-                            <option value="todos">Todos los puestos</option>
-                            <option value="Silla 1">Silla 1</option>
-                            <option value="Silla 2">Silla 2</option>
-                            <option value="Silla 3">Silla 3</option>
-                            <option value="Silla 4">Silla 4</option>
-                            <option value="Manicure">Puesto Manicure</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="filter-tabs">
-                    <button class="btn-filter active" onclick="cambiarPeriodo('hoy', this)">Hoy</button>
-                    <button class="btn-filter" onclick="cambiarPeriodo('mañana', this)">Mañana</button>
-                    <button class="btn-filter" onclick="cambiarPeriodo('semana', this)">Esta Semana</button>
-                    <button class="btn-filter" onclick="cambiarPeriodo('mes', this)">Este Mes</button>
-                </div>
-            </div>
-
-            <div id="listaCitasHoy" class="appointments-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>HORA</th>
-                            <th>FECHA</th>
-                            <th>CLIENTE</th>
-                            <th>SERVICIO</th>
-                            <!-- 🚀 HU 001 - Columna dinámica para Staff/Silla (Oculta para independientes) -->
-                            <th class="col-staff-silla" id="thStaffSilla">ASIGNACIÓN</th>
-                            <th>ESTADO</th>
-                            <th>ACCIONES</th>
-                        </tr>
-                    </thead>
-                    <tbody id="turnosTable">
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 20px; color: white;">
-                                <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="stat-card" style="border-left: 4px solid #f59e0b;">
+                <h3>Próximos a Vencer</h3>
+                <p id="expiringSoonCount" class="number" style="color: #f59e0b;">0</p>
+                <span class="trend" style="color: #f59e0b;"><i class="fas fa-exclamation-triangle"></i> Alerta a 7 días</span>
             </div>
         </section>
 
         <!-- =========================================================================
-             🚀 HU-20 & HU-21: TABLA DETALLE DE MOVIMIENTOS Y LIQUIDACIÓN (STRATEGY)
+             🚀 HU-ADM02: TABLA DE GESTIÓN DE SUSCRIPTORES SAAS (EXCLUSIVO SUPERADMIN / ADMIN)
              ========================================================================= -->
-        <section class="content-section" style="margin-top: 30px;">
+        <section id="sectionSaaSSubscribers" class="content-section" style="display: none; margin-bottom: 30px;">
             <div class="section-header">
-                <h3><i class="fas fa-receipt" style="color: #48c1b5;"></i> Detalle de Movimientos Financieros</h3>
+                <h3><i class="fas fa-crown" style="color: #f59e0b;"></i> Suscriptores de la Plataforma SaaS</h3>
             </div>
             <div class="appointments-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>FECHA</th>
                             <th>CLIENTE</th>
-                            <th>SERVICIO</th>
-                            <th>ESPECIALISTA</th>
-                            <th>MONTO TOTAL</th>
-                            <th>DEDUCCIÓN/COMISIÓN</th>
-                            <th>INGRESO NETO</th>
+                            <th>CORREO</th>
+                            <th>TELÉFONO</th>
+                            <th>PLAN ADQUIRIDO</th>
+                            <th>MONTO PAGADO</th>
+                            <th>FECHA VENCIMIENTO</th>
+                            <th>DÍAS RESTANTES</th>
+                            <th>ESTADO</th>
                         </tr>
                     </thead>
-                    <tbody id="tablaMovimientosStrategy">
+                    <tbody id="tablaSuscriptoresSaaS">
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 20px; color: #cbd5e1;">
-                                <i class="fas fa-spinner fa-spin"></i> Cargando liquidación de movimientos...
+                            <td colspan="8" style="text-align: center; padding: 20px; color: #cbd5e1;">
+                                <i class="fas fa-spinner fa-spin"></i> Cargando lista de suscriptores...
                             </td>
                         </tr>
                     </tbody>
@@ -178,10 +109,131 @@
             </div>
         </section>
 
+        <!-- MÓDULO OPERATIVO ACTUAL (CONSERVADO INTACTO CON IDs DE CONTROL) -->
+        <div id="wrapperModulosOperativos">
+            <section id="sectionOperativaStats" class="stats-grid">
+                <div class="stat-card">
+                    <h3>Citas Agendadas</h3>
+                    <p id="totalCitas" class="number">0</p>
+                    <span id="citasTrend" class="trend">En el periodo</span>
+                </div>
+                <!-- 🚀 HU 006 / 007 - Métrica de Nuevos Clientes -->
+                <div class="stat-card">
+                    <h3>Nuevos Clientes</h3>
+                    <p id="nuevosClientes" class="number">0</p>
+                    <span class="trend" style="color: #f59e0b;"><i class="fas fa-star"></i> Primera visita</span>
+                </div>
+                <!-- 🚀 HU 002 / 004 / 005 - Ingresos Proyectados Dinámicos -->
+                <div class="stat-card primary">
+                    <h3>Ingresos Proyectados</h3>
+                    <p id="ingresosMes" class="number">$0</p>
+                    <span id="ingresoNota" class="currency">Calculando comisiones...</span>
+                </div>
+            </section>
+
+            <!-- 🚀 HU-20 & HU-21: SECCIÓN FINANCIERA (PATRÓN STRATEGY EN TIEMPO REAL) -->
+            <section id="sectionOperativaFinancial" class="stats-grid" style="margin-top: 20px;">
+                <div class="stat-card" style="border-left: 4px solid #38bdf8;">
+                    <h3>Total Recaudado (Bruto)</h3>
+                    <p id="montoTotalAcumulado" class="number" style="color: #38bdf8;">$0</p>
+                    <span class="trend" style="color: #cbd5e1;"><i class="fas fa-wallet"></i> Facturación total</span>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid #ff5e5e;">
+                    <h3>Comisiones Especialistas</h3>
+                    <p id="comisionesTotalesPagadas" class="number" style="color: #ff5e5e;">$0</p>
+                    <span class="trend" style="color: #f87171;"><i class="fas fa-percentage"></i> Deducción por Colaborador</span>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid #48c1b5;">
+                    <h3>Ingreso Neto Real</h3>
+                    <p id="ingresoNetoTotal" class="number" style="color: #48c1b5;">$0</p>
+                    <span class="trend" style="color: #48c1b5;"><i class="fas fa-check-circle"></i> Balance final negocio</span>
+                </div>
+            </section>
+
+            <section id="sectionOperativaAgenda" class="content-section">
+                <div class="section-header" style="flex-direction: column; align-items: flex-start; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;">
+                        <h3 id="sectionTitle">Agenda de Citas</h3>
+                        <!-- 🚀 HU 001 CA1: Control de Filtro por Puesto/Silla -->
+                        <div id="containerFiltroPuesto" style="display: flex; align-items: center; gap: 8px;">
+                            <label for="filtroEstacion" style="font-size: 0.85rem; color: #cbd5e1;"><i class="fas fa-chair"></i> Puesto:</label>
+                            <select id="filtroEstacion" onchange="const b = document.querySelector('.btn-filter.active'); if(b) cambiarPeriodo(b.innerText.toLowerCase().includes('hoy')?'hoy':b.innerText.toLowerCase().includes('mañana')?'mañana':b.innerText.toLowerCase().includes('semana')?'semana':'mes', b);" style="background-color: #1e293b; color: white; border: 1px solid #334155; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+                                <option value="todos">Todos los puestos</option>
+                                <option value="Silla 1">Silla 1</option>
+                                <option value="Silla 2">Silla 2</option>
+                                <option value="Silla 3">Silla 3</option>
+                                <option value="Silla 4">Silla 4</option>
+                                <option value="Manicure">Puesto Manicure</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="filter-tabs">
+                        <button class="btn-filter active" onclick="cambiarPeriodo('hoy', this)">Hoy</button>
+                        <button class="btn-filter" onclick="cambiarPeriodo('mañana', this)">Mañana</button>
+                        <button class="btn-filter" onclick="cambiarPeriodo('semana', this)">Esta Semana</button>
+                        <button class="btn-filter" onclick="cambiarPeriodo('mes', this)">Este Mes</button>
+                    </div>
+                </div>
+
+                <div id="listaCitasHoy" class="appointments-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>HORA</th>
+                                <th>FECHA</th>
+                                <th>CLIENTE</th>
+                                <th>SERVICIO</th>
+                                <!-- 🚀 HU 001 - Columna dinámica para Staff/Silla (Oculta para independientes) -->
+                                <th class="col-staff-silla" id="thStaffSilla">ASIGNACIÓN</th>
+                                <th>ESTADO</th>
+                                <th>ACCIONES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="turnosTable">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 20px; color: white;">
+                                    <i class="fas fa-spinner fa-spin"></i> Consultando agenda...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 🚀 HU-20 & HU-21: TABLA DETALLE DE MOVIMIENTOS Y LIQUIDACIÓN (STRATEGY) -->
+            <section id="sectionOperativaMovimientos" class="content-section" style="margin-top: 30px;">
+                <div class="section-header">
+                    <h3><i class="fas fa-receipt" style="color: #48c1b5;"></i> Detalle de Movimientos Financieros</h3>
+                </div>
+                <div class="appointments-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>FECHA</th>
+                                <th>CLIENTE</th>
+                                <th>SERVICIO</th>
+                                <th>ESPECIALISTA</th>
+                                <th>MONTO TOTAL</th>
+                                <th>DEDUCCIÓN/COMISIÓN</th>
+                                <th>INGRESO NETO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaMovimientosStrategy">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 20px; color: #cbd5e1;">
+                                    <i class="fas fa-spinner fa-spin"></i> Cargando liquidación de movimientos...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
     </main>
 </div>
 
-<!-- 📜 SCRIPT GLOBAL Y DE NAVEGACIÓN (Con la carpeta js/ incluida) -->
+<!-- 📜 SCRIPT GLOBAL Y DE NAVEGACIÓN -->
 <script src="js/auth-global.js"></script> 
 <script src="js/dashboard.js"></script>
 </body>

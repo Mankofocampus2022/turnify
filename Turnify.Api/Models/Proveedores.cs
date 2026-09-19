@@ -74,6 +74,7 @@ namespace Turnify.Api.Models
         [JsonPropertyName("eliminado")]
         public bool Eliminado { get; set; } = false;
 
+        // 🚀 HOMOLOGACIÓN A DateTime / DateTime? PARA COINCIDIR CON SQL SERVER
         [Column("fecha_creacion")]
         [JsonPropertyName("fecha_creacion")]
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

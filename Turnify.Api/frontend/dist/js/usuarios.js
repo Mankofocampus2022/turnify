@@ -1,5 +1,5 @@
 /* ============================================================================
-   TURNIFY - MOTOR DE GESTIÓN DE DIRECTORIO, PERSONAL Y ESTACIONES (HU 001)
+   TURNIFY - MOTOR DE GESTIÓN DE DIRECTORIO, PERSONAL Y ESTACIONES (HU 001, HU-DIR01 & HU-DIR02)
    ============================================================================ */
 
 const API_HOST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -17,6 +17,7 @@ let archivoFotoEmpleado = null;
 
 // Variable de control para saber si este usuario maneja personal/sillas o no
 let tienePersonalOEquipo = true;
+let esUsuarioAdminSaaS = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Validar autenticación preliminar
@@ -26,22 +27,55 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // 🛡️ CONTROL DE ACCESO POR ROLES Y BANDERAS (RBAC DINÁMICO SENIOR)
+    // 🛡️ CONTROL DE ACCESO POR ROLES Y BANDERAS (HU-DIR01 RBAC)
+    const userStr = localStorage.getItem('user');
+    const userObj = userStr ? JSON.parse(userStr) : null;
+    
+    let rolDetectado = (userObj?.rol || userObj?.rolNombre || localStorage.getItem('usuario_rol') || "").toLowerCase();
+
+    // Intentar decodificar el token JWT si no viene en el localStorage
+    if (!rolDetectado && token) {
+        try {
+            const base64Url = token.split('.')[1];
+            if (base64Url) {
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                const tokenData = JSON.parse(jsonPayload);
+                rolDetectado = String(tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "").toLowerCase();
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo extraer la claim de rol del JWT:", e);
+        }
+    }
+
+    esUsuarioAdminSaaS = rolDetectado.includes("admin") || rolDetectado.includes("superadmin");
+
     const esIndependienteRaw = localStorage.getItem('es_independiente') || localStorage.getItem('turnify_es_independiente');
     const esIndependiente = esIndependienteRaw === 'true';
 
-    // 🚩 SI ES PROVEEDOR INDEPENDIENTE REAL: Ocultamos la gestión de equipo y abrimos en Clientes
-    if (esIndependiente) {
+    // 🚀 APLICACIÓN DE LA REGLA DE NEGOCIO HU-DIR01:
+    if (esUsuarioAdminSaaS) {
+        // SuperAdmin / Admin solo ven la pestaña "Usuarios (Sistema)"
         tienePersonalOEquipo = false;
-        ocultarPestañasRestringidas();
+        configurarVistasSegunRol('admin');
+        const sub = document.getElementById('subtituloDirectorio');
+        if (sub) sub.innerText = 'Administración global de cuentas y suscripciones de la plataforma.';
+
+        inicializarFormularios();
+        switchTab('usuarios');
+    } else if (esIndependiente) {
+        // Proveedor Independiente solo ve "Mis Clientes"
+        tienePersonalOEquipo = false;
+        configurarVistasSegunRol('independiente');
         const sub = document.getElementById('subtituloDirectorio');
         if (sub) sub.innerText = 'Directorio de Clientes asignados a tu negocio.';
 
         inicializarFormularios();
         switchTab('clientes');
     } else {
-        // 🚀 SI ES STAFF / ADMINISTRACIÓN / BÚNKER: Se garantizan todas las pestañas visibles para operar
+        // Staff / Administrador de Sede opera sobre Personal, Sillas y Clientes
         tienePersonalOEquipo = true;
+        configurarVistasSegunRol('staff');
         inicializarFormularios();
         switchTab('staff');
     }
@@ -119,43 +153,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// 🛡️ OCULTAR PESTAÑAS: Remueve físicamente del navegador las opciones de Personal y Sillas
-function ocultarPestañasRestringidas() {
-    const btnStaff = document.getElementById('tab-btn-staff') || document.querySelector("button[onclick*='staff']");
-    const btnEstaciones = document.getElementById('tab-btn-estaciones') || document.querySelector("button[onclick*='estaciones']");
-    const btnUsuarios = document.getElementById('tab-btn-usuarios') || document.querySelector("button[onclick*='usuarios']");
+// 🛡️ HU-DIR01: CONFIGURA VISIBILIDAD DE PESTAÑAS SEGÚN EL ROL
+function configurarVistasSegunRol(perfil) {
+    const btnStaff = document.getElementById('tab-btn-staff');
+    const btnEstaciones = document.getElementById('tab-btn-estaciones');
+    const btnClientes = document.getElementById('tab-btn-clientes');
+    const btnUsuarios = document.getElementById('tab-btn-usuarios');
 
-    if (btnStaff) btnStaff.style.setProperty('display', 'none', 'important');
-    if (btnEstaciones) btnEstaciones.style.setProperty('display', 'none', 'important');
-    if (btnUsuarios) btnUsuarios.style.setProperty('display', 'none', 'important');
-
-    const tabStaffContent = document.getElementById('tab-staff');
-    const tabEstacionesContent = document.getElementById('tab-estaciones');
-    const tabUsuariosContent = document.getElementById('tab-usuarios');
-
-    if (tabStaffContent) tabStaffContent.style.setProperty('display', 'none', 'important');
-    if (tabEstacionesContent) tabEstacionesContent.style.setProperty('display', 'none', 'important');
-    if (tabUsuariosContent) tabUsuariosContent.style.setProperty('display', 'none', 'important');
+    if (perfil === 'admin') {
+        if (btnStaff) btnStaff.style.setProperty('display', 'none', 'important');
+        if (btnEstaciones) btnEstaciones.style.setProperty('display', 'none', 'important');
+        if (btnClientes) btnClientes.style.setProperty('display', 'none', 'important');
+        if (btnUsuarios) btnUsuarios.style.setProperty('display', 'inline-block', 'important');
+    } else if (perfil === 'independiente') {
+        if (btnStaff) btnStaff.style.setProperty('display', 'none', 'important');
+        if (btnEstaciones) btnEstaciones.style.setProperty('display', 'none', 'important');
+        if (btnUsuarios) btnUsuarios.style.setProperty('display', 'none', 'important');
+        if (btnClientes) btnClientes.style.setProperty('display', 'inline-block', 'important');
+    } else { // Staff / Sede
+        if (btnStaff) btnStaff.style.setProperty('display', 'inline-block', 'important');
+        if (btnEstaciones) btnEstaciones.style.setProperty('display', 'inline-block', 'important');
+        if (btnClientes) btnClientes.style.setProperty('display', 'inline-block', 'important');
+        if (btnUsuarios) btnUsuarios.style.setProperty('display', 'none', 'important');
+    }
 }
 
-// 🧠 VERIFICA SI EL PROVEEDOR TIENE EQUIPO O ES INDEPENDIENTE
-async function verificarEstructuraNegocio() {
-    const esIndependienteRaw = localStorage.getItem('es_independiente') || localStorage.getItem('turnify_es_independiente');
-    if (esIndependienteRaw === 'true') {
-        tienePersonalOEquipo = false;
-        ocultarPestañasRestringidas();
-        switchTab('clientes');
-    } else {
-        tienePersonalOEquipo = true;
-        switchTab('staff');
-    }
+function ocultarPestañasRestringidas() {
+    configurarVistasSegunRol(esUsuarioAdminSaaS ? 'admin' : 'independiente');
 }
 
 /* ============================================================================
    🧠 CONTROL DE PESTAÑAS (TABS)
    ============================================================================ */
 window.switchTab = function(tabName) {
-    if (!tienePersonalOEquipo && (tabName === 'staff' || tabName === 'estaciones' || tabName === 'usuarios')) {
+    if (esUsuarioAdminSaaS && tabName !== 'usuarios') {
+        tabName = 'usuarios';
+    } else if (!tienePersonalOEquipo && !esUsuarioAdminSaaS && (tabName === 'staff' || tabName === 'estaciones' || tabName === 'usuarios')) {
         tabName = 'clientes';
     }
 
@@ -173,12 +206,8 @@ window.switchTab = function(tabName) {
     const contenidoActivo = document.getElementById(`tab-${tabName}`);
     if (contenidoActivo) contenidoActivo.classList.add('active');
 
-    if (!tienePersonalOEquipo) {
-        ocultarPestañasRestringidas();
-    }
-
     cargarDatosPestaña(tabName);
-}
+};
 
 function cargarDatosPestaña(tab) {
     switch (tab) {
@@ -308,12 +337,12 @@ window.abrirModalStaff = function() {
 
     document.getElementById('modalStaffTitulo').innerText = 'Registrar Empleado';
     document.getElementById('modalStaff').style.display = 'flex';
-}
+};
 
 window.cerrarModalStaff = function() {
     document.getElementById('modalStaff').style.display = 'none';
     archivoFotoEmpleado = null;
-}
+};
 
 window.editarEmpleado = async function(id) {
     if (!tienePersonalOEquipo) {
@@ -358,7 +387,7 @@ window.editarEmpleado = async function(id) {
         console.error(err);
         alert('⚠️ No se pudo obtener la información del empleado.');
     }
-}
+};
 
 async function subirFotoEmpleado(idEmpleado) {
     if (!archivoFotoEmpleado) return true;
@@ -502,15 +531,11 @@ window.eliminarEmpleado = async function(id) {
             listarPersonal();
         }
     } catch (err) { console.error(err); }
-}
+};
 
 /* ============================================================================
    🪑 FLUJO 2: SILLAS / ESTACIONES DE TRABAJO (HU-001-B Y HU-001-C)
    ============================================================================ */
-
-/**
- * 🎨 Helper Visual de Estado y Vencimiento (HU-001-C)
- */
 function renderizarBadgeVencimiento(fechaVencimiento, activo) {
     if (!activo || !fechaVencimiento) {
         return `<span class="badge badge-vencido">🔴 Vencida / Inactiva</span>`;
@@ -519,7 +544,6 @@ function renderizarBadgeVencimiento(fechaVencimiento, activo) {
     const fechaObj = new Date(fechaVencimiento);
     const hoy = new Date();
     
-    // Diferencia en días
     const diffTime = fechaObj.getTime() - hoy.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -606,11 +630,11 @@ window.abrirModalEstacion = function() {
     document.getElementById('estacionId').value = '';
     document.getElementById('modalEstacionTitulo').innerText = 'Registrar Estación / Silla';
     document.getElementById('modalEstacion').style.display = 'flex';
-}
+};
 
 window.cerrarModalEstacion = function() {
     document.getElementById('modalEstacion').style.display = 'none';
-}
+};
 
 async function guardarEstacion(e) {
     e.preventDefault();
@@ -648,20 +672,17 @@ async function guardarEstacion(e) {
     }
 }
 
-/* ============================================================================
-   💳 ACTIVACIÓN Y REGISTRO DE PAGO DE SILLAS (HU-001-B)
-   ============================================================================ */
 window.abrirModalActivar = function(id, nombre, tarifaSugerida) {
     document.getElementById('actSillaId').value = id;
     document.getElementById('actSillaNombre').value = nombre;
     document.getElementById('actMonto').value = tarifaSugerida || 0;
     document.getElementById('actComprobante').value = '';
     document.getElementById('modalActivarSilla').style.display = 'flex';
-}
+};
 
 window.cerrarModalActivar = function() {
     document.getElementById('modalActivarSilla').style.display = 'none';
-}
+};
 
 window.procesarActivacionSilla = async function(e) {
     e.preventDefault();
@@ -708,7 +729,7 @@ window.procesarActivacionSilla = async function(e) {
             btnSubmit.innerHTML = '<i class="fas fa-check-circle"></i> Confirmar Activación';
         }
     }
-}
+};
 
 window.eliminarEstacion = async function(id) {
     if (!tienePersonalOEquipo) {
@@ -724,7 +745,7 @@ window.eliminarEstacion = async function(id) {
         });
         if (response.ok) listarEstaciones();
     } catch (err) { console.error(err); }
-}
+};
 
 /* ============================================================================
    FLUJO 3: MIS CLIENTES (WEB REGISTRADOS)
@@ -762,59 +783,225 @@ async function listarClientes() {
 }
 
 /* ============================================================================
-   💻 FLUJO 4: USUARIOS DEL SISTEMA
+   💻 FLUJO 4: USUARIOS DEL SISTEMA (EXCLUSIVO SUPERADMIN / ADMIN - HU-DIR01 & HU-DIR02)
    ============================================================================ */
 async function listarUsuariosSistema() {
     const tbody = document.getElementById('tablaUsuarios');
     if (!tbody) return;
 
     try {
-        const response = await fetch(`${API_BASE}/Usuarios`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        // Intentar invocar el nuevo endpoint protegido por RBAC (HU-DIR01)
+        let response = await fetch(`${API_BASE}/v1/admin/system-users`, {
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
         });
-        if (!response.ok) throw new Error();
-        
+
+        // Fallback al endpoint global si el nuevo aún no está publicado
+        if (!response.ok) {
+            response = await fetch(`${API_BASE}/Usuarios`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        }
+
+        if (!response.ok) throw new Error("No fue posible consultar las cuentas de usuario.");
+
         const usuarios = await response.json();
+
+        if (usuarios.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#cbd5e1; padding: 15px;">No hay cuentas registradas en la plataforma.</td></tr>';
+            return;
+        }
+
         tbody.innerHTML = usuarios.map(usr => {
-            const badgeBloqueo = usr.estaBloqueado 
-                ? `<span class="status-pill status-bloqueado">Bloqueado</span>` 
-                : `<span class="status-pill status-activo">Activo</span>`;
-                
+            const userId = usr.userId || usr.id;
+            const email = usr.email || usr.Email || 'Sin email';
+            const telefono = usr.telefono || usr.Telefono || 'Sin teléfono';
+            const rolNombre = usr.rolNombre || usr.RolNombre || usr.rol || 'Usuario';
+            const proveedorNombre = usr.proveedorNombre || usr.ProveedorNombre || 'N/A';
+            const planNombre = usr.planNombre || usr.PlanNombre || 'Plan Estándar';
+
+            const esActivo = usr.activo !== undefined ? usr.activo : !usr.estaBloqueado;
+            const diasRestantes = usr.diasRestantes ?? 30;
+            const esProximoAVencer = esActivo && diasRestantes <= 7;
+
+            const badgeEstado = esActivo
+                ? (esProximoAVencer 
+                    ? `<span class="badge badge-por-vencer"><i class="fas fa-exclamation-triangle"></i> Próximo a Vencer (${diasRestantes}d)</span>`
+                    : `<span class="badge badge-activa"><i class="fas fa-check-circle"></i> Activo</span>`)
+                : `<span class="badge badge-vencido"><i class="fas fa-ban"></i> Inactivo / Bloqueado</span>`;
+
+            const fechaVencRaw = usr.fechaVencimiento || usr.vencimientoSuscripcion;
+            const fechaVencFmt = fechaVencRaw ? String(fechaVencRaw).split('T')[0] : 'N/A';
+
             return `
                 <tr>
                     <td><strong>${usr.nombre}</strong></td>
-                    <td>${usr.email}</td>
-                    <td><span class="status-pill status-pendiente" style="text-transform:uppercase;">${usr.rolNombre || 'Usuario'}</span></td>
-                    <td><small>${usr.vencimientoSuscripcion ? new Date(usr.vencimientoSuscripcion).toLocaleDateString() : 'N/A'}</small></td>
-                    <td>${badgeBloqueo}</td>
                     <td>
-                        <button onclick="conmutarBloqueoUsuario('${usr.id}', ${usr.estaBloqueado})" class="btn-add" style="background:${usr.estaBloqueado ? '#48c1b5' : '#e94560'}; padding: 6px 12px; font-size:0.8rem;">
-                            ${usr.estaBloqueado ? '<i class="fas fa-unlock"></i> Desbloquear' : '<i class="fas fa-lock"></i> Bloquear'}
-                        </button>
+                        <div><i class="fas fa-envelope" style="color:#38bdf8;"></i> ${email}</div>
+                        <small style="color:#cbd5e1;"><i class="fas fa-phone"></i> ${telefono}</small>
+                    </td>
+                    <td><span class="status-pill status-pendiente" style="text-transform:uppercase;">${rolNombre}</span></td>
+                    <td><strong>${proveedorNombre}</strong></td>
+                    <td><span style="color:#38bdf8; font-weight:bold;">${planNombre}</span></td>
+                    <td><small>${fechaVencFmt}</small></td>
+                    <td>${badgeEstado}</td>
+                    <td>
+                        <div style="display:flex; gap:4px; align-items:center;">
+                            <button onclick="abrirModalPagoManual('${userId}')" class="btn-pay-action" style="padding: 5px 9px; font-size: 0.8rem;" title="Registrar Pago Manual (Nequi / Daviplata / Consignación)">
+                                <i class="fas fa-wallet"></i>
+                            </button>
+                            <button onclick="abrirModalProrroga('${userId}')" class="btn-filter" style="background:#f59e0b; color:#0f172a; border:none; padding:5px 9px; border-radius:6px; cursor:pointer; font-weight:bold; font-size: 0.8rem;" title="Ampliar Servicio (Prórroga Días)">
+                                <i class="fas fa-clock"></i>
+                            </button>
+                            <button onclick="inactivarUsuarioSystem('${userId}')" class="btn-filter" style="background:${esActivo ? '#e94560' : '#10b981'}; color:white; border:none; padding:5px 9px; border-radius:6px; cursor:pointer; font-size: 0.8rem;" title="${esActivo ? 'Inactivar / Soft Delete' : 'Reactivar Cuenta'}">
+                                <i class="fas ${esActivo ? 'fa-user-slash' : 'fa-user-check'}"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
         }).join('');
     } catch (err) {
-        console.error(err);
+        console.error("❌ Error al listar usuarios del sistema:", err);
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#e94560; padding:15px;">Error al obtener usuarios del sistema.</td></tr>';
     }
 }
 
-window.conmutarBloqueoUsuario = async function(id, estadoActual) {
-    const accion = estadoActual ? 'desbloquear' : 'bloquear';
-    if (!confirm(`¿Seguro que deseas ${accion} este usuario en el sistema?`)) return;
+/* ============================================================================
+   🚀 HU-DIR02: MANEJO DE MODALES DE REGISTRO MANUAL DE PAGOS Y PRÓRROGAS
+   ============================================================================ */
+
+window.abrirModalPagoManual = function(userId) {
+    document.getElementById('pagoUserId').value = userId;
+    document.getElementById('pagoReferencia').value = '';
+    document.getElementById('pagoMonto').value = 70000;
+    document.getElementById('pagoNotas').value = '';
+    document.getElementById('modalPagoManual').style.display = 'flex';
+};
+
+window.cerrarModalPagoManual = function() {
+    document.getElementById('modalPagoManual').style.display = 'none';
+};
+
+window.guardarPagoManual = async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnGuardarPagoManual');
+    if (btn) btn.disabled = true;
+
+    const userId = document.getElementById('pagoUserId').value;
+    const payload = {
+        paymentMethod: document.getElementById('pagoMedio').value,
+        referenceNumber: document.getElementById('pagoReferencia').value.trim(),
+        amount: parseFloat(document.getElementById('pagoMonto').value) || 0,
+        extensionPeriodDays: parseInt(document.getElementById('pagoDias').value) || 30,
+        notes: document.getElementById('pagoNotas').value.trim()
+    };
 
     try {
-        const endpoint = estadoActual ? `${API_BASE}/Usuarios/${id}/desbloquear` : `${API_BASE}/Usuarios/${id}/bloquear`;
-        const response = await fetch(endpoint, {
+        const response = await fetch(`${API_BASE}/v1/admin/subscriptions/${userId}/manual-payment`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
         });
+
         if (response.ok) {
+            alert("🎉 ¡Pago manual registrado exitosamente! La suscripción fue extendida.");
+            cerrarModalPagoManual();
             listarUsuariosSistema();
+        } else {
+            const err = await response.json();
+            alert("❌ Error: " + (err.message || "No se pudo asentar el pago manual."));
         }
-    } catch (err) { console.error(err); }
-}
+    } catch (err) {
+        console.error("Error al registrar pago manual:", err);
+        alert("🔌 Error de conexión al registrar el pago manual.");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
+
+window.abrirModalProrroga = function(userId) {
+    document.getElementById('prorrogaUserId').value = userId;
+    document.getElementById('prorrogaDias').value = 7;
+    document.getElementById('prorrogaMotivo').value = '';
+    document.getElementById('modalProrroga').style.display = 'flex';
+};
+
+window.cerrarModalProrroga = function() {
+    document.getElementById('modalProrroga').style.display = 'none';
+};
+
+window.guardarProrroga = async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnGuardarProrroga');
+    if (btn) btn.disabled = true;
+
+    const userId = document.getElementById('prorrogaUserId').value;
+    const payload = {
+        additionalDays: parseInt(document.getElementById('prorrogaDias').value) || 1,
+        reason: document.getElementById('prorrogaMotivo').value.trim()
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/v1/admin/subscriptions/${userId}/extend-service`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            alert("🎉 ¡Prórroga otorgada exitosamente!");
+            cerrarModalProrroga();
+            listarUsuariosSistema();
+        } else {
+            const err = await response.json();
+            alert("❌ Error: " + (err.message || "No se pudo otorgar la prórroga."));
+        }
+    } catch (err) {
+        console.error("Error al aplicar prórroga:", err);
+        alert("🔌 Error de red al aplicar la prórroga.");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
+
+window.inactivarUsuarioSystem = async function(userId) {
+    if (!confirm("¿Deseas cambiar el estado de acceso de esta cuenta en el sistema?")) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/v1/admin/users/${userId}`, {
+            method: 'DELETE',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const resData = await response.json();
+            alert(`🚀 ${resData.message || 'Estado de la cuenta actualizado.'}`);
+            listarUsuariosSistema();
+        } else {
+            let errorMsg = "No se pudo cambiar el estado de la cuenta.";
+            try {
+                const err = await response.json();
+                if (err.message) errorMsg = err.message;
+            } catch (pErr) {}
+            alert(`❌ Error: ${errorMsg}`);
+        }
+    } catch (err) {
+        console.error("Error al cambiar estado del usuario:", err);
+        alert("🔌 Error de conexión con el servidor.");
+    }
+};
 
 /* ============================================================================
    UTILIDADES COMPLEMENTARIAS
@@ -832,4 +1019,4 @@ window.logout = function() {
         localStorage.clear();
         window.location.href = 'login.html';
     }
-}
+};

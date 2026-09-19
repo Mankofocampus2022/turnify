@@ -1,5 +1,5 @@
 /* ============================================================
-   TURNIFY - LÓGICA DEL DASHBOARD (PRO / HOTFIX LIQUIDACIÓN)
+   TURNIFY - LÓGICA DEL DASHBOARD (PRO / HOTFIX LIQUIDACIÓN & HU-ADM02 SAAS)
    ============================================================ */
 
 // 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta la procedencia de red en tiempo de ejecución. 
@@ -33,6 +33,29 @@ function actualizarKPIsMultiples(idList, valorFormateado) {
         const el = document.getElementById(id) || document.querySelector(`.${id}`);
         if (el) el.innerText = valorFormateado;
     });
+}
+
+/**
+ * 🛠️ HELPER DE EXTRACCIÓN Y EVALUACIÓN DE ROL DE USUARIO (RBAC)
+ */
+function obtenerRolUsuario(userObj, token) {
+    if (userObj && (userObj.rol || userObj.rolNombre)) {
+        return String(userObj.rol || userObj.rolNombre);
+    }
+    if (token) {
+        try {
+            const base64Url = token.split('.')[1];
+            if (base64Url) {
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                const tokenData = JSON.parse(jsonPayload);
+                return String(tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "");
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo decodificar la claim de rol del Token:", e);
+        }
+    }
+    return localStorage.getItem('usuario_rol') || "";
 }
 
 /**
@@ -93,10 +116,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let nombreFinal = "Darwin";
     let userRoleStr = "Administración / Staff";
     let esIndependiente = false;
+    let userObj = null;
 
     if (userStr) {
         try {
-            const userObj = JSON.parse(userStr);
+            userObj = JSON.parse(userStr);
             nombreFinal = userObj.nombre || userObj.Nombre || nombreFinal;
             
             esIndependiente = evaluarEsIndependiente(userObj, token);
@@ -118,26 +142,138 @@ document.addEventListener('DOMContentLoaded', () => {
     const userRoleEl = document.getElementById('userRole');
     if (userRoleEl) userRoleEl.innerText = userRoleStr;
 
-    const btnHoy = document.querySelector(".btn-filter");
-    if (btnHoy) {
-        cambiarPeriodo('hoy', btnHoy, API_BASE);
-    } else {
-        cambiarPeriodo('hoy', { classList: { add: () => {}, remove: () => {} } }, API_BASE);
-    }
-    
-    cargarResumenDashboard(token, API_BASE);
+    // 🚀 HU-ADM02: SEGREGACIÓN Y AISLAMIENTO VISTA POR ROL (RBAC)
+    const rolDetectado = obtenerRolUsuario(userObj, token).toLowerCase();
+    const esAdminOSuperAdmin = rolDetectado.includes("admin") || rolDetectado.includes("superadmin");
 
-    setInterval(() => {
-        const activeBtn = document.querySelector('.btn-filter.active');
-        if (activeBtn) {
-            const texto = activeBtn.innerText.toLowerCase();
-            const periodo = texto.includes('hoy') ? 'hoy' : 
-                            texto.includes('mañana') ? 'mañana' : 
-                            texto.includes('semana') ? 'semana' : 'mes';
-            cambiarPeriodo(periodo, activeBtn, API_BASE);
+    const sectionSaaSStats = document.getElementById('sectionSaaSStats');
+    const sectionSaaSSubscribers = document.getElementById('sectionSaaSSubscribers');
+    const wrapperModulosOperativos = document.getElementById('wrapperModulosOperativos');
+
+    if (esAdminOSuperAdmin) {
+        // Muestra módulo financiero SaaS y oculta operativas de especialistas
+        if (sectionSaaSStats) sectionSaaSStats.style.display = 'grid';
+        if (sectionSaaSSubscribers) sectionSaaSSubscribers.style.display = 'block';
+        if (wrapperModulosOperativos) wrapperModulosOperativos.style.display = 'none';
+
+        cargarDashboardSaaS(token, API_BASE);
+    } else {
+        // Muestra agendas, comisiones y citas operativas de personal de local/independiente
+        if (sectionSaaSStats) sectionSaaSStats.style.display = 'none';
+        if (sectionSaaSSubscribers) sectionSaaSSubscribers.style.display = 'none';
+        if (wrapperModulosOperativos) wrapperModulosOperativos.style.display = 'block';
+
+        const btnHoy = document.querySelector(".btn-filter");
+        if (btnHoy) {
+            cambiarPeriodo('hoy', btnHoy, API_BASE);
+        } else {
+            cambiarPeriodo('hoy', { classList: { add: () => {}, remove: () => {} } }, API_BASE);
         }
-    }, 300000);
+        
+        cargarResumenDashboard(token, API_BASE);
+
+        setInterval(() => {
+            const activeBtn = document.querySelector('.btn-filter.active');
+            if (activeBtn) {
+                const texto = activeBtn.innerText.toLowerCase();
+                const periodo = texto.includes('hoy') ? 'hoy' : 
+                                texto.includes('mañana') ? 'mañana' : 
+                                texto.includes('semana') ? 'semana' : 'mes';
+                cambiarPeriodo(periodo, activeBtn, API_BASE);
+            }
+        }, 300000);
+    }
 });
+
+/**
+ * 🚀 HU-ADM02: CONSUMO Y RENDERIZADO DEL DASHBOARD EJECUTIVO SAAS
+ */
+async function cargarDashboardSaaS(token, API_BASE) {
+    const fmtCOP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
+    const tablaSaaS = document.getElementById('tablaSuscriptoresSaaS');
+
+    try {
+        // Intentar llamar al endpoint de la HU-ADM02 o al de métricas SuperAdmin
+        let response = await fetch(`${API_BASE}/v1/admin/subscriptions/overview`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            response = await fetch(`${API_BASE}/v1/superadmin/metrics/subscriptions`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
+            });
+        }
+
+        if (!response.ok) {
+            throw new Error(`Error en respuesta del servidor (${response.status})`);
+        }
+
+        const data = await response.json();
+
+        // 1. Mapear KPIs de Ingresos y Suscriptores
+        const totalRevenue = data.totalSaaSRevenue ?? data.totalRevenue ?? 0;
+        const totalSubscribers = data.totalActiveSubscribers ?? data.totalActiveSubscriptions ?? 0;
+        const expiringSoon = data.expiringSoonCount ?? 0;
+
+        actualizarKPIsMultiples(['totalSaaSRevenue'], fmtCOP.format(totalRevenue));
+        actualizarKPIsMultiples(['totalActiveSubscribers'], totalSubscribers);
+        actualizarKPIsMultiples(['expiringSoonCount'], expiringSoon);
+
+        // 2. Extraer lista de suscriptores
+        const suscriptores = data.subscribers || data.expiringSubscriptions || [];
+
+        if (!tablaSaaS) return;
+
+        if (suscriptores.length === 0) {
+            tablaSaaS.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #cbd5e1; padding: 20px;">No hay registros de suscriptores activos en la plataforma.</td></tr>`;
+            return;
+        }
+
+        // 3. Renderizar tabla con alertas de vencimiento (Escenario 2)
+        tablaSaaS.innerHTML = suscriptores.map(sub => {
+            const clienteNombre = sub.clientName || sub.proveedorNombre || "Suscriptor General";
+            const email = sub.email || "Sin correo registrado";
+            const phone = sub.phone || sub.telefono || "No registrado";
+            const plan = sub.planName || sub.planNombre || "Plan Estándar";
+            const monto = parseFloat(sub.amountPaid || sub.montoPagado || sub.precioMensual || 0);
+            const fechaFinRaw = sub.expirationDate || sub.fechaFin || sub.fechaVencimiento || "";
+            const fechaFinFmt = fechaFinRaw ? String(fechaFinRaw).split('T')[0] : "--";
+            const diasRestantes = sub.daysRemaining !== undefined ? sub.daysRemaining : (sub.diasRestantes ?? 30);
+
+            // Alerta visual a 7 días o menos
+            const esProximoAVencer = diasRestantes <= 7;
+            const estiloFila = esProximoAVencer ? `style="background-color: rgba(245, 158, 11, 0.12); border-left: 3px solid #f59e0b;"` : '';
+            const badgeEstado = esProximoAVencer 
+                ? `<span class="badge" style="background-color: #f59e0b; color: #1e293b; font-weight: bold;"><i class="fas fa-exclamation-triangle"></i> Próximo a Vencer (${diasRestantes}d)</span>`
+                : `<span class="badge" style="background-color: #10b981; color: white;"><i class="fas fa-check-circle"></i> Activa</span>`;
+
+            return `
+                <tr ${estiloFila}>
+                    <td><strong>${clienteNombre}</strong></td>
+                    <td>${email}</td>
+                    <td>${phone}</td>
+                    <td><span style="color: #38bdf8; font-weight: bold;">${plan}</span></td>
+                    <td style="font-weight: bold; color: #48c1b5;">${fmtCOP.format(monto)}</td>
+                    <td>${fechaFinFmt}</td>
+                    <td style="font-weight: bold; text-align: center;">${diasRestantes}</td>
+                    <td>${badgeEstado}</td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error("❌ Error al cargar métricas SaaS HU-ADM02:", err);
+        if (tablaSaaS) {
+            tablaSaaS.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #ff5e5e; padding: 20px;">Error al consultar información de suscriptores.</td></tr>`;
+        }
+    }
+}
 
 /**
  * 🔄 FUNCIÓN MAESTRA: Cambia el periodo de la agenda y actualiza la UI
@@ -566,3 +702,4 @@ window.cambiarPeriodo = cambiarPeriodo;
 window.logout = logout;
 window.evaluarEsIndependiente = evaluarEsIndependiente;
 window.cargarDetalleMovimientosStrategy = cargarDetalleMovimientosStrategy;
+window.cargarDashboardSaaS = cargarDashboardSaaS;
