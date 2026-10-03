@@ -25,8 +25,13 @@
             <a href="usuarios.html" class="nav-item">
                 <i class="fas fa-users"></i> Usuarios
             </a>
-            <a href="servicios.html" class="nav-item">
+            <!-- 🛡️ HU-SRV02: Se oculta dinámicamente para Admins/SuperAdmins -->
+            <a href="servicios.html" class="nav-item" id="nav-servicios">
                 <i class="fas fa-cut"></i> Servicios
+            </a>
+            <!-- 📊 HU-REP01 & HU-REP02: Mantenemos el módulo de Reportes en la barra lateral -->
+            <a href="reportes.html" class="nav-item" id="nav-reportes">
+                <i class="fas fa-file-invoice-dollar"></i> Reportes
             </a>
             <a href="configuracion.html" class="nav-item active">
                 <i class="fas fa-cog"></i> Configuración
@@ -41,28 +46,46 @@
 
     <main class="main-content">
         <div class="header-section">
-            <h1>Configuración General</h1>
-            <p>Gestiona la identidad y reglas de tu negocio.</p>
+            <h1 id="page-config-title">Configuración General</h1>
+            <p id="page-config-subtitle">Gestiona la parametrización operativa de tu establecimiento o el gobierno técnico de la plataforma.</p>
         </div>
 
         <div class="config-container">
+            <!-- MENÚ DE PESTAÑAS (SEGREGADO SEGÚN RBAC - HU-CFG04) -->
             <div class="config-menu">
-                <div class="config-menu-item active">
+                <!-- 🏢 PESTAÑAS OPERATIVAS DE SALÓN (Visibles Exclusivamente para Staff e Independientes) -->
+                <div class="config-menu-item active" id="tab-perfil" data-target="content-perfil">
                     <i class="fas fa-store"></i> Perfil del Negocio
                 </div>
-                <div class="config-menu-item">
+                <div class="config-menu-item" id="tab-horarios" data-target="content-horarios">
                     <i class="fas fa-clock"></i> Horarios
                 </div>
-                <div class="config-menu-item">
+                <div class="config-menu-item" id="tab-pagos" data-target="content-pagos">
                     <i class="fas fa-credit-card"></i> Pagos
                 </div>
-                <div class="config-menu-item">
+                <div class="config-menu-item" id="tab-notificaciones" data-target="content-notificaciones">
                     <i class="fas fa-bell"></i> Notificaciones
+                </div>
+
+                <!-- 🤖 PESTAÑAS ADMINISTRATIVAS Y TÉCNICAS (Visibles Exclusivamente para SuperAdmin y Admin) -->
+                <div class="config-menu-item" id="tab-ai-diagnostics" data-target="content-ai-diagnostics" style="display: none; border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
+                    <i class="fas fa-brain" style="color: #38bdf8;"></i> <span style="color: #38bdf8; font-weight: bold;">Diagnóstico Predictivo IA</span>
+                </div>
+                <div class="config-menu-item" id="tab-telemetry" data-target="content-telemetry" style="display: none; border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
+                    <i class="fas fa-chart-bar" style="color: #38bdf8;"></i> <span style="color: #38bdf8; font-weight: bold;">Telemetría de Errores</span>
+                </div>
+                <div class="config-menu-item" id="tab-support-tickets" data-target="content-support-tickets" style="display: none; border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
+                    <i class="fas fa-headset" style="color: #38bdf8;"></i> <span style="color: #38bdf8; font-weight: bold;">Gestión de Soporte</span>
                 </div>
             </div>
 
             <div class="table-card" style="padding: 40px;">
                 
+                <!-- ========================================================================= -->
+                <!-- ✂️ SECCIONES OPERATIVAS DE SALÓN (STAFF / INDEPENDIENTES)                 -->
+                <!-- ========================================================================= -->
+
+                <!-- 1. PERFIL DEL NEGOCIO (CON QR Y DATOS FISCALES) -->
                 <div id="content-perfil" class="config-content">
                     <h3>Información del Perfil</h3>
                     <form id="formConfigPerfil">
@@ -122,6 +145,7 @@
                     <div id="qr-container" style="margin-top: 40px; border-top: 1px solid rgba(72,193,181,0.2); padding-top: 30px;"></div>
                 </div>
 
+                <!-- 2. HORARIOS DE ATENCIÓN DE SALÓN -->
                 <div id="content-horarios" class="config-content" style="display: none;">
                     <h3>Horarios de Atención</h3>
                     <p style="color: #64748b; margin-bottom: 20px;">Define los días y horas en que tu negocio está abierto.</p>
@@ -133,6 +157,7 @@
                     <button class="btn-save"><i class="fas fa-calendar-check"></i> Guardar Horarios</button>
                 </div>
 
+                <!-- 3. MÉTODOS DE PAGO Y PASARELAS DIGITALES -->
                 <div id="content-pagos" class="config-content" style="display: none;">
                     <form id="formConfigPagos">
                         <h3>Métodos de Pago y Facturación</h3>
@@ -202,16 +227,17 @@
                     </form>
                 </div>
 
+                <!-- 4. CANALES DE NOTIFICACIONES DE SALÓN -->
                 <div id="content-notificaciones" class="config-content" style="display: none;">
                     <form id="formConfigNotificaciones">
-                        <h3>Notificaciones Automáticas</h3>
-                        <p style="color: #64748b; margin-bottom: 20px;">Activa o desactiva las alertas automáticas para mantener informada a tu agenda.</p>
+                        <h3>Notificaciones Automáticas del Establecimiento</h3>
+                        <p style="color: #64748b; margin-bottom: 20px;">Activa o desactiva las alertas automáticas para tus clientes y citas.</p>
                         
                         <div class="form-group">
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(72,193,181,0.1); margin-bottom: 15px;">
                                 <div>
                                     <strong style="color: #fff;">🔔 Recordatorios por Correo Electrónico</strong>
-                                    <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Notificar alertas generales y cancelaciones automáticas vía Email.</p>
+                                    <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Notificar confirmaciones y cancelaciones automáticas vía Email.</p>
                                 </div>
                                 <input type="checkbox" id="notifEmail" style="width: 22px; height: 22px; cursor: pointer; accent-color: #48c1b5;">
                             </div>
@@ -219,7 +245,7 @@
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(72,193,181,0.1); margin-bottom: 20px;">
                                 <div>
                                     <strong style="color: #fff;">💬 Canal de Mensajería WhatsApp (Meta API)</strong>
-                                    <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Disparar plantillas automáticas cuando se agende, cancele o venza un turno.</p>
+                                    <p style="font-size: 0.85em; color: #64748b; margin: 5px 0;">Disparar mensajes automáticos al agendar, cancelar o modificar turnos.</p>
                                 </div>
                                 <input type="checkbox" id="notifWhatsApp" style="width: 22px; height: 22px; cursor: pointer; accent-color: #48c1b5;">
                             </div>
@@ -227,6 +253,115 @@
                         
                         <button type="submit" class="btn-save"><i class="fas fa-bell"></i> Guardar Preferencias de Alertas</button>
                     </form>
+                </div>
+
+                <!-- ========================================================================= -->
+                <!-- 🤖 SECCIONES TÉCNICAS Y DE SISTEMA (SUPERADMIN / ADMIN - HU-CFG04)        -->
+                <!-- ========================================================================= -->
+
+                <!-- 1. DIAGNÓSTICO PREDICTIVO POR IA (GEMINI / DEEPSEEK LLMS) -->
+                <div id="content-ai-diagnostics" class="config-content" style="display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 15px; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="color: #38bdf8; margin: 0;"><i class="fas fa-brain"></i> Consola de Diagnóstico Predictivo por IA</h3>
+                            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 4px;">Análisis en tiempo real de infraestructura, cuellos de botella en BD y salud del código mediante LLMs.</p>
+                        </div>
+                        <button id="btnRunAIDiagnose" class="btn-save" style="background: #0284c7; border-color: #0369a1; padding: 10px 20px; font-weight: bold; cursor: pointer;">
+                            <i class="fas fa-play"></i> Ejecutar Auditoría IA
+                        </button>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
+                        <div style="background: rgba(15, 23, 42, 0.6); padding: 15px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.2);">
+                            <small style="color: #94a3b8;">Uso Promedio CPU</small>
+                            <h4 id="statCpuUsage" style="color: #38bdf8; margin: 5px 0; font-size: 1.4rem;">18.4%</h4>
+                            <span style="color: #48c1b5; font-size: 0.75rem;"><i class="fas fa-check-circle"></i> Estado Óptimo</span>
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.6); padding: 15px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.2);">
+                            <small style="color: #94a3b8;">Pool BD Conexiones</small>
+                            <h4 id="statDbConnections" style="color: #38bdf8; margin: 5px 0; font-size: 1.4rem;">12 / 100</h4>
+                            <span style="color: #48c1b5; font-size: 0.75rem;"><i class="fas fa-shield-alt"></i> Latencia: 4ms</span>
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.6); padding: 15px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.2);">
+                            <small style="color: #94a3b8;">Índice Predictivo Salud</small>
+                            <h4 id="statHealthIndex" style="color: #48c1b5; margin: 5px 0; font-size: 1.4rem;">99.2%</h4>
+                            <span style="color: #94a3b8; font-size: 0.75rem;">Cero anomalías críticas</span>
+                        </div>
+                    </div>
+
+                    <div style="background: #090d16; padding: 20px; border-radius: 12px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                        <h4 style="color: #38bdf8; margin-bottom: 12px;"><i class="fas fa-terminal"></i> Reporte SRE & Transferencia de Conocimiento</h4>
+                        <div id="aiDiagnosticsResult" style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.6; min-height: 120px;">
+                            Pulse "Ejecutar Auditoría IA" para iniciar la inspección de telemetría y rendimiento de la arquitectura SaaS.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. MÉTRICAS Y TELEMETRÍA DE ERRORES EN TIEMPO REAL -->
+                <div id="content-telemetry" class="config-content" style="display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 15px; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="color: #38bdf8; margin: 0;"><i class="fas fa-chart-bar"></i> Telemetría y Registro de Excepciones</h3>
+                            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 4px;">Monitoreo de trazabilidad HTTP, excepciones 500/403 y tiempos de respuesta de endpoints.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn-filter active" onclick="filtrarTelemetria('hoy', this)">Hoy</button>
+                            <button class="btn-filter" onclick="filtrarTelemetria('semana', this)">Semana</button>
+                            <button class="btn-filter" onclick="filtrarTelemetria('mes', this)">Mes</button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; font-size: 0.85rem;">
+                                    <th style="padding: 10px;">Timestamp</th>
+                                    <th style="padding: 10px;">Endpoint</th>
+                                    <th style="padding: 10px;">Método</th>
+                                    <th style="padding: 10px;">Status</th>
+                                    <th style="padding: 10px;">Latencia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="telemetryLogsTable">
+                                <tr>
+                                    <td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando registros de telemetría del servidor...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. GESTIÓN DE SOPORTE Y TICKETS POR CORREO -->
+                <div id="content-support-tickets" class="config-content" style="display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 15px; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="color: #38bdf8; margin: 0;"><i class="fas fa-headset"></i> Ingesta y Casos de Soporte por Correo</h3>
+                            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 4px;">Atención centralizada de tickets de soporte técnico emitidos por los clientes del SaaS.</p>
+                        </div>
+                        <button class="btn-save" style="background: #0284c7; border-color: #0369a1;" onclick="cargarTicketsSoporte()">
+                            <i class="fas fa-sync-alt"></i> Sincronizar Ingesta
+                        </button>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; font-size: 0.85rem;">
+                                    <th style="padding: 10px;">Ticket ID</th>
+                                    <th style="padding: 10px;">Emisor (Salón)</th>
+                                    <th style="padding: 10px;">Asunto</th>
+                                    <th style="padding: 10px;">Prioridad</th>
+                                    <th style="padding: 10px;">Estado</th>
+                                    <th style="padding: 10px;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="supportTicketsTable">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Consultando bandeja de tickets de soporte...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
             </div> 

@@ -1,5 +1,5 @@
 /* ============================================================
-   TURNIFY - LÓGICA DEL DASHBOARD (PRO / HOTFIX LIQUIDACIÓN & HU-ADM02 SAAS)
+   TURNIFY - LÓGICA DEL DASHBOARD (PRO / HOTFIX LIQUIDACIÓN & HU-ADM02 SAAS & HU-SRV02)
    ============================================================ */
 
 // 🧠 BLINDAJE PARA DOCKER/PRODUCCIÓN: Detecta la procedencia de red en tiempo de ejecución. 
@@ -142,9 +142,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const userRoleEl = document.getElementById('userRole');
     if (userRoleEl) userRoleEl.innerText = userRoleStr;
 
-    // 🚀 HU-ADM02: SEGREGACIÓN Y AISLAMIENTO VISTA POR ROL (RBAC)
+    // 🚀 HU-ADM02 & HU-SRV02: EVALUACIÓN Y SEGREGACIÓN DE ROL (RBAC)
     const rolDetectado = obtenerRolUsuario(userObj, token).toLowerCase();
     const esAdminOSuperAdmin = rolDetectado.includes("admin") || rolDetectado.includes("superadmin");
+
+    // 🚀 HU-SRV02 (Escenario 2): GUARDIÁN DE NAVEGACIÓN DIRECTA A SERVICIOS.HTML
+    if (esAdminOSuperAdmin && window.location.pathname.includes('servicios.html')) {
+        console.warn("⛔ Acceso restringido: El módulo de Servicios es exclusivo para Staff e Independientes.");
+        alert("Acceso restringido: Este módulo es de uso exclusivo para Staff y Profesionales Independientes.");
+        window.location.href = 'admin-dashboard.html';
+        return;
+    }
 
     const sectionSaaSStats = document.getElementById('sectionSaaSStats');
     const sectionSaaSSubscribers = document.getElementById('sectionSaaSSubscribers');
@@ -155,6 +163,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sectionSaaSStats) sectionSaaSStats.style.display = 'grid';
         if (sectionSaaSSubscribers) sectionSaaSSubscribers.style.display = 'block';
         if (wrapperModulosOperativos) wrapperModulosOperativos.style.display = 'none';
+
+        // 🚀 HU-SRV02 (Escenario 1): OCULTA EL ÍTEM "SERVICIOS" EN EL MENÚ LATERAL (SIDEBAR)
+        document.querySelectorAll('a').forEach(link => {
+            const href = link.getAttribute('href') || '';
+            if (href.includes('servicios.html') || href.includes('servicios')) {
+                const parentNav = link.closest('li') || link;
+                if (parentNav) parentNav.style.display = 'none';
+            }
+        });
 
         cargarDashboardSaaS(token, API_BASE);
     } else {
@@ -193,7 +210,6 @@ async function cargarDashboardSaaS(token, API_BASE) {
     const tablaSaaS = document.getElementById('tablaSuscriptoresSaaS');
 
     try {
-        // Intentar llamar al endpoint de la HU-ADM02 o al de métricas SuperAdmin
         let response = await fetch(`${API_BASE}/v1/admin/subscriptions/overview`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -246,7 +262,6 @@ async function cargarDashboardSaaS(token, API_BASE) {
             const fechaFinFmt = fechaFinRaw ? String(fechaFinRaw).split('T')[0] : "--";
             const diasRestantes = sub.daysRemaining !== undefined ? sub.daysRemaining : (sub.diasRestantes ?? 30);
 
-            // Alerta visual a 7 días o menos
             const esProximoAVencer = diasRestantes <= 7;
             const estiloFila = esProximoAVencer ? `style="background-color: rgba(245, 158, 11, 0.12); border-left: 3px solid #f59e0b;"` : '';
             const badgeEstado = esProximoAVencer 
@@ -381,7 +396,6 @@ async function cambiarPeriodo(periodo, boton, API_BASE) {
         renderizarTablaDashboard(citasRespuesta, token, API_BASE, esIndependiente);
         actualizarContadoresDashboard(data, esIndependiente); 
 
-        // 🚀 HOTFIX: Pasamos citasRespuesta a la capa de movimientos para cruzar comisiones si el endpoint falla
         cargarDetalleMovimientosStrategy(token, API_BASE, periodoParamBackend, startStr, citasRespuesta);
 
     } catch (error) { 
@@ -433,7 +447,6 @@ function actualizarUIStrategyMovimientos(data, citasAgenda = []) {
 
     let movimientos = (data && data.movimientos && data.movimientos.length > 0) ? data.movimientos : [];
 
-    // 🚀 RECONCILIACIÓN DE MOVIMIENTOS (Si venían de la agenda)
     if (movimientos.length === 0 && citasAgenda.length > 0) {
         movimientos = citasAgenda.map(c => {
             const mTotal = parseFloat(c.precioPactado || c.PrecioPactado || c.precio || c.Precio || 0);
@@ -454,7 +467,6 @@ function actualizarUIStrategyMovimientos(data, citasAgenda = []) {
             };
         });
     } else {
-        // Enriquecer movimientos existentes si tienen "No Asignado", falta de estado o comisiones en $0
         movimientos.forEach(m => {
             const matchCita = citasAgenda.find(c => (c.id || c.citaId) === m.citaId);
             if (matchCita) {
@@ -474,7 +486,6 @@ function actualizarUIStrategyMovimientos(data, citasAgenda = []) {
         });
     }
 
-    // 🎯 RECALCULO ESTRICTO DE VALORES ACUMULADOS (SOLO CITAS COMPLETADAS)
     let acumuladoBruto = 0;
     let acumuladoComisiones = 0;
     let acumuladoProyectado = 0;
@@ -499,7 +510,6 @@ function actualizarUIStrategyMovimientos(data, citasAgenda = []) {
 
     const acumuladoNeto = acumuladoBruto - acumuladoComisiones;
 
-    // 🚀 ACTUALIZACIÓN DE TODAS LAS VARIANTES DE IDS EN KPIS DE RESUMEN
     actualizarKPIsMultiples(['montoTotalAcumulado', 'totalRecaudado', 'totalRecaudadoBruto', 'total-recaudado'], fmtCOP.format(acumuladoBruto));
     actualizarKPIsMultiples(['comisionesTotalesPagadas', 'comisionesEspecialistas', 'comisiones-especialistas', 'totalComisiones', 'total-comisiones'], fmtCOP.format(acumuladoComisiones));
     actualizarKPIsMultiples(['ingresoNetoTotal', 'ingresoNetoReal', 'total-ingresos', 'ingresoNeto'], fmtCOP.format(acumuladoNeto));
@@ -511,7 +521,6 @@ function actualizarUIStrategyMovimientos(data, citasAgenda = []) {
         badgeModeloEl.className = esIndependiente ? "badge-modelo-independiente" : "badge-modelo-dependiente";
     }
 
-    // Ocultar cabeceras y tarjetas según el tipo de modelo
     const thEspecialista = document.getElementById('thMovEspecialista');
     const thDeduccion = document.getElementById('thMovDeduccion');
     if (thEspecialista) thEspecialista.style.display = esIndependiente ? 'none' : 'table-cell';
@@ -523,7 +532,6 @@ function actualizarUIStrategyMovimientos(data, citasAgenda = []) {
         if (cardContainer) cardContainer.style.display = esIndependiente ? 'none' : 'flex';
     }
 
-    // Renderizado de la Tabla Inferior (Detalle de Movimientos Financieros)
     const tablaMov = document.getElementById('tablaMovimientosStrategy') || document.getElementById('bodyMovimientos') || document.getElementById('turnosMovimientosTable');
     if (!tablaMov) return;
 

@@ -49,6 +49,29 @@ function evaluarEsIndependiente(userObj, token) {
     return false;
 }
 
+/**
+ * 🛠️ HELPER DE EXTRACCIÓN Y EVALUACIÓN DE ROL DE USUARIO (RBAC)
+ */
+function obtenerRolUsuario(userObj, token) {
+    if (userObj && (userObj.rol || userObj.rolNombre)) {
+        return String(userObj.rol || userObj.rolNombre);
+    }
+    if (token) {
+        try {
+            const base64Url = token.split('.')[1];
+            if (base64Url) {
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                const tokenData = JSON.parse(jsonPayload);
+                return String(tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "");
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo decodificar la claim de rol del Token:", e);
+        }
+    }
+    return localStorage.getItem('usuario_rol') || "";
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Configuración Validada (URL Dinámica Blindada - Matriz de Red Inteligente para Docker)
     let API_BASE_URL = window.location.origin + '/api'; 
@@ -65,6 +88,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('token') || localStorage.getItem('turnify_token');
 
     const esIndependienteGlobal = evaluarEsIndependiente(user, token);
+    const rolDetectado = obtenerRolUsuario(user, token).toLowerCase();
+    const esAdminOSuperAdmin = rolDetectado.includes("admin") || rolDetectado.includes("superadmin");
+
+    // 🛡️ HU-SRV02: Ocultar dinámicamente "Servicios" del menú lateral para Admin/SuperAdmin
+    const navServicios = document.getElementById('nav-servicios') || document.querySelector('a[href="servicios.html"]');
+    if (navServicios && esAdminOSuperAdmin) {
+        navServicios.style.display = 'none';
+    }
+
+    // 🛡️ CONTROL DE VISTAS POR ROL (Cartera SaaS vs. Métricas Operativas de Barberos/Staff)
+    const secCarteraSaaS = document.getElementById('seccion-cartera-saas');
+    const secReportesOperativos = document.getElementById('seccion-reportes-operativos');
+
+    if (esAdminOSuperAdmin) {
+        if (secCarteraSaaS) secCarteraSaaS.style.display = 'block';
+        if (secReportesOperativos) secReportesOperativos.style.display = 'none';
+    } else {
+        if (secCarteraSaaS) secCarteraSaaS.style.display = 'none';
+        if (secReportesOperativos) secReportesOperativos.style.display = 'block';
+    }
 
     // Elementos UI Principales
     const txtTotalCitas = document.getElementById('total-citas');
@@ -77,6 +120,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const txtComisionesPagadas = document.getElementById('total-comisiones-pagadas') || document.getElementById('comisionesTotalesPagadas');
     const txtIngresoNeto = document.getElementById('total-ingreso-neto') || document.getElementById('ingresoNetoTotal');
     const badgeModeloReportes = document.getElementById('badgeModeloReportes');
+
+    // 🚀 HU-REP01: Elementos de Cartera y Suscripciones SaaS
+    const txtTotalSuscriptores = document.getElementById('total-suscriptores-saas') || document.getElementById('totalSuscriptores');
+    const txtSuscripcionesActivas = document.getElementById('suscripciones-activas') || document.getElementById('suscripcionesActivas');
+    const txtProximasVencer = document.getElementById('proximas-vencer') || document.getElementById('proximasVencer');
+    const txtSuscripcionesVencidas = document.getElementById('suscripciones-vencidas') || document.getElementById('suscripcionesVencidas');
+    const txtRecaudoSaaS = document.getElementById('recaudo-total-saas') || document.getElementById('recaudoTotalSaaS');
+    const txtCarteraRiesgo = document.getElementById('cartera-en-riesgo') || document.getElementById('carteraEnRiesgo');
+    const tablaCartera = document.getElementById('tabla-cartera-saas') || document.getElementById('tablaCarteraSaaS') || document.getElementById('lista-cartera');
 
     // 📈 Elementos de Métricas BI (Porcentajes y Tasas)
     const elTendenciaCitas = document.getElementById('trend-citas');
@@ -113,10 +165,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 📡 FUNCIÓN MAESTRA DE CARGA DE REPORTES CON LIQUIDACIÓN ESTRECHA (SOLO CITAS COMPLETADAS)
+     * 📡 FUNCIÓN MAESTRA DE CARGA DE REPORTES POR ROL
      */
     async function cargarReportes() {
         try {
+            // A. Si es Admin o SuperAdmin, consulta únicamente la Cartera SaaS
+            if (esAdminOSuperAdmin) {
+                const estadoCarteraFiltro = document.getElementById('filtro-estado-cartera')?.value || 'todos';
+                const busquedaCarteraFiltro = document.getElementById('busqueda-cartera')?.value || '';
+
+                const respCartera = await fetch(`${API_BASE_URL}/Dashboard/reportes/cartera?estado=${estadoCarteraFiltro}&busqueda=${encodeURIComponent(busquedaCarteraFiltro)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (respCartera.ok) {
+                    const dataCartera = await respCartera.json();
+                    renderizarReporteCartera(dataCartera);
+                }
+
+                if (badgeModeloReportes) {
+                    badgeModeloReportes.innerText = "Plataforma SaaS";
+                    badgeModeloReportes.style.borderColor = "#0284c7";
+                    badgeModeloReportes.style.color = "#38bdf8";
+                }
+                return;
+            }
+
+            // B. Si es Proveedor / Staff / Barbero, consulta las Métricas Operativas de Citas
             const selectPeriodo = document.getElementById('filtro-periodo');
             const periodo = selectPeriodo?.value || 'mes';
             const mesSeleccionado = document.getElementById('filtro-mes')?.value;
@@ -131,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     urlMovimientos = `${API_BASE_URL}/Dashboard/movimientos?periodo=mes&mes=${mesSeleccionado}&anio=${anioSeleccionado}`;
                 }
             }
-            
+
             const [respResumen, respMovimientos] = await Promise.all([
                 fetch(urlResumen, {
                     method: 'GET',
@@ -154,11 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!respResumen.ok) throw new Error(`Error API Resumen: ${respResumen.status}`);
 
             const data = await respResumen.json();
-            let dataStrategy = null;
-
-            if (respMovimientos.ok) {
-                dataStrategy = await respMovimientos.json();
-            }
+            let dataStrategy = respMovimientos.ok ? await respMovimientos.json() : null;
 
             const esIndependiente = esIndependienteGlobal || (dataStrategy && dataStrategy.tipoModelo === "Independiente");
 
@@ -169,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // A. Actualización de KPIs
+            // Actualización de KPIs Operativos
             if (txtTotalCitas) txtTotalCitas.innerText = data.totalCitas || 0;
             
             if (elTendenciaCitas) {
@@ -179,7 +254,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 elTendenciaCitas.innerHTML = `<small style="color: ${color}; font-weight: bold;">${icono} ${Math.abs(valor)}% vs ant.</small>`;
             }
 
-            // 🚀 CRUCE Y RESOLUCIÓN DE DATOS CON FILTRADO POR ESTADO COMPLETADO
             const citasResumen = data.citas || data.proximasCitas || data.detalles || [];
             let movimientosList = (dataStrategy && dataStrategy.movimientos && dataStrategy.movimientos.length > 0) 
                 ? dataStrategy.movimientos 
@@ -194,9 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const citaIdTarget = m.citaId || m.id;
                 const matchCita = citasResumen.find(c => (c.id || c.citaId) === citaIdTarget);
 
-                // 1. RESOLUCIÓN DEL ESPECIALISTA QUE ATIENDE
                 let esp = m.especialistaNombre || m.empleadoAsignado || m.EmpleadoAsignado || m.especialista || m.Especialista;
-                
                 if ((!esp || esp === 'No Asignado' || esp === 'Sin Asignar' || esp === 'Sin asignar' || esp === 'Especialista Asignado' || esp === 'Sin Proveedor') && matchCita) {
                     esp = matchCita.empleadoAsignado || matchCita.EmpleadoAsignado || matchCita.especialistaNombre || matchCita.especialista;
                 }
@@ -208,21 +280,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 m.especialistaNombre = esp;
                 m.empleadoAsignado = esp;
 
-                // 2. DETECCIÓN ESTRECHA DE ESTADO
                 const estadoRaw = (m.estado || matchCita?.estado || 'pendiente').toLowerCase().trim();
                 const esCompletada = estadoRaw.includes('completad') || estadoRaw.includes('confirmad') || estadoRaw.includes('finalizad') || estadoRaw.includes('pagad');
 
-                // 3. CÁLCULO DE MONTO BRUTO Y COMISIÓN
                 const mBruto = parseFloat(m.montoTotal ?? m.precioPactado ?? m.montoBruto ?? matchCita?.precioPactado ?? matchCita?.precio ?? 0);
                 
                 let rawPct = (m.porcentajeComision && m.porcentajeComision > 0) ? m.porcentajeComision : matchCita?.porcentajeComision;
                 let pctComision = parseFloat(rawPct);
                 if (isNaN(pctComision) || pctComision <= 0) {
-                    pctComision = 20; // Fallback al 20%
+                    pctComision = 20;
                 }
 
                 let mComision = parseFloat(m.montoComisionEspecialista || m.comision || matchCita?.montoComisionEspecialista);
-                
                 if (!esIndependiente && (isNaN(mComision) || mComision <= 0) && mBruto > 0) {
                     mComision = (mBruto * pctComision) / 100;
                 }
@@ -235,7 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!m.estado && matchCita?.estado) m.estado = matchCita.estado;
                 if (!m.codigoVerificacion && matchCita?.codigoVerificacion) m.codigoVerificacion = matchCita.codigoVerificacion;
 
-                // 🎯 ACUMULACIÓN ÚNICAMENTE PARA CITAS COMPLETADAS
                 if (esCompletada) {
                     totalBrutoAcumulado += mBruto;
                     totalComisionesAcumuladas += m.montoComisionEspecialista;
@@ -262,22 +330,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (txtNuevosClientes) txtNuevosClientes.innerText = data.nuevosClientesTotales || 0;
 
-            // B. Renderizar Tabla de Movimientos y Liquidación
             renderizarTablaStrategy(movimientosList, esIndependiente, nombreUsuarioSesion);
-
-            // C. Generar Gráficas
             inicializarGraficaServicios(data.chartServiciosPopulares || []);
             inicializarGraficaCrecimiento(data.chartCrecimientoClientes || []);
 
             window.datosActuales = movimientosList;
 
         } catch (error) {
-            console.error('❌ Error:', error);
+            console.error('❌ Error en reportes:', error);
             if (tablaCuerpo) {
                 const spanCol = esIndependienteGlobal ? 7 : 9;
                 tablaCuerpo.innerHTML = `<tr><td colspan="${spanCol}" style="text-align:center; color: #ff5e5e;">Error al conectar con el servidor</td></tr>`;
             }
         }
+    }
+
+    /**
+     * 🚀 HU-REP01: RENDERIZADO DE REPORTE DE CARTERA Y SUSCRIPCIONES SAAS
+     */
+    function renderizarReporteCartera(dataCartera) {
+        if (!dataCartera) return;
+
+        const kpis = dataCartera.kPIs || dataCartera.kpis || {};
+        
+        if (txtTotalSuscriptores) txtTotalSuscriptores.innerText = kpis.totalSuscriptores ?? 0;
+        if (txtSuscripcionesActivas) txtSuscripcionesActivas.innerText = kpis.suscripcionesActivas ?? 0;
+        if (txtProximasVencer) txtProximasVencer.innerText = kpis.proximasAVencer ?? 0;
+        if (txtSuscripcionesVencidas) txtSuscripcionesVencidas.innerText = kpis.suscripcionesVencidas ?? 0;
+        if (txtRecaudoSaaS) txtRecaudoSaaS.innerText = formatter.format(kpis.recaudoTotalSaaS ?? 0);
+        if (txtCarteraRiesgo) txtCarteraRiesgo.innerText = formatter.format(kpis.carteraEnRiesgo ?? 0);
+
+        if (!tablaCartera) return;
+
+        const detalles = dataCartera.detalleCartera || [];
+
+        if (detalles.length === 0) {
+            tablaCartera.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: #cbd5e1;">Sin registros de cartera o suscripciones.</td></tr>`;
+            return;
+        }
+
+        tablaCartera.innerHTML = detalles.map(sub => {
+            const cliente = sub.clienteNombre || "Suscriptor General";
+            const email = sub.email || "Sin correo registrado";
+            const tel = sub.telefono || "No registrado";
+            const plan = sub.planAdquirido || "Plan Estándar Pro";
+            const monto = parseFloat(sub.montoPagado || 0);
+            const fechaVenc = sub.fechaVencimiento || "--";
+            const diasRest = sub.diasRestantes !== undefined ? sub.diasRestantes : 0;
+            const estado = sub.estado || "Activa";
+
+            let badgeColor = "#10b981";
+            let badgeBg = "rgba(16, 185, 129, 0.15)";
+
+            if (estado === "Próximo a Vencer") {
+                badgeColor = "#f59e0b";
+                badgeBg = "rgba(245, 158, 11, 0.15)";
+            } else if (estado === "Vencida" || estado === "Cancelada") {
+                badgeColor = "#ef4444";
+                badgeBg = "rgba(239, 68, 68, 0.15)";
+            }
+
+            return `
+                <tr>
+                    <td><strong>${cliente}</strong></td>
+                    <td>${email}</td>
+                    <td>${tel}</td>
+                    <td><span style="color: #38bdf8; font-weight: bold;">${plan}</span></td>
+                    <td style="font-weight: bold; color: #48c1b5;">${formatter.format(monto)}</td>
+                    <td>${fechaVenc}</td>
+                    <td style="font-weight: bold; text-align: center;">${diasRest}d</td>
+                    <td><span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: bold; padding: 4px 10px; border-radius: 6px;">${estado}</span></td>
+                </tr>
+            `;
+        }).join('');
     }
 
     function inicializarGraficaServicios(servicios) {
@@ -334,9 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * 📝 RENDERIZADO DE TABLA CON CICLO DE VIDA DE ESTADOS Y ESPECIALISTA DEFINIDO
-     */
     function renderizarTablaStrategy(lista, esIndependiente = false, fallbackNombreEspecialista = 'darwin') {
         if (!tablaCuerpo) return;
 
@@ -436,12 +558,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * 🛡️ CHECK-IN / INICIO DE ATENCIÓN DE CLIENTE
-     */
     async function lanzarCheckIn(citaId, tokenSugerido) {
-        const userInput = prompt(`⚠️ VALIDACIÓN DE TURNO\nIngrese el código de 6 dígitos del cliente para INICIAR el servicio:\n(Sugerido: ${tokenSugerido})`, tokenSugerido);
-        
+        const userInput = prompt(`⚠ VALIDACIÓN DE TURNO\nIngrese el código de 6 dígitos del cliente para INICIAR el servicio:\n(Sugerido: ${tokenSugerido})`, tokenSugerido);
         if (userInput === null) return;
 
         try {
@@ -479,9 +597,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * ⚡ CAMBIO DE ESTADO HTTP PATCH
-     */
     async function finalizarCita(id, nuevoEstado) {
         let msg = `¿Marcar esta cita como ${nuevoEstado.toUpperCase()}?`;
         if (nuevoEstado === 'en_proceso') msg = "🚀 ¿Iniciar la atención de este cliente?";
@@ -506,7 +621,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return true;
             } else {
                 const errData = await response.json().catch(() => ({}));
-                console.error("❌ Falla al cambiar estado:", errData.message);
                 alert(`⚠️ Error al actualizar estado: ${errData.message || 'No se pudo actualizar el estado de la cita.'}`);
                 return false;
             }
@@ -545,11 +659,50 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filtro-periodo')?.addEventListener('change', cargarReportes);
     document.getElementById('filtro-mes')?.addEventListener('change', cargarReportes);
     document.getElementById('filtro-anio')?.addEventListener('change', cargarReportes);
+    document.getElementById('filtro-estado-cartera')?.addEventListener('change', cargarReportes);
+    document.getElementById('busqueda-cartera')?.addEventListener('input', cargarReportes);
 
     cargarReportes();
 });
+
+/**
+ * 📊 HU-REP02: RENDERIZADO DE POWER BI EMBEDDED CON SDK DE JAVASCRIPT
+ */
+function renderizarPowerBIEmbedded(embedUrl, embedToken, reportId) {
+    const container = document.getElementById('contenedor-powerbi') || document.getElementById('iframe-powerbi')?.parentElement;
+    
+    if (!container) {
+        console.warn("⚠️ No se encontró el contenedor de Power BI.");
+        return;
+    }
+
+    if (typeof powerbi === 'undefined') {
+        console.warn("⚠️ La librería powerbi-client no está cargada en la página.");
+        return;
+    }
+
+    try {
+        const config = {
+            type: 'report',
+            tokenType: powerbi.models.TokenType.Embed,
+            accessToken: embedToken,
+            embedUrl: embedUrl,
+            id: reportId,
+            permissions: powerbi.models.Permissions.All,
+            settings: {
+                filterPaneEnabled: false,
+                navContentPaneEnabled: true
+            }
+        };
+        powerbi.embed(container, config);
+    } catch (e) {
+        console.error("❌ Error al embeber reporte de Power BI:", e);
+    }
+}
 
 function logout() {
     localStorage.clear();
     window.location.href = 'login.html';
 }
+
+window.renderizarPowerBIEmbedded = renderizarPowerBIEmbedded;

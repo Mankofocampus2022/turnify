@@ -7,6 +7,40 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="css-dashboard.css"> 
     <link rel="stylesheet" href="css-servicios.css"> 
+
+    <!-- 🚀 HU-SRV02: GUARDIÁN DE SEGURIDAD Y REDIRECCIÓN INMEDIATA PARA ROLES ADMINISTRATIVOS -->
+    <script>
+        (function() {
+            try {
+                const token = localStorage.getItem('turnify_token') || localStorage.getItem('token');
+                const userStr = localStorage.getItem('user');
+                let rol = localStorage.getItem('usuario_rol') || "";
+                
+                if (userStr) {
+                    const u = JSON.parse(userStr);
+                    rol = u.rol || u.rolNombre || rol;
+                }
+                
+                if (token && !rol) {
+                    const base64Url = token.split('.')[1];
+                    if (base64Url) {
+                        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                        const tokenData = JSON.parse(jsonPayload);
+                        rol = tokenData.role || tokenData["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "";
+                    }
+                }
+                
+                const rolLower = String(rol).toLowerCase();
+                if (rolLower.includes("admin") || rolLower.includes("superadmin")) {
+                    alert("Acceso restringido: Este módulo es de uso exclusivo para Staff y Profesionales Independientes.");
+                    window.location.href = "admin-dashboard.html";
+                }
+            } catch (e) {
+                console.error("❌ Error en guardián de rutas en servicios.html:", e);
+            }
+        })();
+    </script>
 </head>
 <body>
 

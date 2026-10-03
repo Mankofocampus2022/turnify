@@ -37,6 +37,9 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     });
 
+// 🛠️ REGISTRO DE HTTPCLIENTFACTORY (Resuelve el 500 en SystemDiagnosticsController)
+builder.Services.AddHttpClient();
+
 builder.Services.AddEndpointsApiExplorer();
 
 // --- 🌍 CONFIGURACIÓN DE MULTIDIOMA ---
